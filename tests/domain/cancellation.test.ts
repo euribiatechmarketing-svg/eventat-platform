@@ -244,6 +244,22 @@ describe('K8–K10 partner cancellation through the team', () => {
     // A new request is possible after a decline.
     await requestPartnerCancellation(partner.actor, { bookingId: b.id });
   });
+
+  it('K10 after the event: completion is re-armed, so the booking completes and the funds are released', async () => {
+    setTestNow(at('2026-06-10'));
+    const { actor: admin } = await createAdmin('moderator');
+    const { partner, booking: b } = await paidBooking({ eventDate: '2026-06-14' });
+    await requestPartnerCancellation(partner.actor, { bookingId: b.id });
+    // T13 fires while the request is open and does nothing.
+    setTestNow(at('2026-06-16'));
+    await runJobs();
+    expect((await reloadBooking(b.id)).status).toBe('cancellation_requested');
+    await declinePartnerCancellation(admin, { bookingId: b.id });
+    expect((await pendingJobs(`booking:${b.id}:complete`)).length).toBe(1);
+    await runJobs();
+    expect((await reloadBooking(b.id)).status).toBe('completed');
+    await expectLedgerHealthy();
+  });
 });
 
 describe('K11 the team cancels directly', () => {

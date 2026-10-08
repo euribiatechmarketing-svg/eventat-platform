@@ -24,6 +24,8 @@ import { ForbiddenError, SYSTEM, assertCan, type Actor, type AnyActor } from './
 import { audit } from './audit';
 import { DEFAULT_CANCELLATION_POLICIES, getSetting, type CancellationPolicies } from './settings';
 import { adjustLinesForCancellation, releaseBookingFunds } from './payouts';
+import { LIFECYCLE_JOBS, jobKey } from './bookings';
+import { scheduleJob } from '@/lib/jobs';
 import { createRefunds, type RefundRow } from './refunds';
 import {
   AftercareError, CANCELLATION_REASON_LABEL, POLICY_DEFINITE, POLICY_NAME, bpOf, cancelPending, ctxText, fireDateWatches, loadBookingCtx,
@@ -451,6 +453,10 @@ export async function declinePartnerCancellation(actor: Actor, input: { bookingI
     await tx.update(partnerCancellationRequest).set({ status: 'declined', decidedBy: actor.userId, decidedAt: at })
       .where(and(eq(partnerCancellationRequest.bookingId, ctx.booking.id), eq(partnerCancellationRequest.status, 'pending')));
     await tx.update(booking).set({ status: 'confirmed', updatedAt: at }).where(eq(booking.id, ctx.booking.id));
+    // T13 may have fired (and done nothing) while the request was open: re-arm it,
+    // at the normal moment or right away when the event has already passed.
+    const completeAt = sofiaInstant(addDays(ctx.booking.eventDate, 1), 0, 0);
+    await scheduleJob(LIFECYCLE_JOBS.complete, completeAt > at ? completeAt : at, { bookingId: ctx.booking.id }, jobKey.complete(ctx.booking.id), tx);
     await audit(tx, { actor, action: 'booking.cancellation_declined', entity: 'booking', entityId: ctx.booking.id, data: { number: ctx.booking.number } });
   });
 }
