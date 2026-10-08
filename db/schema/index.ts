@@ -18,4 +18,5 @@ export * from './reviews';
 export * from './saved';
 export * from './team';
 export * from './invoices';
+export * from './chargebacks';
 export * from './relations';

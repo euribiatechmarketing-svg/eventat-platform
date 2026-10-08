@@ -14,6 +14,9 @@ import { JOB_HANDLERS } from './handlers';
 
 export type JobKind = keyof typeof JOB_HANDLERS;
 
+/** A job whose handler threw this many times is given up (`failed`). */
+export const MAX_JOB_ATTEMPTS = 5;
+
 /** Schedule a job. Same dedupeKey = scheduled once (re-scheduling updates run_at). */
 export async function scheduleJob(kind: JobKind, runAt: Date, payload: Record<string, unknown>, dedupeKey: string, tx?: Tx) {
   const q = tx ?? db;
@@ -62,7 +65,7 @@ export async function runDueJobs(limit = 100): Promise<{ ran: number; failed: nu
                 where id = ${r.id} and status = 'pending' and run_at = ${lease}::timestamptz`;
       ran++;
     } catch (e) {
-      await sql`update job set last_error = ${String(e)}, status = ${r.attempts >= 5 ? 'failed' : 'pending'},
+      await sql`update job set last_error = ${String(e)}, status = ${r.attempts >= MAX_JOB_ATTEMPTS ? 'failed' : 'pending'},
                 run_at = ${new Date(at.getTime() + r.attempts * 60_000).toISOString()}::timestamptz
                 where id = ${r.id} and status = 'pending' and run_at = ${lease}::timestamptz`;
       failed++;
