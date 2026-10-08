@@ -48,6 +48,7 @@ export async function putFile(file: File, folder: string, visibility: Visibility
 
 /** URL to show a stored file. Private files go through the access-checked route. */
 export function fileUrl(key: string): string {
+  if (key.startsWith('/')) return key; // bundled static asset (public/), e.g. the demo photos
   if (key.startsWith('private/')) return `/api/files/${key}`;
   if (driver() === 'local') return `/uploads/${key}`;
   return `${process.env.S3_PUBLIC_URL?.replace(/\/$/, '')}/${key}`;

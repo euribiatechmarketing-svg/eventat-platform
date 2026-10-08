@@ -1,50 +1,37 @@
 // Partner and admin panels (prototype: .shell = dark .side rail + .main with .topbar and .content).
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { Icon, type IconName } from '@/components/ui/Icon';
-import { Bell } from '@/components/ui/Bell';
+import { Icon } from '@/components/ui/Icon';
+import { Bell, type BellItem } from '@/components/ui/Bell';
 import { Burger, Menu, type MenuItem } from '@/components/ui/client';
-import { bellItems } from '@/lib/bell';
 import { initials } from '@/lib/initials';
 import { signOutAction } from '@/lib/actions/common';
-import type { CurrentUser } from '@/lib/session';
+import { RailNav, TopbarTitle, type RailGroup } from './RailNav';
 
-export type RailItem = { label: string; href: string; icon: IconName; count?: number };
-export type RailGroup = { label: string; items: RailItem[] };
+export type { RailGroup, RailItem } from './RailNav';
 
-export async function PanelShell({ user, area, groups, active, title, userName, userRole, avatarUrl, menu, children, topbarExtra }: {
-  user: CurrentUser;
+export function PanelShell({ area, groups, titles, userName, userRole, avatarUrl, menu, bell, children, topbarExtra }: {
   area: 'partner' | 'admin';
   groups: RailGroup[];
-  /** href of the active rail item */
-  active: string;
-  title: string;
+  /** Topbar titles for routes that are not rail items, by path prefix. */
+  titles?: Record<string, string>;
   userName: string;
   userRole: string;
   avatarUrl?: string | null;
   menu: MenuItem[];
+  bell: BellItem[];
   children: ReactNode;
   topbarExtra?: ReactNode;
 }) {
+  const home = area === 'admin' ? '/admin' : '/partner';
   return (
     <div className="shell">
       <aside className="side">
-        <Link className="side-brand" href={area === 'admin' ? '/admin' : '/partner'}>
+        <Link className="side-brand" href={home}>
           <img className="side-logo" src="/assets/eventat-logo-white.png" alt="EventAT" />
           {area === 'admin' && <span className="side-tag">Админ</span>}
         </Link>
-        {groups.map((g, gi) => (
-          <div key={g.label}>
-            <div className={`side-label${gi === 0 ? ' side-label--first' : ''}`}>{g.label}</div>
-            <nav className="side-nav">
-              {g.items.map(it => (
-                <Link key={it.href} className={`side-item${active === it.href ? ' is-active' : ''}`} href={it.href}>
-                  <Icon name={it.icon} />{it.label}{it.count ? <span className="side-count">{it.count}</span> : null}
-                </Link>
-              ))}
-            </nav>
-          </div>
-        ))}
+        <RailNav groups={groups} home={home} />
         <div className="side-foot">
           <Menu align="up" label="Акаунт" className="side-user-menu" items={[...menu, null, { label: 'Изход', onSelect: signOutAction }]}
             trigger={
@@ -59,13 +46,13 @@ export async function PanelShell({ user, area, groups, active, title, userName, 
       <div className="main">
         <header className="topbar">
           <Burger target="shell" />
-          <span className="topbar-title">{title}</span>
+          <TopbarTitle groups={groups} home={home} titles={titles} />
           <div className="topbar-right">
             {topbarExtra}
-            <Bell items={await bellItems(user.id)} />
+            <Bell items={bell} />
           </div>
         </header>
-        <div className="content"><div className="content-inner">{children}</div></div>
+        <div className="content"><div className="content-inner" id="main">{children}</div></div>
       </div>
     </div>
   );

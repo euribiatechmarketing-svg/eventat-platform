@@ -110,8 +110,8 @@ textarea { resize: vertical; }
 
   /* panel rail becomes an off-canvas drawer */
   .shell { display: block; }
-  .shell > .side { position: fixed; z-index: 60; left: 0; top: 0; bottom: 0; transform: translateX(-100%); transition: transform .2s; box-shadow: 0 0 40px rgba(31, 22, 51, .35); }
-  .shell.is-open > .side { transform: none; }
+  .shell > .side { position: fixed; z-index: 60; left: 0; top: 0; bottom: 0; transform: translateX(-100%); transition: transform .2s; visibility: hidden; }
+  .shell.is-open > .side { transform: none; visibility: visible; box-shadow: 0 0 40px rgba(31, 22, 51, .35); }
   .shell.is-open::after { content: ''; position: fixed; inset: 0; z-index: 50; background: var(--surface-overlay); }
   .shell .topbar { padding: 0 16px; gap: 12px; }
   .shell .topbar .search, .shell .topbar .lang { display: none; }
