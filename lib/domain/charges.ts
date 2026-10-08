@@ -33,6 +33,8 @@ export function providerFor(id: ProviderId): PaymentProvider {
 }
 
 const appUrl = () => (process.env.APP_URL ?? 'http://localhost:3000').replace(/\/$/, '');
+/** Bank transfer needs provider-issued instructions (D6); only the simulated provider has them so far. */
+const providerTakesTransfers = (id: ProviderId) => id === 'simulated';
 const WEEKDAYS = ['неделя', 'понеделник', 'вторник', 'сряда', 'четвъртък', 'петък', 'събота'];
 const SUCCEEDED = ['succeeded', 'partially_refunded', 'refunded'] as const;
 /** T10: retries after a failed balance charge. */
@@ -119,7 +121,7 @@ export async function startPayment(actor: AnyActor, input: { number: string; met
       return resultOf(u, s, due);
     }
 
-    if (providerId !== 'simulated') {
+    if (!providerTakesTransfers(providerId)) {
       // The PaymentProvider interface has no bank-transfer instructions call yet (D6: the IBAN must come from the provider).
       throw new LifecycleError('provider_not_ready', 'Bank transfer instructions are not available from the payment provider');
     }
@@ -232,6 +234,8 @@ export async function confirmBooking(t: Tx, bw: BookingWithSnapshots, c: ChargeR
   await scheduleConfirmedJobs(t, b, s, at);
   if (b.balanceCents > 0 && b.balanceDueDate) {
     await scheduleJob(LIFECYCLE_JOBS.balanceCharge, sofiaInstant(b.balanceDueDate, 10, 0), { bookingId: b.id }, jobKey.balanceCharge(b.id), t); // T9
+    // T10's last check stands from the start, whatever the attempts before it do (or skip).
+    await scheduleJob(LIFECYCLE_JOBS.balanceDefault, balanceFinalCheck(b.eventDate), { bookingId: b.id, final: true }, jobKey.balanceDefault(b.id), t);
   }
   await scheduleHoldLimit(t, c, b.eventDate, s);
 
@@ -305,6 +309,24 @@ export async function onChargeFailed(e: ChargeFailed, tx?: Tx): Promise<ChargeRe
 
 // ── T9 / T10: the balance (deposit schedule, §7.2) ───────────────────────
 
+/** T10's last check: 10:00 Sofia, seven days before the event (§7.2). */
+export const balanceFinalCheck = (eventDate: string) => sofiaInstant(addDays(eventDate, -7), 10, 0);
+
+/**
+ * After an attempt that did not collect the balance: the next retry in 24 h
+ * (up to 3) while that is before the last check, else the last check — never
+ * later than its own time (a late run makes it due at once).
+ */
+async function scheduleNextBalanceStep(t: Tx, b: { id: string; eventDate: string }, at: Date, attempt: number) {
+  const finalCheck = balanceFinalCheck(b.eventDate);
+  const next = new Date(at.getTime() + DAY);
+  if (attempt < BALANCE_RETRIES && next < finalCheck) {
+    await scheduleJob(LIFECYCLE_JOBS.balanceDefault, next, { bookingId: b.id, attempt: attempt + 1 }, jobKey.balanceRetry(b.id, attempt + 1), t);
+  } else {
+    await scheduleJob(LIFECYCLE_JOBS.balanceDefault, finalCheck > at ? finalCheck : at, { bookingId: b.id, final: true }, jobKey.balanceDefault(b.id), t);
+  }
+}
+
 /**
  * One off-session attempt to charge the balance with the card saved at the
  * deposit. Success applies C3 at once; a failure (or a needed authentication)
@@ -318,7 +340,12 @@ async function attemptBalance(bookingId: string, attempt: number): Promise<'paid
     const b = bw.booking;
     const at = await now();
     if (b.status !== 'confirmed' || b.balanceCents <= 0) return 'skipped';
-    if (bw.charges.some(c => c.kind === 'balance' && ((SUCCEEDED as readonly string[]).includes(c.status) || c.status === 'pending'))) return 'skipped';
+    if (bw.charges.some(c => c.kind === 'balance' && (SUCCEEDED as readonly string[]).includes(c.status))) return 'skipped';
+    if (bw.charges.some(c => c.kind === 'balance' && c.status === 'pending')) {
+      // The client is paying it on /plashtane/[nomer] right now: no second charge, but come back if that checkout is abandoned.
+      await scheduleNextBalanceStep(t, b, at, attempt);
+      return 'skipped';
+    }
     const saved = bw.charges.find(c => c.kind !== 'balance' && (SUCCEEDED as readonly string[]).includes(c.status) && c.customerRef && c.paymentMethodRef);
     const s = await getSettings(at, t);
     const [c] = await t.insert(charge).values({
@@ -338,13 +365,7 @@ async function attemptBalance(bookingId: string, attempt: number): Promise<'paid
     }
     await onChargeFailed({ chargeId: c.id, providerRef: r.providerRef || undefined, reason: r.reason ?? r.status }, t);
     // `client-balance-failed` does not exist yet (D5).
-    const finalCheck = sofiaInstant(addDays(b.eventDate, -7), 10, 0);
-    const next = new Date(at.getTime() + DAY);
-    if (attempt < BALANCE_RETRIES && next < finalCheck) {
-      await scheduleJob(LIFECYCLE_JOBS.balanceDefault, next, { bookingId: b.id, attempt: attempt + 1 }, jobKey.balanceRetry(b.id, attempt + 1), t);
-    } else {
-      await scheduleJob(LIFECYCLE_JOBS.balanceDefault, finalCheck > at ? finalCheck : next, { bookingId: b.id, final: true }, `booking:${b.id}:balancedefault`, t);
-    }
+    await scheduleNextBalanceStep(t, b, at, attempt);
     return 'failed';
   });
 }
@@ -436,7 +457,8 @@ export async function getPaymentPage(actor: AnyActor, number: string, q: Queryab
     balanceCents: b.balanceCents, balanceDueDate: b.balanceDueDate, paymentDueAt: b.paymentDueAt, eventDate: b.eventDate, serviceTitle: b.serviceTitle,
     partner: { slug: bw.parties.partner.slug, name: bw.parties.partner.businessName, category: bw.parties.partnerCategory, cityName: bw.parties.cityName },
     policy: { policy: b.cancellationPolicy, depositPercent: b.depositPercent, freeCancelUntil: b.freeCancelUntil },
-    bankTransferEnabled: s['payment.bank_transfer_enabled'],
+    // Only a provider that issues transfer instructions can take one (D6); the stripe boundary has no such call yet.
+    bankTransferEnabled: s['payment.bank_transfer_enabled'] && providerTakesTransfers(s['payment.provider']),
     openTransfer: transfer ? {
       chargeId: transfer.id, recipient: s['demo.bank_transfer_details'].recipient, iban: transfer.transferIban ?? '',
       reference: transfer.transferReference ?? b.number, amountCents: transfer.amountCents,

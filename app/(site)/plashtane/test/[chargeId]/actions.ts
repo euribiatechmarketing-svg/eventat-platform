@@ -19,7 +19,7 @@ async function checkout(formData: FormData) {
 
 const open = (status: string) => status === 'pending' || status === 'awaiting_transfer';
 
-/** ‹Плати›: the provider reports success (card Visa •••• 4242), then the booking page. */
+/** ‹Плати›: the provider reports success (card Visa •••• 4242), then the provider's success URL (SCREENS §5 `/plashtane/[nomer]/potvardena`). */
 export async function payTestChargeAction(formData: FormData) {
   const view = await checkout(formData);
   if (open(view.status)) {
@@ -27,7 +27,7 @@ export async function payTestChargeAction(formData: FormData) {
   }
   const n = encodeURIComponent(view.number);
   revalidatePath(`/akaunt/rezervacii/${n}`);
-  redirect(`/akaunt/rezervacii/${n}`);
+  redirect(`/plashtane/${n}/potvardena`);
 }
 
 /** ‹Откажи плащането›: the provider reports a failure, then back to the payment page. */

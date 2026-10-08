@@ -330,6 +330,51 @@ describe('the deposit schedule: T9 balance charge and T10 retries (§7.2)', () =
   });
 });
 
+describe('the deposit schedule when the client is paying the balance at T9 (§7.2)', () => {
+  it('does not charge twice, retries, and still reaches the last check seven days before the event (T10)', async () => {
+    await forceSetting('payment.schedule', { mode: 'deposit_balance', deposit_percent: null, balance_due_days: 30 });
+    try {
+      const a = await approvedBooking();
+      const pay = await startPayment(a.client.actor, { number: a.number, method: 'card' });
+      await succeed(pay.chargeId, { customerRef: 'cus_test', paymentMethodRef: 'pm_test' });
+      const last = sofiaInstant('2026-06-07', 10, 0);
+      expect((await jobs(`booking:${a.bookingId}:balancedefault`))[0]).toMatchObject({ status: 'pending', runAt: last });
+
+      setTestNow(sofiaInstant('2026-05-14', 12, 0));
+      const open = await startPayment(a.client.actor, { number: a.number, method: 'card' }); // balance checkout, never finished
+      expect((await chargeRow(open.chargeId))).toMatchObject({ kind: 'balance', status: 'pending' });
+      const t9 = sofiaInstant('2026-05-15', 10, 0);
+      await tickAt(t9);
+      const balance = () => db.select().from(s.charge).where(and(eq(s.charge.bookingId, a.bookingId), eq(s.charge.kind, 'balance')));
+      expect(await balance()).toHaveLength(1);
+      for (let n = 1; n <= 3; n++) {
+        const [retry] = await jobs(`booking:${a.bookingId}:balanceretry:${n}`);
+        expect(retry).toMatchObject({ status: 'pending', runAt: new Date(t9.getTime() + n * DAY) });
+        await tickAt(retry.runAt);
+      }
+      expect(await balance()).toHaveLength(1);
+      await tickAt(last);
+      const [audit] = await db.select().from(s.auditLog).where(and(eq(s.auditLog.entityId, a.bookingId), eq(s.auditLog.action, 'booking.balance_defaulted')));
+      expect(audit?.data).toMatchObject({ balanceCents: 101_500 });
+    } finally {
+      await forceSetting('payment.schedule', { mode: 'full', deposit_percent: null, balance_due_days: 30 });
+    }
+  });
+});
+
+describe('bank transfer availability (D6)', () => {
+  it('is offered only while the provider can issue transfer instructions', async () => {
+    const a = await approvedBooking();
+    expect((await getPaymentPage(a.client.actor, a.number)).bankTransferEnabled).toBe(true);
+    await forceSetting('payment.provider', 'stripe');
+    try {
+      expect((await getPaymentPage(a.client.actor, a.number)).bankTransferEnabled).toBe(false);
+    } finally {
+      await forceSetting('payment.provider', 'simulated');
+    }
+  });
+});
+
 describe('other provider events, the simulated checkout guard and the webhook route', () => {
   it('applies account.updated (P11) and records events other modules handle', async () => {
     const p = await createPartner();

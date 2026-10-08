@@ -326,6 +326,23 @@ describe('view models', () => {
     expect(fv.timeline.map(t => t.action)).toEqual(expect.arrayContaining(['request.sent', 'request.approved', 'booking.created', 'booking.confirmed']));
     expect(await failure(getBookingForAdmin(a.client.actor, a.number))).toBeInstanceOf(ForbiddenError);
   });
+
+  it('keeps commission out of the admin timeline for team members without view_finance (SPEC §1.2)', async () => {
+    const a = await paidBooking();
+    await tickAt(sofiaInstant('2026-06-15', 0, 0)); // K13 posts the release with its commission split
+    const { actor: support } = await createAdmin('support');
+    const { actor: moderator } = await createAdmin('moderator');
+    const { actor: accounting } = await createAdmin('accounting');
+    for (const viewer of [support, moderator]) {
+      const v = await getBookingForAdmin(viewer, a.number);
+      expect(v.timeline.map(t => t.action)).toEqual(expect.arrayContaining(['booking.confirmed', 'booking.funds_released']));
+      expect(JSON.stringify(v.timeline)).not.toMatch(/commission|partnerAmount/i);
+      expect(v.timeline.find(t => t.action === 'booking.funds_released')?.data).toMatchObject({ number: a.number, baseCents: 145_000 });
+    }
+    const f = await getBookingForAdmin(accounting, a.number);
+    expect(f.timeline.find(t => t.action === 'booking.confirmed')?.data).toMatchObject({ commissionBp: 500 });
+    expect(f.timeline.find(t => t.action === 'booking.funds_released')?.data).toMatchObject({ commissionCents: 7_250, partnerAmountCents: 137_750 });
+  });
 });
 
 describe('client events (SPEC §16)', () => {

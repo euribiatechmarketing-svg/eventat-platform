@@ -20,7 +20,8 @@ import { SYSTEM, type Actor, type AnyActor } from './actor';
 import { audit } from './audit';
 import {
   HOLDING_STATUSES, HOUR, LIFECYCLE_JOBS, LifecycleError, PHONE_VISIBLE_STATUSES, assertClientActor, assertPartnerActor, checkPartnerDate,
-  createBookingFromRequest, eventStartInstant, jobKey, loadParties, locationOf, mail, packageNameOf, schedulePaymentJobs, timeRange, withTx,
+  completionInstant, createBookingFromRequest, eventStartInstant, jobKey, loadParties, locationOf, mail, packageNameOf, schedulePaymentJobs,
+  timeRange, withTx,
   type DateProblem, type Parties, type RequestRow,
 } from './bookings';
 import { projectedSplit, split } from './commission';
@@ -352,28 +353,38 @@ export async function closeFullDate(t: Tx, a: { partnerId: string; date: DateStr
   const [p] = await t.select().from(partner).where(eq(partner.id, a.partnerId)).limit(1);
   const check = await checkPartnerDate(t, p, a.date, { today: sofiaDate(at), window: false });
   if (!check.problems.includes('full')) return { declined: 0, lapsed: 0 };
+  // Locked as selected: a request the partner declines (or T2 expires) meanwhile drops out of the
+  // set once that transaction commits, instead of being declined a second time over its own outcome.
   const pending = await t.select({ id: request.id }).from(request).where(and(
     eq(request.partnerId, a.partnerId), eq(request.eventDate, a.date), eq(request.status, 'pending'),
     ...(a.exceptRequestId ? [ne(request.id, a.exceptRequestId)] : []),
-  ));
+  )).for('update');
+  let declined = 0;
   for (const { id } of pending) {
     const ctx = (await loadRequest(t, { id }, true))!;
+    if (ctx.request.status !== 'pending') continue;
     await declineInTx(t, ctx, { actor: SYSTEM, reason: 'date_taken', text: null, at });
+    declined++;
   }
-  // O5: offers on quote requests for this date…
+  // O5: offers on quote requests for this date… The requests are locked first, in the order the
+  // client's choice (R5) takes them (request, then offer); one chosen meanwhile drops out.
   const quoteOffers = await t.select({ offerId: offer.id, requestId: request.id }).from(offer).innerJoin(request, eq(request.id, offer.requestId))
-    .where(and(eq(offer.partnerId, a.partnerId), eq(offer.status, 'sent'), eq(request.eventDate, a.date)));
+    .where(and(eq(offer.partnerId, a.partnerId), eq(offer.status, 'sent'), eq(request.status, 'offer_sent'), eq(request.eventDate, a.date)))
+    .for('update', { of: request });
   // …and on briefs for this date.
   const briefOffers = await t.select({ offerId: offer.id }).from(offer)
     .innerJoin(briefInvitation, eq(briefInvitation.id, offer.invitationId)).innerJoin(brief, eq(brief.id, briefInvitation.briefId))
     .where(and(eq(offer.partnerId, a.partnerId), eq(offer.status, 'sent'), eq(brief.eventDate, a.date)));
-  const offerIds = [...quoteOffers.map(o => o.offerId), ...briefOffers.map(o => o.offerId)];
-  if (offerIds.length) await t.update(offer).set({ status: 'lapsed', decidedAt: at }).where(inArray(offer.id, offerIds));
-  for (const q of quoteOffers) {
+  const candidates = [...quoteOffers.map(o => o.offerId), ...briefOffers.map(o => o.offerId)];
+  const lapsed = candidates.length
+    ? (await t.update(offer).set({ status: 'lapsed', decidedAt: at })
+      .where(and(inArray(offer.id, candidates), eq(offer.status, 'sent'))).returning({ id: offer.id })).map(o => o.id)
+    : [];
+  for (const q of quoteOffers.filter(o => lapsed.includes(o.offerId))) {
     await t.update(request).set({ status: 'expired', expiredAt: at, updatedAt: at }).where(and(eq(request.id, q.requestId), eq(request.status, 'offer_sent')));
     await audit(t, { actor: SYSTEM, action: 'request.offer_lapsed', entity: 'request', entityId: q.requestId, data: { offerId: q.offerId } });
   }
-  return { declined: pending.length, lapsed: offerIds.length };
+  return { declined, lapsed: lapsed.length };
 }
 
 // ── R3 / R6: approval → booking (K1) ─────────────────────────────────────
@@ -386,7 +397,11 @@ export async function closeFullDate(t: Tx, a: { partnerId: string; date: DateStr
  * (K1), cancels T1/T2/T4, schedules T5–T8, `client-request-approved` + `vendor-request-approved`.
  */
 export async function approveRequest(actor: AnyActor, input: { number: string }, tx?: Tx): Promise<{ bookingId: string; number: string; paymentDueAt: Date }> {
+  assertPartnerActor(actor);
   return withTx(tx, async t => {
+    // Lock order shared with K5 (charges.confirmBooking → closeFullDate): the partner row, then its
+    // requests. Taking the request first deadlocks against a payment that fills the same date.
+    await t.select({ id: partner.id }).from(partner).where(eq(partner.id, actor.partnerId)).for('update');
     const ctx = await requestForPartner(t, actor, input.number);
     const r = ctx.request;
     const isPackage = r.kind === 'package' && r.status === 'pending';
@@ -476,6 +491,8 @@ export async function sendQuote(
     }).returning({ id: offer.id });
     await t.update(request).set({ status: 'offer_sent', offerId: o.id, answeredAt: at, updatedAt: at }).where(eq(request.id, r.id));
     await cancelJobs(`request:${r.id}:`, t);
+    // R10 / O5: an offer nobody chose lapses once the event date has passed (D22).
+    await scheduleJob(LIFECYCLE_JOBS.offerLapse, completionInstant(r.eventDate), { requestId: r.id }, jobKey.offerLapse(r.id), t);
     const pt = ctx.parties;
     await mail(t, {
       key: 'client-offer-received', to: pt.client.email, toUserId: r.clientId, dedupeKey: `offer:${o.id}:received`,
@@ -506,6 +523,7 @@ export async function chooseQuoteOffer(actor: AnyActor, input: { number: string 
     if (due.getTime() <= at.getTime()) throw new LifecycleError('deadline_passed', 'The event is too close');
     await t.update(offer).set({ status: 'chosen', chosenAt: at }).where(eq(offer.id, o.id));
     await t.update(request).set({ status: 'awaiting_confirmation', responseDueAt: due, updatedAt: at }).where(eq(request.id, r.id));
+    await cancelJobs(jobKey.offerLapse(r.id), t);
     await scheduleJob(LIFECYCLE_JOBS.requestExpire, due, { requestId: r.id }, jobKey.requestExpire(r.id), t);
     const pt = ctx.parties;
     if (pt.partnerUserId) {
@@ -596,6 +614,24 @@ export async function expireRequestJob(p: Record<string, unknown>): Promise<void
       });
     }
     await audit(t, { actor: SYSTEM, action: 'request.expired', entity: 'request', entityId: r.id, data: { number: r.number, from: r.status } });
+  });
+}
+
+/**
+ * R10 / O5 (D22): the event date of a quote request passed while its offer was
+ * still waiting for the client → offer `lapsed`, request `expired`. No email (D60).
+ */
+export async function offerLapseJob(p: Record<string, unknown>): Promise<void> {
+  await db.transaction(async t => {
+    const ctx = await loadRequest(t, { id: String(p.requestId) }, true);
+    if (!ctx || ctx.request.status !== 'offer_sent') return;
+    const r = ctx.request;
+    const at = await now();
+    if (r.eventDate >= sofiaDate(at)) return;
+    const lapsed = await t.update(offer).set({ status: 'lapsed', decidedAt: at })
+      .where(and(eq(offer.requestId, r.id), eq(offer.status, 'sent'))).returning({ id: offer.id });
+    await t.update(request).set({ status: 'expired', expiredAt: at, updatedAt: at }).where(eq(request.id, r.id));
+    await audit(t, { actor: SYSTEM, action: 'request.offer_lapsed', entity: 'request', entityId: r.id, data: { offerId: lapsed[0]?.id ?? r.offerId, reason: 'event_date_passed' } });
   });
 }
 

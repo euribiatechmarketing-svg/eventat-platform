@@ -11,10 +11,12 @@ import {
   approveRequest, askForInfo, cancelPendingRequest, chooseQuoteOffer, confirmOffer, declineRequest, expireRequestJob, getRequestForClient,
   getRequestForPartner, maskContacts, requestReminderJob, sendQuote,
 } from '@/lib/domain/requests';
+import { startPayment } from '@/lib/domain/charges';
+import { applyProviderEvent } from '@/lib/payments/apply';
 import { createClient, createPartner } from '../helpers/factories';
 import {
-  EVENT, H, NOW, approvedBooking, bell, bookingRow, emails, expectLedgerHealthy, failure, forceSetting, jobs, requestRow, sendFor, tickAt,
-  type Partner,
+  EVENT, H, NOW, approvedBooking, backendPid, bell, bookingRow, emails, expectLedgerHealthy, failure, forceSetting, gate, jobs, lockWaiter, requestRow,
+  sendFor, tickAt, type Partner,
 } from '../helpers/lifecycle';
 
 beforeEach(() => setTestNow(NOW));
@@ -335,7 +337,9 @@ describe('quotes: R4 offer, R5 choice, R6 confirmation, T4 lapse', () => {
 
     const { offerId } = await sendQuote(partner.actor, { number, title: 'Парти програма, 5 часа', amountCents: 210_000 });
     expect(await requestRow(requestId)).toMatchObject({ status: 'offer_sent', offerId });
-    expect((await jobs(`request:${requestId}:`)).every(j => j.status === 'cancelled')).toBe(true);
+    expect((await jobs(`request:${requestId}:`)).map(j => [j.dedupeKey!.split(':')[2], j.status])).toEqual([
+      ['expire', 'cancelled'], ['offerlapse', 'pending'], ['reminder', 'cancelled'],
+    ]);
     expect((await bell(client.user.id))[0]).toMatchObject({ title: 'Студио Мелодия отговори на запитването', body: `Парти програма, 5 часа · ${moneyShort(210_000)}` });
 
     expect((await failure(chooseQuoteOffer((await createClient()).actor, { number }))).code).toBe('not_found');
@@ -363,6 +367,121 @@ describe('quotes: R4 offer, R5 choice, R6 confirmation, T4 lapse', () => {
     expect(await requestRow(requestId)).toMatchObject({ status: 'expired' });
     expect((await db.select().from(s.offer).where(eq(s.offer.id, offerId)))[0].status).toBe('lapsed');
     expect(await emails('vendor-request-expired', partner.user.id)).toHaveLength(1);
+  });
+});
+
+describe('R10: an offer nobody chose lapses once the event date has passed (O5, D22)', () => {
+  it('moves the quote request to expired and the offer to lapsed the day after the event, without emails', async () => {
+    const client = await createClient();
+    const partner = await createPartner();
+    const svc = await quoteService(partner);
+    const { number, requestId } = await sendFor(client, partner, { serviceId: svc.id, eventDate: '2025-09-20' });
+    const { offerId } = await sendQuote(partner.actor, { number, title: 'Оферта', amountCents: 50_000 });
+    await tickAt(sofiaInstant('2025-09-20', 23, 59));
+    expect(await requestRow(requestId)).toMatchObject({ status: 'offer_sent' });
+    await tickAt(sofiaInstant('2025-09-21', 0, 0));
+    expect(await requestRow(requestId)).toMatchObject({ status: 'expired' });
+    expect((await db.select().from(s.offer).where(eq(s.offer.id, offerId)))[0].status).toBe('lapsed');
+    expect(await emails('client-request-expired', client.user.id)).toHaveLength(0);
+    expect(await emails('vendor-request-expired', partner.user.id)).toHaveLength(0);
+  });
+
+  it('leaves a chosen offer to its own 24 h confirmation clock (T4)', async () => {
+    const client = await createClient();
+    const partner = await createPartner();
+    const svc = await quoteService(partner);
+    const { number, requestId } = await sendFor(client, partner, { serviceId: svc.id });
+    await sendQuote(partner.actor, { number, title: 'Оферта', amountCents: 50_000 });
+    await chooseQuoteOffer(client.actor, { number });
+    expect((await jobs(`request:${requestId}:offerlapse`))[0].status).toBe('cancelled');
+  });
+});
+
+describe('a payment filling the date while the partner acts on another request for it (R9, D64)', () => {
+  it('keeps the partner\'s own decline reason when the decline is in flight', async () => {
+    const partner = await createPartner();
+    const r = await sendFor(await createClient(), partner);
+    const a = await approvedBooking({ p: partner }); // holds the date (capacity 1); r stays pending
+    const pay = await startPayment(a.client.actor, { number: a.number, method: 'card' });
+
+    const locked = gate(), go = gate();
+    let holder = 0;
+    const declining = db.transaction(async t => {
+      await t.select({ id: s.request.id }).from(s.request).where(eq(s.request.id, r.requestId)).for('update');
+      holder = await backendPid(t);
+      locked.open();
+      await go.passed;
+      await declineRequest(partner.actor, { number: r.number, reason: 'other', text: 'Не работим тогава' }, t);
+    });
+    await locked.passed;
+    const paying = applyProviderEvent({ type: 'charge.succeeded', chargeId: pay.chargeId, providerRef: '', cardBrand: 'visa', cardLast4: '4242' });
+    await lockWaiter(holder);
+    go.open();
+    await Promise.all([declining, paying]);
+
+    expect((await bookingRow(a.bookingId)).status).toBe('confirmed');
+    expect(await requestRow(r.requestId)).toMatchObject({ status: 'declined', declineReason: 'other', declineText: 'Не работим тогава' });
+    const audits = await db.select().from(s.auditLog).where(and(eq(s.auditLog.entityId, r.requestId), eq(s.auditLog.action, 'request.declined')));
+    expect(audits).toHaveLength(1);
+  });
+
+  it('does not deadlock with an approval of another request for that date', async () => {
+    const partner = await createPartner();
+    const r = await sendFor(await createClient(), partner);
+    const a = await approvedBooking({ p: partner });
+    const pay = await startPayment(a.client.actor, { number: a.number, method: 'card' });
+
+    // The payment holds the partner row (K5 snapshots the commission under it)…
+    const locked = gate(), go = gate();
+    let holder = 0;
+    const paying = db.transaction(async t => {
+      await t.select({ id: s.partner.id }).from(s.partner).where(eq(s.partner.id, partner.partner.id)).for('update');
+      holder = await backendPid(t);
+      locked.open();
+      await go.passed;
+      return applyProviderEvent({ type: 'charge.succeeded', chargeId: pay.chargeId, providerRef: '', cardBrand: 'visa', cardLast4: '4242' }, t);
+    });
+    await locked.passed;
+    // …while the partner approves the other pending request for the same date.
+    const approving = approveRequest(partner.actor, { number: r.number }).then(() => null, (e: Error & { code?: string }) => e);
+    await lockWaiter(holder);
+    go.open();
+    const [paid, refused] = await Promise.all([paying, approving]);
+
+    expect(paid).toMatchObject({ applied: true, bookingConfirmed: true });
+    expect(refused?.code).toBe('invalid_state'); // R9 declined it first; no deadlock error on either side
+    expect(await requestRow(r.requestId)).toMatchObject({ status: 'declined', declineReason: 'date_taken' });
+  });
+
+  it('does not deadlock with the client choosing a quote offer for that date (R5 vs O5)', async () => {
+    const partner = await createPartner();
+    const quoteClient = await createClient();
+    const svc = await quoteService(partner);
+    const q = await sendFor(quoteClient, partner, { serviceId: svc.id });
+    const { offerId } = await sendQuote(partner.actor, { number: q.number, title: 'Оферта', amountCents: 50_000 });
+    const a = await approvedBooking({ p: partner });
+    const pay = await startPayment(a.client.actor, { number: a.number, method: 'card' });
+
+    // The client's choice holds the quote request…
+    const locked = gate(), go = gate();
+    let holder = 0;
+    const choosing = db.transaction(async t => {
+      await t.select({ id: s.request.id }).from(s.request).where(eq(s.request.id, q.requestId)).for('update');
+      holder = await backendPid(t);
+      locked.open();
+      await go.passed;
+      await chooseQuoteOffer(quoteClient.actor, { number: q.number }, t);
+    });
+    await locked.passed;
+    // …while a payment fills the date and lapses the open offers for it.
+    const paying = applyProviderEvent({ type: 'charge.succeeded', chargeId: pay.chargeId, providerRef: '', cardBrand: 'visa', cardLast4: '4242' });
+    await lockWaiter(holder);
+    go.open();
+    const [, paid] = await Promise.all([choosing, paying]);
+
+    expect(paid).toMatchObject({ applied: true, bookingConfirmed: true });
+    expect(await requestRow(q.requestId)).toMatchObject({ status: 'awaiting_confirmation' });
+    expect((await db.select().from(s.offer).where(eq(s.offer.id, offerId)))[0].status).toBe('chosen');
   });
 });
 

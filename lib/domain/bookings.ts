@@ -211,21 +211,21 @@ export const LIFECYCLE_JOBS = {
   complete: 'booking.complete',                   // T13
   reviewInvite: 'booking.review_invite',          // T14
   holdLimit: 'charge.hold_limit',                 // T18
+  offerLapse: 'request.offer_lapse',              // R10 (O5: the event date passed)
 } as const;
 
-/**
- * Dedupe keys. A handler must never re-schedule or cancel its own key: the
- * runner holds that job row locked while the handler runs.
- */
+/** Dedupe keys. Re-scheduling a key moves its job, even while that job runs. */
 export const jobKey = {
   requestReminder: (id: string) => `request:${id}:reminder`,
   requestExpire: (id: string) => `request:${id}:expire`,
+  offerLapse: (id: string) => `request:${id}:offerlapse`,
   payReminder: (id: string, h: number) => `booking:${id}:payrem:${h}`,
   partnerPayReminder: (id: string) => `booking:${id}:vpayrem`,
   teamAlert: (id: string) => `booking:${id}:teamalert`,
   paymentExpire: (id: string) => `booking:${id}:payexpire`,
   balanceCharge: (id: string) => `booking:${id}:balance`,
   balanceRetry: (id: string, n: number) => `booking:${id}:balanceretry:${n}`,
+  balanceDefault: (id: string) => `booking:${id}:balancedefault`,
   clientEventReminder: (eventId: string, d: number) => `event:${eventId}:remind:${d}`,
   partnerEventReminder: (id: string, d: number) => `booking:${id}:vremind:${d}`,
   complete: (id: string) => `booking:${id}:complete`,
@@ -1119,6 +1119,16 @@ export async function getBookingForAdmin(actor: AnyActor, number: string, q: Que
     refunds: refunds.map(r => ({ id: r.id, amountCents: r.amountCents, status: r.status, reason: r.reason, createdAt: r.createdAt })),
     payoutLines: lines?.map(l => ({ id: l.id, status: l.status, batchDate: l.batchDate, baseCents: l.baseCents, amountCents: l.amountCents, chargeId: l.chargeId })) ?? null,
     extensions: ext.map(e => ({ previousDueAt: e.previousDueAt, newDueAt: e.newDueAt, hours: e.hours, createdAt: e.createdAt })),
-    timeline,
+    timeline: finance ? timeline : timeline.map(e => ({ ...e, data: withoutCommission(e.data) })),
   };
+}
+
+/** Audit data keys that carry the commission or the split it implies (shown only with view_finance, SPEC §1.2). */
+const COMMISSION_KEY = /commission|partner_?amount|partnerKeeps|applicationFee/i;
+
+/** An audit record's data without its commission figures, at any depth. */
+export function withoutCommission(data: unknown): unknown {
+  if (Array.isArray(data)) return data.map(withoutCommission);
+  if (!data || typeof data !== 'object') return data;
+  return Object.fromEntries(Object.entries(data).filter(([k]) => !COMMISSION_KEY.test(k)).map(([k, v]) => [k, withoutCommission(v)]));
 }

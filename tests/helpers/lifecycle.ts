@@ -93,6 +93,34 @@ export async function expectLedgerHealthy() {
   expect(await checkLedgerInvariants(db)).toEqual([]);
 }
 
+/** The server process id of a transaction (to name it in lockWaiter). */
+export async function backendPid(t: Pick<typeof db, 'execute'>): Promise<number> {
+  const [r] = await t.execute<{ pid: number }>(sql`select pg_backend_pid() as pid`);
+  return Number(r.pid);
+}
+
+/** Resolves once another session is waiting for a lock that the transaction with server pid `holder` holds. */
+export async function lockWaiter(holder: number, timeoutMs = 5_000) {
+  const until = Date.now() + timeoutMs;
+  while (Date.now() < until) {
+    const [r] = await db.execute<{ n: number }>(sql`select count(*)::int as n from pg_stat_activity
+      where datname = current_database() and ${holder}::int = any(pg_blocking_pids(pid))`);
+    if (Number(r.n) > 0) return;
+    await new Promise(res => setTimeout(res, 20));
+  }
+  throw new Error(`nobody is waiting for a lock held by ${holder}`);
+}
+
+/** A promise that resolves with 'timeout' after `ms` (to race against a hang). */
+export const timeoutAfter = (ms: number) => new Promise<'timeout'>(res => setTimeout(() => res('timeout'), ms));
+
+/** A gate a transaction can wait on: `open()` lets it through. */
+export function gate() {
+  let open!: () => void;
+  const passed = new Promise<void>(res => { open = res; });
+  return { open, passed };
+}
+
 /** The rejection of a promise (to assert on `code`, `name`, `message`). */
 export async function failure(p: Promise<unknown>): Promise<Error & { code?: string; cause?: Error }> {
   try { await p; } catch (e) { return e as Error & { code?: string; cause?: Error }; }
