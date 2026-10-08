@@ -1,0 +1,236 @@
+/* =====================================================================
+   EventAT — Public pages (how it works, become a partner, category,
+   sign in, legal). Same top navigation as the catalogue; the difference
+   is that these pages persuade rather than operate, so they carry wider
+   bands, photography and a single call to action per screen.
+   ===================================================================== */
+
+/* ---------- page hero ---------- */
+.hero { padding: 54px 0 40px; text-align: center; }
+.hero--left { text-align: left; }
+.hero-eyebrow {
+  font-size: 11.5px; font-weight: var(--fw-bold); letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--primary-600);
+}
+.hero-t { font-family: var(--font-display); font-weight: var(--fw-bold); font-size: 46px; line-height: 1.1; color: var(--primary-900); margin: 14px 0 0; }
+.hero-d { font-size: 16px; line-height: 1.7; color: var(--neutral-600); margin: 16px auto 0; max-width: 620px; }
+.hero--left .hero-d { margin-left: 0; }
+.hero-cta { display: flex; gap: 12px; justify-content: center; margin-top: 26px; }
+.hero--left .hero-cta { justify-content: flex-start; }
+
+/* photographic band with the scrim baked into the markup */
+.band { position: relative; height: 300px; border-radius: 20px; overflow: hidden; background: center/cover no-repeat var(--neutral-100); }
+.band-scrim { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(42,35,64,.82) 0%, rgba(42,35,64,.55) 46%, rgba(42,35,64,.12) 100%); }
+.band-in { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; padding: 0 56px; max-width: 720px; }
+.band-t { font-family: var(--font-display); font-weight: var(--fw-bold); font-size: 38px; line-height: 1.15; color: #fff; }
+.band-d { font-size: 15px; line-height: 1.65; color: rgba(255,255,255,.82); margin-top: 12px; max-width: 520px; }
+
+/* ---------- numbered steps ---------- */
+.steps3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; }
+.step3 { background: #fff; border: 1px solid var(--app-line); border-radius: 16px; padding: 26px 26px 28px; }
+.step3-n {
+  width: 40px; height: 40px; border-radius: 12px;
+  background: var(--primary-600); color: #fff;
+  display: grid; place-items: center;
+  font-family: var(--font-num); font-weight: var(--fw-bold); font-size: 19px;
+  font-variant-numeric: lining-nums;
+}
+.step3-t { font-family: var(--font-display); font-weight: var(--fw-bold); font-size: 21px; color: var(--primary-900); margin: 16px 0 0; }
+.step3-d { font-size: 14px; line-height: 1.7; color: var(--neutral-600); margin-top: 9px; text-wrap: pretty; }
+.step3-note { margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--app-line); font-size: 12.5px; color: var(--neutral-600); display: flex; gap: 8px; }
+.step3-note svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--primary-500); margin-top: 1px; }
+
+/* ---------- feature / benefit grid ---------- */
+.feats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.feat { background: #fff; border: 1px solid var(--app-line); border-radius: 14px; padding: 22px 24px; }
+.feat-i { width: 40px; height: 40px; border-radius: 11px; background: var(--primary-50); color: var(--primary-600); display: grid; place-items: center; }
+.feat-i svg { width: 19px; height: 19px; }
+.feat-t { font-size: 15.5px; font-weight: var(--fw-semibold); color: var(--primary-900); margin-top: 14px; }
+.feat-d { text-wrap: pretty; font-size: 13.5px; line-height: 1.65; color: var(--neutral-600); margin-top: 7px; }
+
+/* section heading inside a public page */
+.sec-head { text-align: center; margin-bottom: 26px; }
+.sec-head--left { text-align: left; }
+.sec-t { font-family: var(--font-display); font-weight: var(--fw-bold); font-size: 32px; color: var(--primary-900); margin: 0; }
+.sec-d { font-size: 14.5px; color: var(--neutral-600); margin: 10px auto 0; max-width: 560px; line-height: 1.65; }
+.sec-head--left .sec-d { margin-left: 0; }
+
+/* ---------- partner earnings panel ---------- */
+.earn-split { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 26px; align-items: center; }
+.money { background: #fff; border: 1px solid var(--app-line); border-radius: 18px; padding: 26px 28px; box-shadow: var(--shadow-sm); }
+.money-l { font-size: 12.5px; color: var(--neutral-600); }
+.money-v { font-family: var(--font-num); font-weight: var(--fw-bold); font-size: 44px; line-height: 1.05; color: var(--primary-900); margin-top: 6px; font-variant-numeric: lining-nums tabular-nums; }
+.money-v small { font-family: var(--font-ui); font-size: 17px; font-weight: var(--fw-semibold); color: var(--neutral-500); }
+
+/* ---------- auth ---------- */
+.auth { display: grid; grid-template-columns: minmax(0, 1fr) 1fr; min-height: 1004px; }
+.auth-form { display: flex; flex-direction: column; justify-content: flex-start; padding: 111px 96px 0; }   /* top-aligned: sign-in and sign-up share title and tab positions */
+.auth-box { max-width: 480px; width: 100%; }   /* same width as sign-up, so the Вход | Регистрация tabs never jump */
+.auth-t { font-family: var(--font-display); font-weight: var(--fw-bold); font-size: 34px; color: var(--primary-900); margin: 0; }
+.auth-d { font-size: 14px; color: var(--neutral-600); margin: 10px 0 0; line-height: 1.6; }
+.auth-tabs { display: flex; gap: 4px; background: var(--app-bg); border: 1px solid var(--app-line); border-radius: 11px; padding: 4px; margin: 26px 0 22px; }
+.auth-tab { flex: 1; padding: 9px 0; text-align: center; border-radius: 8px; font-size: 13.5px; font-weight: var(--fw-semibold); color: var(--neutral-600); }
+.auth-tab.is-on { background: #fff; color: var(--primary-800); box-shadow: var(--shadow-xs); }
+.auth-role { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
+.role {
+  border: 1.5px solid var(--app-line); border-radius: 12px; padding: 14px 15px; background: #fff;
+}
+.role.is-on { border-color: var(--primary-600); background: #fff; box-shadow: 0 0 0 3px var(--primary-100); }   /* same selected look as the onboarding option cards */
+.role-t { font-size: 13.5px; font-weight: var(--fw-semibold); color: var(--primary-900); }
+.role-d { font-size: 12px; color: var(--neutral-600); margin-top: 4px; line-height: 1.5; white-space: nowrap; }
+.auth-side { position: relative; background: center/cover no-repeat var(--neutral-100); }
+.auth-side-scrim { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(42,35,64,0) 0%, rgba(42,35,64,0) 34%, rgba(42,35,64,.52) 58%, rgba(42,35,64,.7) 70%, rgba(42,35,64,.78) 100%); }
+.auth-quote { position: absolute; left: 56px; right: 56px; bottom: 56px; }
+.auth-quote-t { font-family: var(--font-display); font-weight: var(--fw-bold); font-size: 28px; line-height: 1.3; color: #fff; }
+.auth-quote-b { font-size: 13.5px; color: rgba(255,255,255,.75); margin-top: 12px; }
+.auth-alt { font-size: 13px; color: var(--neutral-600); text-align: center; margin-top: 18px; }
+.auth-alt a { color: var(--primary-700); font-weight: var(--fw-semibold); }
+
+/* sign-up (register.html): the short fields sit in pairs that line up with the role cards */
+.reg-box .auth-role { margin-bottom: 20px; }
+.reg-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 10px; }
+.reg-fields[hidden] { display: none; }
+.reg-wide { grid-column: 1 / -1; }
+.reg-fields .field-input { white-space: nowrap; }
+.reg-meter { display: flex; align-items: center; gap: 12px; margin-top: 2px; }
+.reg-meter-bar { flex: 1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+.reg-meter-bar i { height: 4px; border-radius: 2px; background: var(--app-line); }
+.reg-meter-bar i.is-on { background: var(--success-500); }
+.reg-meter-t { font-size: 12px; line-height: 17px; font-weight: var(--fw-semibold); color: var(--success-700); white-space: nowrap; }
+.reg-consent { margin: 18px 0 22px; }
+.reg-consent .f-item { padding: 0; white-space: nowrap; }
+.reg-consent a { color: var(--primary-700); font-weight: var(--fw-semibold); }
+
+/* "или" and the two social buttons side by side — the same on sign-in and sign-up */
+.reg-or { display: flex; align-items: center; gap: 14px; margin: 22px 0 18px; }
+.reg-or-line { flex: 1; height: 1px; background: var(--app-line); }
+.reg-or-t { font-size: 12px; color: var(--neutral-500); }
+.reg-social { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+
+/* photo panels by role, with the same crop on sign-in, sign-up and the email code */
+.auth-side[data-side="client"] { background-position: 36% 50%; }
+.auth-side[data-side="partner"] { background-position: 90% 50%; }
+
+/* email code (verify.html): the one centred step in the family */
+.ver-form { justify-content: center; padding-top: 0; padding-bottom: 40px; }
+.ver-mark { width: 56px; height: 56px; border-radius: 50%; background: var(--primary-50); color: var(--primary-600); display: grid; place-items: center; margin-bottom: 26px; }
+.ver-mark svg { width: 26px; height: 26px; }
+.ver-eyebrow { font-size: 11.5px; font-weight: var(--fw-bold); line-height: 1.4; letter-spacing: 0.14em; text-transform: uppercase; color: var(--primary-600); white-space: nowrap; margin-bottom: 12px; }
+.ver-lead b { color: var(--primary-900); font-weight: var(--fw-semibold); white-space: nowrap; }
+.ver-change { margin-left: 2px; color: var(--primary-700); font-weight: var(--fw-semibold); white-space: nowrap; }
+.ver-change:hover { color: var(--primary-800); }
+.ver-code { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin: 32px 0 26px; }
+.ver-cell { position: relative; height: 72px; display: grid; place-items: center; background: #fff; border: 1px solid var(--border-default); border-radius: 12px; font-family: var(--font-num); font-weight: var(--fw-bold); font-size: 32px; line-height: 1; color: var(--primary-900); font-variant-numeric: lining-nums tabular-nums; }
+.ver-cell.is-next { border-color: var(--primary-500); box-shadow: var(--shadow-focus); }
+.ver-cell.is-next span { position: relative; }
+.ver-cell.is-next span::after { content: ''; position: absolute; left: calc(100% + 3px); top: 50%; width: 2px; height: 32px; margin-top: -16px; border-radius: 1px; background: var(--primary-600); }
+.ver-resend { margin-top: 20px; white-space: nowrap; }
+.ver-resend a { color: var(--neutral-500); }            /* waits for the countdown */
+.ver-timer { color: var(--neutral-500); font-variant-numeric: tabular-nums; }
+.ver-hint { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 28px; padding-top: 22px; border-top: 1px solid var(--app-line); font-size: 12.5px; color: var(--neutral-500); white-space: nowrap; }
+.ver-hint svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--neutral-400); }
+
+/* ---------- legal / FAQ ---------- */
+.doc { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 40px; align-items: start; }
+.doc-nav { position: sticky; top: 0; }
+.doc-nav-t { font-size: 11.5px; font-weight: var(--fw-bold); letter-spacing: 0.1em; text-transform: uppercase; color: var(--neutral-400); margin-bottom: 12px; }
+.doc-link { display: block; padding: 8px 12px; border-radius: 8px; font-size: 13.5px; color: var(--neutral-600); }
+.doc-link.is-on { background: var(--primary-50); color: var(--primary-800); font-weight: var(--fw-semibold); }
+.doc-body { background: #fff; border: 1px solid var(--app-line); border-radius: 16px; padding: 34px 40px; }
+.doc-h { font-family: var(--font-display); font-weight: var(--fw-bold); font-size: 26px; color: var(--primary-900); margin: 0 0 6px; }
+.doc-sub { font-size: 13px; color: var(--neutral-500); margin: 0 0 26px; }
+.faq + .faq { border-top: 1px solid var(--app-line); }
+.faq { padding: 18px 0; }
+.faq-q { display: flex; align-items: flex-start; gap: 12px; font-size: 15px; font-weight: var(--fw-semibold); color: var(--primary-900); }
+.faq-q svg { width: 17px; height: 17px; color: var(--primary-500); flex-shrink: 0; margin-top: 2px; }
+.faq-a { font-size: 14px; line-height: 1.75; color: var(--neutral-700); margin: 10px 0 0 29px; }
+
+/* ---------- closing call to action ---------- */
+.cta { background: var(--primary-900); border-radius: 20px; padding: 44px 56px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 34px; align-items: center; }
+.cta-t { font-family: var(--font-display); font-weight: var(--fw-bold); font-size: 30px; color: #fff; line-height: 1.2; }
+.cta-d { font-size: 14.5px; color: rgba(255,255,255,.7); margin-top: 10px; max-width: 560px; line-height: 1.6; }
+.cta-act { display: flex; gap: 10px; }
+.btn--onDark { background: #fff; color: var(--primary-800); }
+.btn--onDarkGhost { background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.32); }
+
+/* ---------- category page ---------- */
+.cat-hero { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 34px; align-items: center; margin-bottom: 30px; }
+.cat-pills { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 20px; }
+.cat-pill { padding: 8px 14px; border-radius: var(--radius-pill); border: 1px solid var(--app-line); background: #fff; font-size: 13px; font-weight: var(--fw-medium); color: var(--neutral-700); }
+.cat-pill.is-on { background: var(--primary-600); border-color: var(--primary-600); color: #fff; font-weight: var(--fw-semibold); }
+.cat-shot { height: 260px; border-radius: 18px; background: center/cover no-repeat var(--neutral-100); }
+
+/* ---------- start screen (prototype entry) ---------- */
+/* Signed-out home: the two-way choice. Standard nav, the question on the
+   canvas like every page hero, then two equal photographic halves — each
+   half is one link. Photos are full-resolution and shown at or below 1:1. */
+
+/* nav: language · returning users */
+.st-right { gap: 16px; }
+.st-have {
+  padding-left: 18px; border-left: 1px solid var(--app-line);
+  font-size: 14px; line-height: 30px; color: var(--neutral-600); white-space: nowrap;
+}
+.st-login { --btn-bg-hover: #fff; height: 40px; padding: 0 22px; }
+.st-login:hover { --btn-border: var(--primary-400); }
+
+/* the question */
+.st-head { flex-shrink: 0; padding: 34px 40px 36px; text-align: center; }
+.st-ask { margin: 0; white-space: nowrap; }
+.st-lead { margin-top: 10px; max-width: none; white-space: nowrap; }
+
+/* two equal photographic halves, a white seam between them */
+.st-split {
+  flex: 1; min-height: 0;
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px; background: #fff;
+}
+.st-half { position: relative; display: block; overflow: hidden; color: #fff; }
+.st-half:focus-visible { outline: 3px solid #fff; outline-offset: -10px; }
+
+.st-photo {
+  position: absolute; inset: 0;
+  background-color: var(--neutral-200);
+  background-repeat: no-repeat; background-size: cover;
+  transition: transform 700ms var(--ease-out), filter var(--duration-slow) var(--ease-out);
+}
+.st-photo--client { background-image: url('/photos/violinist.jpg'); background-position: 100% 50%; }
+.st-photo--vendor { background-image: url('/photos/decorator.jpg');  background-position: 60% 50%; }
+
+/* system scrim colour; the top third of each photo stays clear daylight */
+.st-scrim {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg,
+    rgba(42, 35, 64, 0) 0%,
+    rgba(42, 35, 64, 0) 34%,
+    rgba(42, 35, 64, .52) 58%,
+    rgba(42, 35, 64, .7) 70%,
+    rgba(42, 35, 64, .78) 100%);
+}
+
+/* the answer, bottom-left */
+.st-body { position: absolute; left: 80px; right: 80px; bottom: 72px; }
+.st-eyebrow {
+  font-size: 13px; font-weight: var(--fw-bold); line-height: 1.4;
+  letter-spacing: 0.16em; text-transform: uppercase;
+  color: #fff; white-space: nowrap;
+}
+.st-label {
+  margin: 12px 0 0;
+  font-family: var(--font-display); font-weight: var(--fw-bold);
+  font-size: var(--fs-display-1); line-height: 1.05; letter-spacing: -0.01em;
+  color: #fff; white-space: nowrap;
+}
+.st-desc { margin: 14px 0 0; font-size: 19px; line-height: 1.5; color: rgba(255, 255, 255, .92); white-space: nowrap; }
+.st-cta {
+  --btn-bg-hover: #fff;
+  --btn-shadow: 0 8px 22px rgba(20, 14, 34, .24);
+  margin-top: 28px; min-width: 220px;
+}
+.st-cta .btn-icon { width: 18px; height: 18px; transition: transform var(--duration-normal) var(--ease-out); }
+
+/* hover: the chosen half comes forward, the other one steps back */
+.st-half:hover .st-photo { transform: scale(1.03); }
+.st-split:hover .st-half:not(:hover) .st-photo { filter: brightness(.8) saturate(.9); }
+.st-half:hover .st-cta { transform: translateY(-2px); box-shadow: 0 14px 30px rgba(20, 14, 34, .32); }
+.st-half:hover .st-cta .btn-icon { transform: translateX(4px); }

@@ -1,0 +1,133 @@
+/* =====================================================================
+   EventAT — production layer, loaded after the prototype's stylesheets.
+   1. The prototype drew every screen on a fixed 1920×1080 artboard with an
+      inner scroller. In the product the page flows in the window: the
+      artboard becomes fluid and the document scrolls.
+   2. Runtime UI the prototype script injected (menus, toasts, chips,
+      suggestion panels, notices), renamed from proto-* to ui-*.
+   3. Real form controls styled like the prototype's fake fields.
+   4. Shell-level responsive rules (rail → top bar, nav → menu button).
+   ===================================================================== */
+
+/* ---------- 1. fluid artboard ---------- */
+html, body { height: auto; }
+body { margin: 0; background: var(--app-bg, #f4f4f6); }
+#frame { width: 100% !important; height: auto !important; min-height: 100vh; min-height: 100dvh; overflow: visible !important; margin: 0; zoom: 1 !important; }
+.site { height: auto; min-height: 100vh; min-height: 100dvh; }
+.wrap { overflow: visible; flex: 1 0 auto; }
+.shell { height: auto; min-height: 100vh; min-height: 100dvh; }
+.shell > .side { position: sticky; top: 0; height: 100vh; height: 100dvh; overflow-y: auto; scrollbar-width: none; }
+.shell > .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.shell .topbar { position: sticky; top: 0; z-index: 30; }
+.content { overflow: visible; }
+.wiz-shell, .pending-shell { height: auto; min-height: 100vh; min-height: 100dvh; }
+.wiz-body, .pending-hero { overflow: visible; }
+img { max-width: 100%; }
+a { color: inherit; }
+button { font: inherit; }
+
+/* ---------- 2. runtime UI ---------- */
+.ui-click { cursor: pointer; }
+.ui-closed { opacity: .4; pointer-events: none; }
+.ui-guest { display: flex; align-items: center; gap: 10px; }
+.ui-guest .btn { display: inline-flex; align-items: center; height: 40px; padding: 0 22px; border-radius: var(--radius-md); font-size: 14px; }
+.ui-menu { position: absolute; z-index: 60; min-width: 230px; padding: 6px; background: #fff; border: 1px solid #e7e7ec; border-radius: 12px; box-shadow: 0 14px 36px rgba(31, 22, 51, .18); font-family: var(--font-ui); text-align: left; }
+.ui-menu--up { left: 0; right: 0; bottom: calc(100% + 8px); }
+.ui-menu--down { right: 0; top: calc(100% + 8px); }
+.ui-menu a { display: block; padding: 9px 12px; border-radius: 8px; font-size: 13.5px; font-weight: 500; color: var(--neutral-700); text-decoration: none; white-space: nowrap; }
+.ui-menu a:hover { background: var(--primary-50); color: var(--text); }
+.ui-menu hr { border: 0; border-top: 1px solid #e7e7ec; margin: 6px 4px; }
+.ui-menu--wide { min-width: 320px; }
+.ui-anchor.ui-anchor--block { display: block; position: relative; }
+.ui-anchor--block > .sb-cell { width: 100%; box-sizing: border-box; }
+.ui-suggest { left: 0; right: auto; width: 420px; max-height: 420px; overflow-y: auto; padding: 8px; }
+.sb-ico { position: absolute; left: 18px; top: 50%; width: 15px; height: 15px; margin-top: -1px; color: var(--neutral-400); pointer-events: none; }
+.ui-anchor--block > .sb-cell { position: relative; padding-left: 44px; }
+.ui-bar-menu { left: 0; right: auto; min-width: 100%; }
+.ui-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 18px; }
+.ui-chip { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px 0 13px; border: 1px solid var(--primary-200, #d9cdf5); border-radius: 999px; background: var(--primary-50, #f5f1fd); color: var(--text, #2a2340); font: 600 12.5px/1 var(--font-ui); cursor: pointer; }
+.ui-chip:hover { background: #fff; }
+.ui-chip svg { width: 11px; height: 11px; opacity: .55; }
+.ui-chip-clear { height: 30px; padding: 0 12px; border: 0; background: none; color: var(--primary-700, #6b4bc4); font: 600 12.5px/1 var(--font-ui); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.ui-suggest-h { padding: 9px 12px 5px; font: 600 10.5px/1 var(--font-ui); letter-spacing: .09em; text-transform: uppercase; color: var(--neutral-400); }
+.ui-anchor { position: relative; display: inline-flex; align-items: center; }
+.ui-note { display: block; padding: 10px 12px; border-radius: 8px; text-decoration: none; }
+.ui-note:hover { background: var(--primary-50); }
+.ui-note b { display: block; font-size: 13px; font-weight: 600; color: var(--text); white-space: normal; }
+.ui-note span { display: block; margin-top: 2px; font-size: 12px; color: var(--neutral-500); white-space: normal; }
+.ui-empty { padding: 26px 4px; text-align: center; font-size: 13.5px; color: var(--neutral-500); }
+.ui-toast { position: fixed; left: 50%; bottom: 32px; z-index: 1000; display: flex; align-items: center; gap: 10px; padding: 12px 18px 12px 14px; border-radius: 12px; background: #1f1633; color: #fff; font: 600 14px/1.3 var(--font-ui); box-shadow: 0 14px 36px rgba(31, 22, 51, .3); opacity: 0; transform: translate(-50%, 12px); transition: opacity .2s, transform .2s; pointer-events: none; }
+.ui-toast.is-on { opacity: 1; transform: translate(-50%, 0); }
+.ui-toast svg { width: 18px; height: 18px; color: #6fd99b; flex-shrink: 0; }
+body.ui-hint .ui-hot { outline: 2px solid rgba(168, 118, 240, .85); outline-offset: 2px; }
+.ui-field { cursor: text; }
+.ui-field:hover { background: rgba(125, 94, 214, .04); border-radius: 8px; }
+.ui-field.is-editing { outline: 2px solid var(--primary-500, #8b5cf6); outline-offset: 1px; border-radius: 8px; }
+.ui-field [contenteditable] { outline: none; min-width: 12px; }
+.rw-chip.is-on { background: var(--primary-600); border-color: var(--primary-600); color: #fff; font-weight: 600; }.ui-menu-wrap { position: relative; display: inline-flex; }
+.ui-menu[hidden] { display: none; }
+.ui-menu button.ui-menu-item { display: block; width: 100%; padding: 9px 12px; border: 0; background: none; border-radius: 8px; font-size: 13.5px; font-weight: 500; color: var(--neutral-700); text-align: left; cursor: pointer; }
+.ui-menu button.ui-menu-item:hover { background: var(--primary-50); color: var(--text); }
+.ui-toast--error svg { color: #ff8a95; }
+.ui-skip { position: absolute; left: -9999px; top: 8px; z-index: 2000; padding: 10px 14px; background: #fff; border-radius: 8px; }
+.ui-skip:focus { left: 8px; }
+:focus-visible { outline: 2px solid var(--primary-500); outline-offset: 2px; }
+
+/* ---------- 3. real form controls ---------- */
+input.fld-i, textarea.fld-i, select.fld-i,
+input.field-input, textarea.field-input, select.field-input,
+input.sb-v, select.sb-v {
+  font: inherit; color: inherit; box-sizing: border-box; width: 100%;
+}
+input.sb-v, select.sb-v { border: 0; background: transparent; padding: 0; outline: none; }
+input.sb-v::placeholder { color: var(--neutral-400); font-weight: var(--fw-medium); }
+textarea { resize: vertical; }
+.form-error { margin-top: 6px; font-size: 12.5px; color: var(--danger-600); }
+.form-alert { padding: 12px 14px; border-radius: 10px; background: var(--danger-50); color: var(--danger-700); font-size: 13.5px; margin-bottom: 14px; }
+.form-alert--ok { background: var(--success-50); color: var(--success-700); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+/* ---------- 4. shells on smaller screens ---------- */
+.ui-burger { display: none; width: 40px; height: 40px; border: 1px solid var(--app-line); border-radius: 10px; background: #fff; align-items: center; justify-content: center; color: var(--primary-900); cursor: pointer; }
+.ui-burger svg { width: 20px; height: 20px; }
+
+@media (max-width: 1280px) {
+  .hold { padding: 26px 28px 48px; }
+  .content { padding: 24px 24px 36px; }
+}
+
+@media (max-width: 960px) {
+  /* client top nav: links move into a drawer opened by the menu button */
+  .nav { gap: 14px; padding: 0 16px; height: 64px; position: sticky; top: 0; z-index: 40; }
+  .nav-logo { height: 34px; }
+  .ui-burger { display: inline-flex; }
+  .nav .nav-links { display: none; }
+  .nav.is-open .nav-links { display: flex; flex-direction: column; gap: 0; position: absolute; left: 0; right: 0; top: 64px; background: #fff; border-bottom: 1px solid var(--app-line); padding: 8px 16px 14px; box-shadow: var(--shadow-md); }
+  .nav.is-open .nav-link { padding: 12px 4px; font-size: 15px; }
+  .nav-user-name { display: none; }
+  .nav .lang { display: none; }
+  .hold { padding: 20px 16px 40px; }
+
+  /* panel rail becomes an off-canvas drawer */
+  .shell { display: block; }
+  .shell > .side { position: fixed; z-index: 60; left: 0; top: 0; bottom: 0; transform: translateX(-100%); transition: transform .2s; box-shadow: 0 0 40px rgba(31, 22, 51, .35); }
+  .shell.is-open > .side { transform: none; }
+  .shell.is-open::after { content: ''; position: fixed; inset: 0; z-index: 50; background: var(--surface-overlay); }
+  .shell .topbar { padding: 0 16px; gap: 12px; }
+  .shell .topbar .search, .shell .topbar .lang { display: none; }
+  .content { padding: 20px 16px 32px; }
+  .page-head { flex-wrap: wrap; }
+}
+
+@media (max-width: 640px) {
+  .h-page { font-size: 27px; }
+  .page-title { font-size: 24px; }
+  .ui-toast { left: 16px; right: 16px; transform: translate(0, 12px); bottom: 16px; }
+  .ui-toast.is-on { transform: none; }
+  .ui-suggest { width: calc(100vw - 32px); }
+}
+
+/* rail account menu fills the rail foot; topbar burger sits before the title */
+.side-user-menu { display: flex; width: 100%; }
+.side-user-menu > .ui-menu { left: 0; right: 0; }
+.side-user-menu .side-user { width: 100%; }

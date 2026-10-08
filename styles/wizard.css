@@ -1,0 +1,653 @@
+/* =====================================================================
+   EventAT — Partner sign-up wizard (onboarding/*.html)
+   The same fixed 1920×1080 artboard as every other screen, the same
+   neutral canvas, hairlines and card language as the client site and the
+   partner panel. Load after tokens.css + components.css. Never load
+   app.css next to it: its shell rules (#frame, .toggle, .chip …) clash.
+
+   #frame
+   └ .wiz-shell ........ flex column, 1080 high
+     ├ .wiz-top ........ white bar, 76 high (logo · save status · links)
+     ├ .wiz-body ....... the ONLY scrolling region: steps rail + content
+     └ .wiz-footer ..... white bar, 84 high, always visible
+   #frame
+   └ .pending-shell .... .wiz-top + .pending-hero (scrolls) — pending page
+   ===================================================================== */
+
+:root {
+  --app-bg: #f4f4f6;     /* neutral canvas — same value as app.css */
+  --app-line: #e7e7ec;   /* hairline for cards and bars — same as app.css */
+  --wiz-top-h: 76px;
+  --wiz-foot-h: 84px;
+  --wiz-w: 1320px;       /* measure of body and footer, centred in the frame */
+}
+
+body { background: #dcdce2; }
+
+/* ---------- the artboard ---------- */
+#frame {
+  position: relative;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  margin: 0 auto;
+  background: var(--app-bg);
+}
+
+.wiz-shell,
+.pending-shell {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* =====================================================================
+   Top bar
+   ===================================================================== */
+.wiz-top {
+  height: var(--wiz-top-h);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 0 40px;
+  background: #fff;
+  border-bottom: 1px solid var(--app-line);
+}
+.wiz-logo { display: inline-flex; align-items: center; }
+.wiz-logo img { display: block; height: 42px; width: auto; }   /* = .nav-logo */
+
+.wiz-top-right { margin-left: auto; display: flex; align-items: center; gap: 20px; }
+.wiz-save-status {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--neutral-600); white-space: nowrap;
+  font-variant-numeric: lining-nums;
+}
+.wiz-save-status::before {
+  content: ''; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--success-500);
+}
+.wiz-top-btn { --btn-bg-hover: #fff; height: 40px; padding: 0 20px; }
+.wiz-top-btn:hover { --btn-border: var(--primary-400); }
+.wiz-top-link {
+  font-size: 14px; font-weight: var(--fw-medium); line-height: 30px;
+  color: var(--neutral-600); white-space: nowrap;
+}
+.wiz-top-link:hover { color: var(--primary-700); }
+.wiz-top-right > * + .wiz-top-link { padding-left: 20px; border-left: 1px solid var(--app-line); }
+/* BG / EN switch — the same control as the site and panel bars (app.css) */
+.lang { display: inline-flex; background: var(--app-bg); border: 1px solid var(--app-line); border-radius: 9px; padding: 3px; }
+.lang b, .lang span {
+  padding: 5px 11px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: var(--fw-semibold);
+  color: var(--neutral-500);
+}
+.lang b { background: #fff; color: var(--primary-800); box-shadow: var(--shadow-xs); }
+
+/* =====================================================================
+   Body — steps rail + step content. The only region that scrolls.
+   ===================================================================== */
+.wiz-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;          /* the scrollbar must not steal width */
+  -ms-overflow-style: none;
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  column-gap: 64px;
+  align-items: start;
+  align-content: start;
+  padding: 40px calc((100% - var(--wiz-w)) / 2) 56px;
+}
+.wiz-body::-webkit-scrollbar { width: 0; height: 0; }
+
+/* ---------- steps rail ---------- */
+.wiz-stepper { position: sticky; top: 0; }   /* sticks at the body's 40px top padding */
+.wiz-stepper-eyebrow {
+  display: block;
+  margin-bottom: 12px;
+  font-size: 11.5px; font-weight: var(--fw-bold);
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--primary-600);
+}
+.wiz-stepper-title {
+  margin: 0;
+  font-family: var(--font-display); font-weight: var(--fw-bold);
+  font-size: 30px; line-height: 1.15; letter-spacing: -0.01em;
+  color: var(--primary-900);
+}
+.wiz-stepper-sub {
+  margin: 10px 0 26px;
+  font-size: 14px; line-height: 1.6; color: var(--neutral-600);
+  text-wrap: pretty;
+}
+
+.wiz-steps { display: flex; flex-direction: column; }
+.wiz-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  column-gap: 14px;
+  padding: 12px 0;
+  color: var(--neutral-600);
+}
+/* connector from this bullet down to the next one */
+.wiz-step:not(:last-child)::after {
+  content: '';
+  position: absolute; left: 13.25px; top: 40px; bottom: -12px;
+  width: 1.5px; background: var(--neutral-300);
+}
+.wiz-step--done:not(:last-child)::after { background: var(--primary-600); }
+
+.wiz-step-bullet {
+  position: relative; z-index: 1;
+  width: 28px; height: 28px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: #fff; border: 1.5px solid var(--neutral-300);
+  font-family: var(--font-ui); font-size: 12.5px; font-weight: var(--fw-bold);
+  font-variant-numeric: lining-nums tabular-nums;
+  color: var(--neutral-500);
+}
+.wiz-step-bullet svg { width: 14px; height: 14px; }
+.wiz-step--done .wiz-step-bullet { background: var(--primary-600); border-color: var(--primary-600); color: #fff; }
+.wiz-step--current .wiz-step-bullet {
+  background: var(--primary-600); border-color: var(--primary-600); color: #fff;
+  box-shadow: 0 0 0 4px var(--primary-100);
+}
+
+.wiz-step-label {
+  display: block; padding-top: 4px;
+  font-size: 14px; font-weight: var(--fw-medium); line-height: 1.35;
+  color: var(--neutral-600); white-space: nowrap;
+}
+.wiz-step-meta {
+  display: block; margin-top: 3px;
+  font-size: 12.5px; font-weight: var(--fw-regular); color: var(--neutral-500);
+  font-variant-numeric: lining-nums;
+}
+.wiz-step--done .wiz-step-label { color: var(--primary-900); }
+.wiz-step--current .wiz-step-label { color: var(--primary-900); font-weight: var(--fw-semibold); }
+.wiz-step.proto-click:hover .wiz-step-label { color: var(--primary-700); }
+
+/* ---------- step content ---------- */
+.wiz-content { min-width: 0; }
+.wiz-step-header { margin-bottom: 28px; }
+/* "Стъпка N от 6" is the system eyebrow (= .wiz-stepper-eyebrow, verify, pending) */
+.wiz-step-counter {
+  display: block;
+  margin-bottom: 12px;
+  font-family: var(--font-ui); font-size: 11.5px; font-weight: var(--fw-bold);
+  line-height: 18px; letter-spacing: 0.14em; text-transform: uppercase;
+  font-variant-numeric: lining-nums tabular-nums;
+  color: var(--primary-600); white-space: nowrap;
+}
+.wiz-step-title {
+  margin: 0;
+  font-family: var(--font-display); font-weight: var(--fw-bold);
+  font-size: 38px; line-height: 1.12; letter-spacing: -0.01em;
+  color: var(--primary-900);
+}
+.wiz-step-intro {
+  margin: 12px 0 0; max-width: 780px;
+  font-size: 15px; line-height: 1.65; color: var(--neutral-600);
+  text-wrap: pretty;
+}
+
+/* ---------- form cards ---------- */
+.wiz-form { display: flex; flex-direction: column; gap: 20px; }
+.wiz-fieldset {
+  display: flex; flex-direction: column; gap: 20px;
+  padding: 24px 30px 28px;
+  background: #fff;
+  border: 1px solid var(--app-line);
+  border-radius: var(--radius-lg);
+}
+.wiz-fieldset-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--app-line);
+}
+.wiz-fieldset-title {
+  margin: 0;
+  font-family: var(--font-display); font-weight: var(--fw-bold);
+  font-size: 20px; line-height: 1.25; color: var(--primary-900);
+}
+.wiz-fieldset-sub {
+  margin: 4px 0 0;
+  font-size: 13.5px; line-height: 1.55; color: var(--neutral-600);
+  text-wrap: pretty;
+}
+/* an "(незадължително)" note inside a card title stays in the UI face */
+.wiz-fieldset-title .t-caption,
+.wiz-fieldset-title .field-label-hint {
+  margin-left: 6px;
+  font-family: var(--font-ui); font-size: 13px; font-weight: var(--fw-regular);
+  color: var(--neutral-500);
+}
+
+.wiz-row,
+.wiz-row--3,
+.wiz-row--full {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 20px;
+}
+.wiz-row--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.wiz-row--full { grid-template-columns: minmax(0, 1fr); }
+
+/* form controls come from components.css (as on client/auth.html);
+   only the label weight and the no-wrap rule change here */
+#frame .field { gap: 7px; }
+#frame .field-label { font-weight: var(--fw-semibold); white-space: nowrap; }
+#frame .field-message { text-wrap: pretty; }
+.required-mark { color: var(--danger-500); margin-left: 2px; }
+/* checkbox rows: the label contains the hidden input (never the foot of #frame),
+   and the box is register's .f-box — 17px, 5px radius, light unchecked border */
+#frame .check { position: relative; }
+#frame .check-box { width: 17px; height: 17px; border-radius: 5px; }
+#frame .check input:not(:checked) + .check-box { border-color: var(--neutral-300); }
+
+.wiz-help { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--neutral-600); }
+.wiz-help svg { width: 14px; height: 14px; color: var(--primary-500); }
+
+/* =====================================================================
+   Footer — progress + back / continue. Always visible.
+   ===================================================================== */
+.wiz-footer {
+  flex-shrink: 0;
+  height: var(--wiz-foot-h);
+  display: flex; align-items: center;
+  padding: 0 calc((100% - var(--wiz-w)) / 2);
+  background: #fff;
+  border-top: 1px solid var(--app-line);
+}
+.wiz-footer-inner { flex: 1; display: flex; align-items: center; gap: 24px; }
+.wiz-progress {
+  display: flex; align-items: center; gap: 14px;
+  font-size: 13px; font-weight: var(--fw-medium); color: var(--neutral-600);
+  white-space: nowrap; font-variant-numeric: lining-nums tabular-nums;
+}
+.wiz-progress-bar {
+  width: 200px; height: 6px; overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--primary-100);
+}
+.wiz-progress-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--primary-600); }
+.wiz-footer-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+/* one width for every step's label, so 'Назад' and the primary button never shift */
+.wiz-footer-actions .btn--primary { min-width: 300px; }
+
+/* =====================================================================
+   Shared components inside the frame — product look, and never purple
+   text on a purple tint (selected states are solid purple + white).
+   ===================================================================== */
+.num { font-family: var(--font-num); }   /* digits inside Constantia text */
+
+#frame .t-h1, #frame .t-h2, #frame .t-h3 { font-weight: var(--fw-bold); color: var(--primary-900); }
+#frame .t-overline { color: var(--primary-600); font-weight: var(--fw-bold); letter-spacing: 0.14em; }
+#frame .btn--outline { --btn-bg-hover: #fff; }
+#frame .btn--outline:hover { --btn-border: var(--primary-400); }
+#frame .card { border-color: var(--app-line); border-radius: 12px; box-shadow: none; }
+#frame .card--raised { box-shadow: var(--shadow-sm); }
+
+/* notes: a white card with a coloured glyph, like the panel's notes */
+#frame .alert {
+  align-items: flex-start; gap: 14px;
+  padding: 18px 22px;
+  background: #fff;
+  border: 1px solid var(--app-line);
+  border-radius: var(--radius-lg);
+  font-size: 13.5px; line-height: 1.55; color: var(--neutral-600);
+}
+#frame .alert .alert-icon { width: 20px; height: 20px; margin-top: 0; color: var(--primary-600); }
+#frame .alert .alert-title { margin: 0 0 3px; font-size: 14px; font-weight: var(--fw-semibold); color: var(--primary-900); }
+#frame .alert .alert-text { text-wrap: pretty; }
+#frame .alert--success .alert-icon { color: var(--success-600); }
+#frame .alert--warning .alert-icon { color: var(--warning-600); }
+#frame .alert--danger .alert-icon { color: var(--danger-600); }
+
+/* ---------- upload (profile) ---------- */
+.upload { display: flex; align-items: center; gap: 16px; }
+.upload-preview {
+  width: 96px; height: 96px; flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--neutral-100) center / cover no-repeat;
+  border: 1px solid var(--app-line);
+}
+.upload--cover { display: block; }
+.upload--cover .upload-preview { width: 100%; height: 140px; border-radius: 12px; }
+.upload-preview--placeholder {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  background: var(--app-bg);
+  border: 1.5px dashed var(--neutral-300);
+  font-size: 13px; color: var(--neutral-500);
+}
+.upload-meta { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+
+/* ---------- gallery (profile) ---------- */
+.gallery-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.gallery-item {
+  position: relative; overflow: hidden;
+  aspect-ratio: 4 / 3; border-radius: 10px;
+  background: var(--neutral-100) center / cover no-repeat;
+}
+.gallery-tag {
+  position: absolute; top: 8px; left: 8px;
+  padding: 3px 8px; border-radius: 6px;
+  background: rgba(31, 22, 51, 0.78); color: #fff;
+  font-size: 10.5px; font-weight: var(--fw-bold); white-space: nowrap;
+}
+.gallery-action {
+  position: absolute; top: 8px; right: 8px;
+  width: 26px; height: 26px; border-radius: 50%; border: none;
+  display: grid; place-items: center;
+  background: rgba(31, 22, 51, 0.6); color: #fff;
+  cursor: pointer; opacity: 0;
+  transition: opacity var(--duration-fast);
+}
+.gallery-item:hover .gallery-action { opacity: 1; }
+.gallery-add {
+  aspect-ratio: 4 / 3; border-radius: 10px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  background: var(--app-bg);
+  border: 1.5px dashed var(--neutral-300);
+  font-size: 13px; font-weight: var(--fw-semibold); color: var(--primary-700);
+  white-space: nowrap; cursor: pointer;
+}
+.gallery-add:hover { border-color: var(--primary-300); }
+
+/* ---------- chips (profile specialisations) ---------- */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 14px; border-radius: var(--radius-pill);
+  background: #fff; border: 1px solid var(--app-line);
+  font-size: 13px; font-weight: var(--fw-medium); color: var(--neutral-700);
+  white-space: nowrap; cursor: pointer;
+}
+.chip:not(.chip--active):hover { border-color: var(--primary-300); }
+.chip svg { width: 12px; height: 12px; }
+.chip--active { background: var(--primary-600); border-color: var(--primary-600); color: #fff; font-weight: var(--fw-semibold); }
+.chip--add { border-style: dashed; border-color: var(--neutral-300); color: var(--primary-700); }
+
+/* ---------- option cards (services, availability, policy) ---------- */
+.option-card {
+  position: relative; display: block;
+  padding: 18px 20px;
+  background: #fff;
+  border: 1.5px solid var(--app-line);
+  border-radius: 12px;
+  cursor: pointer;
+}
+.option-card:hover { border-color: var(--primary-300); }
+.option-card.is-selected { border-color: var(--primary-600); box-shadow: 0 0 0 3px var(--primary-100); }
+.option-card-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; padding-right: 34px; }
+.option-card-icon {
+  width: 40px; height: 40px; flex-shrink: 0;
+  display: grid; place-items: center;
+  border-radius: 11px;
+  background: var(--primary-50); color: var(--primary-600);
+}
+.option-card-title {
+  display: flex; align-items: center; gap: 8px;
+  margin: 0;
+  font-size: 15px; font-weight: var(--fw-semibold); color: var(--primary-900);
+  white-space: nowrap;
+}
+.option-card-sub { margin: 3px 0 0; font-size: 12.5px; color: var(--neutral-600); }
+.option-card-body { margin: 0; font-size: 13.5px; line-height: 1.6; color: var(--neutral-600); text-wrap: pretty; }
+.option-card-body strong { font-weight: var(--fw-semibold); color: var(--primary-900); }
+.option-card-check {
+  position: absolute; top: 18px; right: 18px;
+  width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: #fff; border: 1.5px solid var(--neutral-300);
+}
+.option-card-check svg { width: 12px; height: 12px; display: none; }
+.option-card.is-selected .option-card-check { background: var(--primary-600); border-color: var(--primary-600); color: #fff; }
+.option-card.is-selected .option-card-check svg { display: block; }
+
+/* ---------- package rows (services, review) ---------- */
+.service-row {
+  display: grid; grid-template-columns: 64px minmax(0, 1fr) auto;
+  gap: 16px; align-items: center;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid var(--app-line);
+  border-radius: 12px;
+}
+.service-row + .service-row { margin-top: 10px; }
+.service-row-thumb { width: 64px; height: 64px; border-radius: 10px; background: var(--neutral-100) center / cover no-repeat; }
+.service-row-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.service-row-title { margin: 0; font-size: 15px; font-weight: var(--fw-semibold); color: var(--primary-900); }
+.service-row-meta {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  font-size: 13px; color: var(--neutral-600);
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.service-row-actions { display: flex; gap: 8px; }
+
+/* ---------- checklist editor + price field (services) ---------- */
+.checklist-editor { display: flex; flex-direction: column; gap: 8px; }
+.checklist-item { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 10px; align-items: center; }
+.field-input--ghost { border-color: transparent; background: var(--app-bg); padding: 9px 12px; font-size: 14px; }
+.field-input--ghost:focus { background: #fff; border-color: var(--primary-500); }
+.checklist-add {
+  align-self: flex-start;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 0; background: none; border: none;
+  font-size: 13.5px; font-weight: var(--fw-semibold); color: var(--primary-700);
+  cursor: pointer;
+}
+.input-with-suffix { position: relative; display: flex; align-items: center; }
+.input-with-suffix .field-input { padding-right: 40px; }
+.input-with-suffix .input-suffix { position: absolute; right: 14px; font-weight: var(--fw-semibold); color: var(--neutral-500); pointer-events: none; }
+
+/* ---------- cancellation timeline (policy) ---------- */
+.policy-timeline {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 16px; overflow: hidden;
+  border: 1px solid var(--app-line); border-radius: 10px;
+  font-size: 12.5px;
+}
+.policy-tl-cell {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 10px 14px;
+  background: #fff; color: var(--neutral-600);
+  border-right: 1px solid var(--app-line);
+  font-variant-numeric: lining-nums;
+}
+.policy-tl-cell:last-child { border-right: none; }
+.policy-tl-cell strong { font-weight: var(--fw-semibold); color: var(--primary-900); white-space: nowrap; }
+.policy-tl-cell .policy-tl-pill {
+  display: inline-flex; width: fit-content;
+  padding: 2px 7px; border-radius: 5px;
+  font-size: 10.5px; font-weight: var(--fw-bold); letter-spacing: 0.06em; text-transform: uppercase;
+  white-space: nowrap;
+}
+.policy-tl-cell--refund .policy-tl-pill { background: var(--success-50); color: var(--success-700); }
+.policy-tl-cell--partial .policy-tl-pill { background: var(--warning-50); color: var(--warning-700); }
+.policy-tl-cell--none .policy-tl-pill { background: var(--danger-50); color: var(--danger-700); }
+
+/* ---------- month calendar (availability) ---------- */
+.calendar { overflow: hidden; background: #fff; border: 1px solid var(--app-line); border-radius: 12px; }
+.calendar-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--app-line);
+  font-size: 14px; font-weight: var(--fw-semibold); color: var(--primary-900);
+  font-variant-numeric: lining-nums;
+}
+.calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.calendar-dow {
+  padding: 10px 0; text-align: center;
+  background: var(--app-bg); border-bottom: 1px solid var(--app-line);
+  font-size: 10.5px; font-weight: var(--fw-bold); letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--neutral-500);
+}
+.calendar-day {
+  position: relative; height: 46px;
+  display: grid; place-items: center;
+  background: #fff;
+  border-right: 1px solid var(--app-line); border-bottom: 1px solid var(--app-line);
+  font-size: 13.5px; font-weight: var(--fw-medium); color: var(--primary-900);
+  font-variant-numeric: lining-nums tabular-nums;
+  cursor: pointer;
+}
+.calendar-day:nth-child(7n) { border-right: none; }
+.calendar-day:nth-last-child(-n+7) { border-bottom: none; }   /* the calendar border closes the last row */
+/* hover never repaints a booked day (its white date would vanish on the grey) */
+.calendar-day:not(.calendar-day--booked):not(.calendar-day--off):hover { background: var(--app-bg); }
+.calendar-day--off { color: var(--neutral-300); }
+.calendar-day--today { color: var(--primary-700); font-weight: var(--fw-bold); box-shadow: inset 0 0 0 1.5px var(--primary-600); }
+/* blocked = a dashed outline, as in the panel calendar */
+.calendar-day--blocked { background: #fff; color: var(--neutral-500); text-decoration: none; outline: 1px dashed var(--neutral-300); outline-offset: -5px; }
+.calendar-day--booked { background: var(--primary-600); color: #fff; font-weight: var(--fw-semibold); }
+.calendar-day--booked:hover { background: var(--primary-700); }
+
+.cal-legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 12px; color: var(--neutral-600); }
+.cal-legend-item { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.cal-dot { width: 10px; height: 10px; border-radius: 3px; }
+.cal-dot--free { background: #fff; border: 1.5px solid var(--neutral-300); }
+.cal-dot--blocked { background: #fff; border: 1px dashed var(--neutral-300); }
+.cal-dot--booked { background: var(--primary-600); }
+
+/* ---------- working-day pills (availability) ---------- */
+.dow-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.dow-pill {
+  position: relative;
+  padding: 8px 16px; border-radius: var(--radius-pill);
+  background: #fff; border: 1px solid var(--app-line);
+  font-size: 13px; font-weight: var(--fw-medium); color: var(--neutral-700);
+  white-space: nowrap; cursor: pointer;
+}
+.dow-pill input { position: absolute; opacity: 0; pointer-events: none; }
+.dow-pill:hover { border-color: var(--primary-300); }
+.dow-pill:has(input:checked) { background: var(--primary-600); border-color: var(--primary-600); color: #fff; font-weight: var(--fw-semibold); }
+
+/* ---------- review step ---------- */
+/* the same card recipe as .wiz-fieldset: padding, head gap and title scale */
+.review-section {
+  padding: 24px 30px 28px;
+  background: #fff;
+  border: 1px solid var(--app-line);
+  border-radius: var(--radius-lg);
+}
+.review-section-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-bottom: 16px; margin-bottom: 20px;
+  border-bottom: 1px solid var(--app-line);
+}
+.review-section-head h3 {
+  margin: 0;
+  font-family: var(--font-display); font-weight: var(--fw-bold);
+  font-size: 20px; line-height: 1.25; color: var(--primary-900);
+}
+.review-section-head a { font-size: 13px; font-weight: var(--fw-semibold); color: var(--primary-700); white-space: nowrap; }
+.review-grid {
+  display: grid; grid-template-columns: 200px minmax(0, 1fr);
+  gap: 10px 20px; margin: 0;
+  font-size: 13.5px; font-variant-numeric: lining-nums;
+}
+.review-grid dt { font-weight: var(--fw-medium); color: var(--neutral-600); }
+.review-grid dd { margin: 0; font-weight: var(--fw-medium); color: var(--primary-900); }
+
+.preview-card { overflow: hidden; background: #fff; border: 1px solid var(--app-line); border-radius: var(--radius-lg); }
+.preview-card-cover { position: relative; height: 150px; background: var(--neutral-100) center / cover no-repeat; }
+.preview-card-body { position: relative; padding: 16px 30px 22px; }
+.preview-card-head { display: flex; align-items: flex-start; gap: 16px; }
+.preview-card-head .avatar { margin-top: -44px; border: 3px solid #fff; box-shadow: var(--shadow-sm); }
+.preview-card-meta {
+  display: flex; flex-wrap: wrap; gap: 22px;
+  margin-top: 18px; padding-top: 16px;
+  border-top: 1px solid var(--app-line);
+  font-size: 13.5px; color: var(--neutral-600); font-variant-numeric: lining-nums;
+}
+.preview-card-meta span { white-space: nowrap; }
+.preview-card-meta strong { font-weight: var(--fw-semibold); color: var(--primary-900); }
+
+/* =====================================================================
+   Pending approval (onboarding/pending.html)
+   .wiz-top + .pending-hero; the hero is the scrolling region.
+   ===================================================================== */
+.pending-hero {
+  flex: 1; min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  display: flex; flex-direction: column;
+  padding: 48px 40px;
+}
+.pending-hero::-webkit-scrollbar { width: 0; height: 0; }
+.pending-card {
+  margin: auto;
+  width: 100%; max-width: 680px;
+  padding: 44px 48px 40px;
+  background: #fff;
+  border: 1px solid var(--app-line);
+  border-radius: 16px;
+  text-align: center;
+}
+.pending-icon {
+  width: 78px; height: 78px; margin: 0 auto 22px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  background: var(--success-50); color: var(--success-600);
+}
+.pending-icon svg { width: 36px; height: 36px; }
+.pending-eyebrow {
+  display: block;
+  font-size: 11.5px; font-weight: var(--fw-bold); letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--primary-600);
+}
+.pending-title {
+  margin: 12px 0 0;
+  font-family: var(--font-display); font-weight: var(--fw-bold);
+  font-size: 38px; line-height: 1.15; color: var(--primary-900);
+}
+.pending-text {
+  max-width: 500px; margin: 12px auto 0;
+  font-size: 15px; line-height: 1.65; color: var(--neutral-600);
+  text-wrap: balance;
+}
+.pending-text strong { font-weight: var(--fw-semibold); color: var(--primary-900); }
+.pending-timeline {
+  margin-top: 30px; padding: 20px 22px;
+  text-align: left;
+  background: var(--app-bg);
+  border-radius: 12px;
+}
+.pending-step { position: relative; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 14px; }
+.pending-step + .pending-step { margin-top: 16px; }
+/* connector from this bullet down to the next one — as in the steps rail */
+.pending-step:not(:last-child)::after {
+  content: '';
+  position: absolute; left: 13.25px; top: 28px; bottom: -16px;
+  width: 1.5px; background: var(--neutral-300);
+}
+.pending-step--done:not(:last-child)::after { background: var(--primary-600); }
+.pending-step-bullet {
+  position: relative; z-index: 1;
+  width: 28px; height: 28px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: #fff; border: 1.5px solid var(--neutral-300);
+  font-family: var(--font-ui); font-size: 12.5px; font-weight: var(--fw-bold);
+  font-variant-numeric: lining-nums tabular-nums;
+  color: var(--neutral-500);
+}
+.pending-step-bullet svg { width: 14px; height: 14px; }
+.pending-step--done .pending-step-bullet { background: var(--primary-600); border-color: var(--primary-600); color: #fff; }
+/* the stage the profile is in now — the rail's current-step bullet */
+.pending-step--current .pending-step-bullet {
+  background: var(--primary-600); border-color: var(--primary-600); color: #fff;
+  box-shadow: 0 0 0 4px var(--primary-100);
+}
+.pending-step-content { padding-top: 4px; }
+.pending-step-title { margin: 0 0 2px; font-size: 14px; font-weight: var(--fw-semibold); color: var(--primary-900); }
+.pending-step-meta { margin: 0; font-size: 12.5px; color: var(--neutral-600); font-variant-numeric: lining-nums; }
+.pending-actions { display: flex; justify-content: center; gap: 10px; margin-top: 30px; }
+.pending-help { margin: 22px 0 0; font-size: 13px; color: var(--neutral-600); }
+.pending-help a { font-weight: var(--fw-semibold); color: var(--primary-700); }

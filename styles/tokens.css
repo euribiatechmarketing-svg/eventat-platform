@@ -1,0 +1,198 @@
+/* =====================================================================
+   EventAT — Design Tokens
+   The single source of truth for color, type, spacing, radii, shadows.
+   ===================================================================== */
+
+:root {
+  /* ============ Color · Primary (Purple) ============ */
+  --primary-50:  #f6f3fb;
+  --primary-100: #ede5f5;
+  --primary-200: #d8c8e8;
+  --primary-300: #bfa5d6;
+  --primary-400: #a385c1;
+  --primary-500: #8868b0;
+  --primary-600: #7f64ae;   /* brand purple */
+  --primary-700: #664d92;
+  --primary-800: #4a3470;
+  --primary-900: #2a2340;
+
+  /* ============ Color · Secondary (Pink) ============ */
+  --pink-50:   #fbf2f6;
+  --pink-100:  #f7e6f1;
+  --pink-200:  #ebbfdb;
+  --pink-300:  #dfa0c8;
+  --pink-400:  #cc7eae;
+  --pink-500:  #b96196;
+  --pink-600:  #9e4b7e;
+  --pink-700:  #7e3a64;
+  --pink-800:  #5e2a4a;
+  --pink-900:  #3d1c30;
+
+  /* ============ Color · Accent (Gold for vendor side) ============ */
+  --gold-50:   #faf6f0;
+  --gold-100:  #f1e7d3;
+  --gold-200:  #e1cda4;
+  --gold-300:  #cfae74;
+  --gold-400:  #bb914d;
+  --gold-500:  #a2783a;   /* warm gold */
+  --gold-600:  #815e2c;
+  --gold-700:  #5f4520;
+  --gold-800:  #432f15;
+  --gold-900:  #2a1d0c;
+
+  /* ============ Color · Neutral / Grey ============ */
+  --neutral-0:   #ffffff;
+  --neutral-50:  #fbf8fb;   /* page bg */
+  --neutral-100: #f4f0f5;
+  --neutral-200: #ece7f1;   /* border light */
+  --neutral-300: #ddd6e3;
+  --neutral-400: #b9b1c4;
+  --neutral-500: #8d8499;
+  --neutral-600: #6f6a82;   /* muted text */
+  --neutral-700: #4a4555;
+  --neutral-800: #2e2a3a;
+  --neutral-900: #1a1726;   /* primary text fallback */
+
+  /* Semantic text shortcuts */
+  --text:           #2a2340;
+  --text-muted:     var(--neutral-600);
+  --text-on-dark:   #ffffff;
+  --text-on-light:  var(--text);
+
+  /* ============ Color · Semantic ============ */
+  --success-50:  #ecfaf2;
+  --success-100: #c9f0db;
+  --success-500: #1f9d5f;
+  --success-600: #16834e;
+  --success-700: #0f6a3d;
+
+  --warning-50:  #fdf6e6;
+  --warning-100: #fae6b3;
+  --warning-500: #c98a16;
+  --warning-600: #a06d0d;
+  --warning-700: #784f06;
+
+  --danger-50:   #fdedee;
+  --danger-100:  #fac8cb;
+  --danger-500:  #d23847;
+  --danger-600:  #a92836;
+  --danger-700:  #7e1d28;
+
+  --info-50:     #ecf2fb;
+  --info-100:    #c8d8f0;
+  --info-500:    #3866c4;
+  --info-600:    #2a519f;
+  --info-700:    #1d3d7a;
+
+  /* ============ Color · Surface ============ */
+  --surface-page:      var(--neutral-50);
+  --surface-card:      #ffffff;
+  --surface-raised:    #ffffff;
+  --surface-muted:     #f4f0f5;
+  --surface-inverse:   #1f1633;
+  --surface-overlay:   rgba(31, 22, 51, 0.55);
+
+  /* ============ Border ============ */
+  --border-subtle: var(--neutral-200);
+  --border-default: #ddd6e3;
+  --border-strong: var(--neutral-400);
+
+  /* ============ Typography · Families ============ */
+  --font-display: 'Constantia', 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  --font-ui:      'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  /* Figures. Constantia ships old-style figures by default and CSS feature
+     settings do not survive the export to Figma, so numbers need a face whose
+     lining, tabular figures are the default. Spectral is a screen-first
+     transitional serif — same family of shapes as Constantia. */
+  --font-num:     'Spectral', 'Constantia', Georgia, serif;
+  --font-mono:    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* ============ Typography · Sizes ============ */
+  --fs-display-1: 64px;
+  --fs-display-2: 52px;
+  --fs-h1: 40px;
+  --fs-h2: 32px;
+  --fs-h3: 24px;
+  --fs-h4: 20px;
+  --fs-h5: 17px;
+  --fs-h6: 15px;
+  --fs-body-lg: 17px;
+  --fs-body:    15px;
+  --fs-body-sm: 14px;
+  --fs-caption: 13px;
+  --fs-label:   12px;
+  --fs-overline: 11px;
+
+  /* ============ Typography · Line heights ============ */
+  --lh-display: 1.05;
+  --lh-heading: 1.2;
+  --lh-body: 1.55;
+  --lh-tight: 1.3;
+
+  /* ============ Typography · Weights ============ */
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  /* ============ Spacing scale (4-base) ============ */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+  --space-32: 128px;
+
+  /* ============ Radii ============ */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-2xl: 28px;
+  --radius-pill: 999px;
+  --radius-circle: 50%;
+
+  /* ============ Shadows / Elevation ============ */
+  --shadow-xs: 0 1px 2px rgba(102, 77, 146, 0.05);
+  --shadow-sm: 0 2px 6px rgba(102, 77, 146, 0.06);
+  --shadow-md: 0 6px 16px rgba(102, 77, 146, 0.07);
+  --shadow-lg: 0 20px 44px rgba(102, 77, 146, 0.14);
+  --shadow-xl: 0 32px 64px rgba(102, 77, 146, 0.18);
+  --shadow-focus: 0 0 0 3px rgba(127, 100, 174, 0.20);
+
+  /* ============ Motion ============ */
+  --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --duration-fast: 120ms;
+  --duration-normal: 200ms;
+  --duration-slow: 360ms;
+
+  /* ============ Layout ============ */
+  --container-narrow: 720px;
+  --container-default: 1180px;
+  --container-wide: 1440px;
+  --header-h: 64px;
+}
+
+/* Spectral carries Bulgarian letterforms (т drawn like m) that the browser switches on
+   for lang="bg". Constantia, Inter and the Figma export use the standard forms, so turn
+   them off everywhere to keep "от 640 €" reading the same in all three. */
+html { font-feature-settings: "locl" 0; }
+
+/* a hidden element stays hidden, whatever display its own rule sets */
+[hidden] { display: none !important; }
+
+/* Live prototype: the fitted frame. The head script sets it before the first paint,
+   and proto.js keeps it fitted when the window changes size. */
+html.proto-fit, html.proto-fit body { height: 100%; }
+html.proto-fit body { display: flex; align-items: center; justify-content: center; overflow: hidden; }
+html.proto-fit #frame { zoom: var(--proto-zoom, 1); flex-shrink: 0; }

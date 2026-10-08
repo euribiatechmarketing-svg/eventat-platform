@@ -1,0 +1,11 @@
+.data/
+node_modules/
+.next/
+.env*.local
+.env
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+.vercel
+/public/uploads/
+/test-results/
