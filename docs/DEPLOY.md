@@ -1,0 +1,45 @@
+# Deploying EventAT
+
+Production runs on Vercel (Frankfurt, `fra1`) with a Neon PostgreSQL database in Frankfurt.
+Everything the app needs comes from environment variables (`.env.example` lists them all).
+
+## Accounts the operator must own
+
+These belong to the operating company, not to Euribia. Each one needs a person to sign up and accept terms.
+
+| Service | Why | Plan |
+|---|---|---|
+| Vercel (team "Euribiatech" or the operator's own) | Hosting, per-minute cron | **Pro** — Hobby runs cron once a day and is non-commercial only |
+| Neon | PostgreSQL, region `aws-eu-central-1` (Frankfurt) | Launch: free/Launch; production: Scale (30-day restore) |
+| Payment provider (Stripe Connect or Mangopay) | Holds client money, verifies partners, pays out | Needs the operating company's documents |
+| Postmark (or Amazon SES) | Sending the 90 automatic emails | Postmark from $15/month |
+| Cloudflare R2 | Photos, documents, dispute evidence | Pay as you go |
+
+## Steps
+
+1. **Database.** In Vercel → Storage → Create → Neon, region Frankfurt. Vercel adds `DATABASE_URL` to the project.
+   Then run the migrations once from a laptop: `DATABASE_URL=<neon url> npm run db:migrate`.
+   Do **not** run `db:seed` against production: the seed is prototype demo data.
+2. **Environment variables** (Vercel → Settings → Environment Variables), production:
+   - `BETTER_AUTH_SECRET` (random 32+ bytes), `BETTER_AUTH_URL` and `APP_URL` = the public URL
+   - `CRON_SECRET` (random)
+   - `PAYMENT_PROVIDER=stripe` + `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`
+     (until the provider account exists, keep `PAYMENT_PROVIDER=simulated` on a non-public preview only)
+   - `EMAIL_TRANSPORT=postmark` + `POSTMARK_TOKEN`, `EMAIL_FROM="EventAT <no-reply@eventat.bg>"`
+   - `STORAGE_DRIVER=s3` + `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_PUBLIC_URL`
+   - `ALLOW_TIME_TRAVEL` must be **unset** in production. `ALLOW_INDEXING=true` only at public launch.
+3. **Stripe webhook**: endpoint `https://<domain>/api/webhooks/stripe`, events: `checkout.session.completed`,
+   `checkout.session.expired`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `refund.created`,
+   `refund.updated`, `payout.paid`, `payout.failed`, `account.updated`, `charge.dispute.created`
+   (Connect events enabled for connected accounts).
+4. **Email DNS** at SuperHosting for `eventat.bg`: the SPF, DKIM and return-path records Postmark shows, plus
+   `_dmarc TXT "v=DMARC1; p=none; rua=mailto:help@eventat.bg"` to start.
+5. **Domain**: add the production domain in Vercel → Domains and the CNAME at SuperHosting.
+6. **First admin**: sign up normally, then promote: `update "user" set role = 'admin' where email = '…';`
+   and turn on two-factor in the admin settings.
+
+## Demo / staging
+
+A staging deployment can run with the seed and the shifted clock:
+`ALLOW_TIME_TRAVEL=true`, `PAYMENT_PROVIDER=simulated`, `EMAIL_TRANSPORT=outbox`, then `npm run db:reset && npm run db:seed`
+against the staging database. Keep staging password-protected (Vercel → Deployment Protection).
