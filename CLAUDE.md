@@ -25,7 +25,7 @@ npm run dev                                 # http://localhost:3000
 - **Own database per worker.** Parallel workers use their own database on the shared server:
   `export DATABASE_URL=postgres://eventat:eventat@127.0.0.1:54329/eventat_<name>` then `npm run db:create && npm run db:reset && npm run db:seed`.
 - Demo users (password `eventat-demo`): `maria.dimitrova@gmail.com` (client), `studio.melodia@gmail.com` (partner), `monika.kovacheva@eventat.bg` (admin).
-- Clock: business time comes from `now()` in `lib/clock.ts`. With `ALLOW_TIME_TRAVEL=true` the seed sets it to the prototype's "today", **Sunday 31 август 2025, 10:00** (Sofia), so all demo data is coherent. Never use `new Date()` / `Date.now()` for business time.
+- Clock: business time comes from `now()` in `lib/clock.ts`. With `ALLOW_TIME_TRAVEL=true` the seed sets it to the prototype's "today", **Sunday 31 август 2025, 12:00** (Sofia), so all demo data is coherent. Never use `new Date()` / `Date.now()` for business time.
 - Timers: `npm run tick` runs due jobs once (production: Vercel Cron → `/api/cron/tick` every minute).
 
 ## Checks (all must pass before you hand work back)
