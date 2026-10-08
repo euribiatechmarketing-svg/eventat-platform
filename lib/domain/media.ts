@@ -75,12 +75,25 @@ export async function recordUpload(actor: AnyActor, m: UploadMeta, tx?: Tx): Pro
   });
 }
 
-/** ‹Качи снимка› / ‹Прикачи файл›: validate, store through lib/storage, record. `media.upload()` in SCREENS. */
+/** The file starts with the signature of its declared type (JPEG FF D8 FF, PNG \x89PNG\r\n\x1a\n, PDF %PDF-). */
+export function matchesSignature(mime: string, b: Buffer): boolean {
+  if (mime === 'image/jpeg') return b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
+  if (mime === 'image/png') return b.length > 8 && b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  if (mime === 'application/pdf') return b.length > 5 && b.subarray(0, 5).toString('latin1') === '%PDF-';
+  return false;
+}
+
+/**
+ * ‹Качи снимка› / ‹Прикачи файл›: validate, store through lib/storage, record. `media.upload()` in SCREENS.
+ * The browser's declared type is not trusted: the bytes must carry that type's signature, so a page
+ * or script renamed to .png never lands in public storage.
+ */
 export async function upload(actor: AnyActor, a: { kind: MediaKind; file: File }): Promise<Media> {
   const bytes = Buffer.from(await a.file.arrayBuffer());
   const size = a.file.type.startsWith('image/') ? imageSize(bytes) : null;
   const meta = { kind: a.kind, mime: a.file.type, sizeBytes: a.file.size, width: size?.width, height: size?.height, originalName: a.file.name };
   await validateUpload(actor, meta);
+  if (!matchesSignature(a.file.type, bytes)) throw new DomainError('upload_type', `the file is not a ${a.file.type}`);
   const owner = isSystem(actor) ? 'system' : actor.userId;
   const stored = await putFile(a.file, `${a.kind}/${owner}`, MEDIA_RULES[a.kind].visibility);
   return recordUpload(actor, { ...meta, storageKey: stored.key });

@@ -4,7 +4,7 @@
 // K9, K11, a block removed — `client-date-freed` at once) → closed (a new request to that
 // partner for that date); also expired (T21, the date passed) and removed (the stop control).
 // Saved search: notify on / off, deleted; T20 scans daily at ⚙ saved_search.scan_time.
-import { and, asc, eq, inArray, isNull, lt } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { db, type Queryable, type Tx } from '@/db';
 import { category, city, clientEvent, dateWatch, eventType, partner, savedSearch, user } from '@/db/schema';
 import { now } from '@/lib/clock';
@@ -168,8 +168,15 @@ async function insertWatch(t: Tx, clientId: string, partnerId: string, d: DateSt
   const [existing] = await t.select().from(dateWatch)
     .where(and(eq(dateWatch.clientId, clientId), eq(dateWatch.partnerId, partnerId), eq(dateWatch.date, d), eq(dateWatch.status, 'watching'))).limit(1);
   if (existing) return { watch: existing, created: false };
-  const [w] = await t.insert(dateWatch).values({ clientId, partnerId, date: d, clientEventId, createdAt: at }).returning();
-  // T21: the watch expires when the date passes.
+  // Two clicks at once: the partial unique index keeps one `watching` row; the loser reads the winner's.
+  const [w] = await t.insert(dateWatch).values({ clientId, partnerId, date: d, clientEventId, createdAt: at })
+    .onConflictDoNothing().returning();
+  if (!w) {
+    const [winner] = await t.select().from(dateWatch)
+      .where(and(eq(dateWatch.clientId, clientId), eq(dateWatch.partnerId, partnerId), eq(dateWatch.date, d), eq(dateWatch.status, 'watching'))).limit(1);
+    return { watch: winner, created: false };
+  }
+  // T21: the watch ends when the date passes (watching → expired, notified → closed).
   await scheduleJob('datewatch.expire', sofiaInstant(addDays(d, 1), 0, 0), { watchId: w.id }, `datewatch:${w.id}:expire`, t);
   return { watch: w, created: true };
 }
@@ -250,8 +257,8 @@ export async function notifyDateFreed(partnerId: string, d: DateStr, tx?: Tx): P
       .leftJoin(category, eq(category.id, partner.primaryCategoryId)).where(eq(partner.id, partnerId));
     let n = 0;
     for (const w of watches) {
+      // T21 stays scheduled: a notified watch is closed when its date passes (§4.14 Close).
       await t.update(dateWatch).set({ status: 'notified', notifiedAt: at }).where(eq(dateWatch.id, w.id));
-      await cancelJobs(`datewatch:${w.id}:`, t);
       const [u] = await t.select().from(user).where(and(eq(user.id, w.clientId), isNull(user.deletedAt)));
       if (!u) continue;
       // The watch's event, else the client's event on that date.
@@ -284,13 +291,19 @@ export async function closeWatches(a: { clientId: string; partnerId: string; dat
   });
 }
 
-/** T21 `datewatch.expire`: a watch still `watching` after its date → `expired`. Idempotent. */
+/**
+ * T21 `datewatch.expire` after the watch's date: `watching` → `expired` (T21) and `notified` →
+ * `closed` (§4.14 Close: the date passed). Idempotent.
+ */
 export async function expireWatch(a: { watchId: string }, tx?: Tx): Promise<boolean> {
   return withTx(tx, async t => {
-    const rows = await t.update(dateWatch).set({ status: 'expired', closedAt: await now() })
-      .where(and(eq(dateWatch.id, a.watchId), eq(dateWatch.status, 'watching'), lt(dateWatch.date, sofiaDate(await now())))).returning({ id: dateWatch.id });
-    if (rows.length) await audit(t, { actor: SYSTEM, action: 'date_watch.expired', entity: 'date_watch', entityId: a.watchId });
-    return rows.length > 0;
+    const at = await now();
+    const [w] = await t.select().from(dateWatch).where(eq(dateWatch.id, a.watchId)).for('update');
+    if (!w || w.date >= sofiaDate(at) || (w.status !== 'watching' && w.status !== 'notified')) return false;
+    const status = w.status === 'watching' ? 'expired' as const : 'closed' as const;
+    await t.update(dateWatch).set({ status, closedAt: at }).where(eq(dateWatch.id, w.id));
+    await audit(t, { actor: SYSTEM, action: status === 'expired' ? 'date_watch.expired' : 'date_watch.closed', entity: 'date_watch', entityId: w.id });
+    return true;
   });
 }
 

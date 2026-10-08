@@ -202,12 +202,17 @@ export function newCode(): { code: string; hash: string } {
 
 const MASK = '•••';
 const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
-/** Dates (14.06.2026, 2026-06-14), booking numbers (2026-0614-ЕА) and money (1 450,00 €) are excluded by format. */
+/**
+ * Dates (14.06.2026, 2026-06-14), booking numbers (2026-0614-ЕА) and money (1 450,00 €) are excluded
+ * by format. The formats are strict so a phone cannot hide behind them: a date must be a real
+ * day and month, and an amount must not start with 0 (unless it is 0,xx), has at most six plain
+ * digits or two thousands groups, and may not continue a digit run (‹088 412 7730 лв› is a phone).
+ */
 const PROTECTED_RE = new RegExp([
-  '\\d{4}-\\d{4}-[А-ЯЁ]{2}(?![А-Яа-яЁё])',                  // booking number
-  '\\b\\d{1,2}\\.\\d{1,2}\\.\\d{4}\\b',                      // 14.06.2026
-  '\\b\\d{4}-\\d{2}-\\d{2}\\b',                              // 2026-06-14
-  '(?:\\d{1,3}(?:[ \\u00a0.]\\d{3})+|\\d+)(?:,\\d{1,2})?[ \\u00a0]?(?:€|EUR|евро|лв\\.?)', // 1 450,00 €
+  '\\d{4}-\\d{4}-[А-ЯЁ]{2}(?![А-Яа-яЁё])',                                                 // booking number
+  '\\b(?:0?[1-9]|[12]\\d|3[01])\\.(?:0?[1-9]|1[0-2])\\.(?:19|20)\\d{2}\\b',                   // 14.06.2026
+  '\\b(?:19|20)\\d{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])\\b',                       // 2026-06-14
+  '(?<![\\d+][ \\u00a0.\\-/()]?)(?:[1-9]\\d{0,2}(?:[ \\u00a0.]\\d{3}){1,2}|[1-9]\\d{0,5}|0)(?:,\\d{1,2})?(?!\\d)[ \\u00a0]?(?:€|EUR|евро|лв\\.?)', // 1 450,00 €
 ].join('|'), 'g');
 /** A run of digits with optional +, spaces, -, ., / or parentheses. */
 const PHONE_RUN_RE = /\+?\(?\d[\d\s\-./()]*\d\)?/g;

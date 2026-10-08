@@ -60,8 +60,12 @@ export function addMonths(d: DateStr, n: number): DateStr {
   return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(Math.min(day, last)).padStart(2, '0')}`;
 }
 
-export const isDate = (d: unknown): d is DateStr =>
-  typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) === d;
+/** A real calendar date 'YYYY-MM-DD'. Never throws: GET parameters reach it unfiltered (`?data=2026-13-01`). */
+export const isDate = (d: unknown): d is DateStr => {
+  if (typeof d !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
+  const t = new Date(`${d}T00:00:00Z`);
+  return !Number.isNaN(t.getTime()) && t.toISOString().slice(0, 10) === d;
+};
 
 function assertDate(d: unknown): asserts d is DateStr {
   if (!isDate(d)) throw new DomainError('invalid_date');
@@ -181,10 +185,17 @@ export async function dayRange(partnerId: string, from: DateStr, to: DateStr, q:
   return out;
 }
 
-/** ‹Свободни ли сте на 14 юни?› / the profile widget's date check (`availability.check()`). */
-export async function check(partnerId: string, d: DateStr, q: Queryable = db): Promise<DayInfo & { requestable: boolean }> {
+/** What anyone may learn about a partner's date: its state, never the bookings behind it. */
+export type PublicDayInfo = Pick<DayInfo, 'date' | 'state' | 'busy' | 'reason' | 'label'> & { requestable: boolean };
+
+/**
+ * ‹Свободни ли сте на 14 юни?› / the public profile widget's date check (`availability.check()`).
+ * Guests and other clients call it, so it carries no booking numbers, event types, guest counts
+ * or hold times (those are the partner's calendar, `dayRange` / `monthGrid`).
+ */
+export async function check(partnerId: string, d: DateStr, q: Queryable = db): Promise<PublicDayInfo> {
   const [info] = await dayRange(partnerId, d, d, q);
-  return { ...info, requestable: !info.busy };
+  return { date: info.date, state: info.state, busy: info.busy, reason: info.reason, label: info.label, requestable: !info.busy };
 }
 
 /**

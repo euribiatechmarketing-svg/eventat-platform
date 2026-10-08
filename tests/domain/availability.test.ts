@@ -36,7 +36,8 @@ describe('§12.6 requestable dates', () => {
     expect(await check(p, '2027-08-31')).toMatchObject({ busy: false });
     expect(await check(p, '2027-09-01')).toMatchObject({ state: 'closed', reason: 'horizon' });
     await setRules(pr.actor, { workingDays: [6, 7] });
-    expect(await check(p, '2026-06-15')).toMatchObject({ state: 'blocked', busy: true, reason: 'not_working_day', chip: 'Блокирана' });
+    expect(await check(p, '2026-06-15')).toMatchObject({ state: 'blocked', busy: true, reason: 'not_working_day' });
+    expect((await dayRange(p, '2026-06-15', '2026-06-15'))[0].chip).toBe('Блокирана');
     await setRules(pr.actor, { workingDays: [1, 2, 3, 4, 5, 6, 7], onlySelectedDates: true });
     expect(await check(p, '2026-06-14')).toMatchObject({ state: 'closed', reason: 'not_opened' });
     expect(await toggleOpenDate(pr.actor, { date: '2026-06-14' })).toEqual({ open: true });
@@ -52,10 +53,14 @@ describe('§12.6 requestable dates', () => {
     const { user: client } = await createClient();
     const held = await createBookingRow({ client, partner: pr, eventDate: '2026-06-14', status: 'awaiting_payment', approvedAt: new Date('2025-08-31T08:06:00Z') });
     let d = await check(pr.partner.id, '2026-06-14');
-    expect(plain(d)).toMatchObject({ state: 'held', busy: true, reason: 'capacity', label: 'Запазена дата (24ч)', chip: 'Запазена до 11:06' });
-    expect(d.bookings[0].number).toBe(held.number);
+    expect(plain(d)).toMatchObject({ state: 'held', busy: true, reason: 'capacity', label: 'Запазена дата (24ч)' });
+    // The partner's calendar (not the public check) shows the hold and the booking behind it.
+    const [cal] = await dayRange(pr.partner.id, '2026-06-14', '2026-06-14');
+    expect(plain(cal)).toMatchObject({ chip: 'Запазена до 11:06' });
+    expect(cal.bookings[0].number).toBe(held.number);
     await createBookingRow({ client, partner: pr, eventDate: '2026-06-21', status: 'confirmed' });
-    expect(plain(await check(pr.partner.id, '2026-06-21'))).toMatchObject({ state: 'booked', busy: true, chip: 'Сватба · 120 гости', label: 'Потвърдено събитие' });
+    expect(plain(await check(pr.partner.id, '2026-06-21'))).toMatchObject({ state: 'booked', busy: true, label: 'Потвърдено събитие' });
+    expect(plain((await dayRange(pr.partner.id, '2026-06-21', '2026-06-21'))[0].chip)).toBe('Сватба · 120 гости');
     await setRules(pr.actor, { bookingsPerDayMode: 'limit', maxBookingsPerDate: 2 });
     d = await check(pr.partner.id, '2026-06-21');
     expect(d).toMatchObject({ state: 'booked', busy: false });

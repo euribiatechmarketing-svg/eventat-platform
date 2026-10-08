@@ -17,7 +17,7 @@ import { date as fmtDate, dateShort, moneyShort, sofiaDate, type DateStr } from 
 import type { AnyActor } from './actor';
 import { busyPartnerIds, check, isDate } from './availability';
 import { assertClient, count as nCount, maskContacts, mediaUrl, withTx } from './catalogue-kit';
-import { POLICY_LABEL, responsiveness } from './partners';
+import { POLICY_LABEL, requestLapsedSql, responsiveness } from './partners';
 import { partnerReviews, ratingSummary } from './reviews';
 import { getSettings } from './settings';
 
@@ -232,11 +232,11 @@ async function loadCandidates(q: Queryable, where: SQL[], todayStr: DateStr): Pr
     eventTypeIds: sql<string[]>`array(select pet.event_type_id::text from partner_event_type pet where pet.partner_id = ${PID})`,
     serviceCategoryIds: sql<string[]>`array(select distinct s.category_id::text from service s where s.partner_id = ${PID} and s.status = 'active')`,
     subtypeIds: sql<string[]>`array(select ps.subtype_id::text from partner_subtype ps where ps.partner_id = ${PID})`,
-    // ‹Отговаря до 24 часа› (D44): a request that lapsed unanswered (R8) in the last 90 days.
-    // An offer that lapsed (R10) is not the partner's silence, so those expiries do not count.
+    // ‹Отговаря до 24 часа› (D44): a request that lapsed unanswered (R8: T2, or T4 on a chosen
+    // offer never confirmed) in the last 90 days. An offer that lapsed without being chosen (R10)
+    // is not the partner's silence, so those expiries do not count.
     lapsed90: sql<boolean>`exists (select 1 from request r where r.partner_id = ${PID} and r.status = 'expired'
-      and r.expired_at >= ${since}::timestamptz
-      and not exists (select 1 from offer o where o.request_id = r.id and o.status = 'lapsed'))`,
+      and r.expired_at >= ${since}::timestamptz and ${requestLapsedSql(sql.raw('r.id'))})`,
     coverKey: sql<string | null>`(select m.storage_key from partner_photo ph join media m on m.id = ph.media_id
       where ph.partner_id = ${PID} order by ph.position limit 1)`,
   }).from(partner).where(and(...where));

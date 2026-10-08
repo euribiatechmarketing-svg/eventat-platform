@@ -194,6 +194,9 @@ export async function saveDraft(actor: AnyActor, input: Partial<ServiceInput> & 
     if (input.id) {
       const cur = await lockOwnService(t, p, input.id);
       if (!['draft', 'returned'].includes(cur.status)) throw new DomainError('service_status', `service is ${cur.status}`);
+      // A published service hidden with S9 is still published content: S9 shows it again without
+      // review, so its edits go through S6 (`submitChange`), never straight onto the row (D59).
+      if (cur.publishedAt) throw new DomainError('use_submit_change');
       if ((c.kind ?? cur.kind) === 'package_fixed' && cur.kind !== 'package_fixed') await assertPackageLimit(t, p.id, cur.id);
       [s] = await t.update(service).set({ ...columnsOf(c), status: 'draft', updatedAt: at }).where(eq(service.id, cur.id)).returning();
     } else {
@@ -256,6 +259,8 @@ export async function saveOnboarding(actor: AnyActor, input: Partial<ServiceInpu
 export async function remove(actor: AnyActor, a: { serviceId: string }, tx?: Tx) {
   return withTx(tx, async t => {
     const p = await lockPartnerOf(actor, t);
+    // §12.1: while `submitted` the wizard is read-only (the team is reviewing these packages).
+    if (!EDITABLE_STATUSES.includes(p.status)) throw new DomainError('wizard_read_only');
     const s = await lockOwnService(t, p, a.serviceId);
     if (s.status === 'active' || s.status === 'pending_review') throw new DomainError('service_status');
     const at = await now();
@@ -345,7 +350,8 @@ export async function submitChange(actor: AnyActor, input: ServiceInput & { id: 
     const p = await lockPartnerOf(actor, t);
     if (p.status !== 'approved' && p.status !== 'deactivated') throw new DomainError('partner_status');
     const s = await lockOwnService(t, p, input.id);
-    if (s.status !== 'active') throw new DomainError('service_status');
+    // An active service, or a published one hidden with S9 (its content is moderated all the same).
+    if (s.status !== 'active' && !(s.status === 'draft' && s.publishedAt)) throw new DomainError('service_status');
     await assertCategory(t, c.categoryId);
     await checkCover(t, actor, c);
     if (c.kind === 'package_fixed' && s.kind !== 'package_fixed') await assertPackageLimit(t, p.id, s.id);
@@ -476,10 +482,21 @@ export async function approveChange(actor: AnyActor, a: { revisionId: string }, 
 
 // ── S9, S10, toggles, order ──────────────────────────────────────────────
 
+/** The panel (approved / deactivated, D24): S9 visibility and S10 archive are panel controls. */
+const PANEL_STATUSES: Partner['status'][] = ['approved', 'deactivated'];
+/** Where a partner may still change its services: the wizard (draft / returned) and the panel — never while `submitted`. */
+const EDITABLE_STATUSES: Partner['status'][] = ['draft', 'returned', ...PANEL_STATUSES];
+
+async function lockPartnerIn(actor: AnyActor, t: Tx, statuses: Partner['status'][]): Promise<Partner> {
+  const p = await lockPartnerOf(actor, t);
+  if (!statuses.includes(p.status)) throw new DomainError('partner_status');
+  return p;
+}
+
 /** S9 visibility ‹Активна› / ‹Чернова› on the edit page: immediate (D59); → active only once published. */
 export async function setVisibility(actor: AnyActor, a: { serviceId: string; active: boolean }, tx?: Tx) {
   return withTx(tx, async t => {
-    const p = await lockPartnerOf(actor, t);
+    const p = await lockPartnerIn(actor, t, PANEL_STATUSES);
     const s = await lockOwnService(t, p, a.serviceId);
     const at = await now();
     if (a.active) {
@@ -501,7 +518,7 @@ export async function setVisibility(actor: AnyActor, a: { serviceId: string; act
 /** ‹Показвай в профила ми› / ‹Приемам заявки за нея› (immediate). */
 export async function setToggles(actor: AnyActor, a: { serviceId: string; showInProfile?: boolean; acceptingRequests?: boolean }, tx?: Tx) {
   return withTx(tx, async t => {
-    const p = await lockPartnerOf(actor, t);
+    const p = await lockPartnerIn(actor, t, EDITABLE_STATUSES);
     const s = await lockOwnService(t, p, a.serviceId);
     const [row] = await t.update(service).set({
       showInProfile: a.showInProfile ?? s.showInProfile, acceptingRequests: a.acceptingRequests ?? s.acceptingRequests, updatedAt: await now(),
@@ -515,7 +532,7 @@ export async function setToggles(actor: AnyActor, a: { serviceId: string; showIn
 /** S10 ‹Архивирай› (toast ‹Услугата е архивирана›): hidden from the profile; requests and bookings unaffected. */
 export async function archive(actor: AnyActor, a: { serviceId: string }, tx?: Tx) {
   return withTx(tx, async t => {
-    const p = await lockPartnerOf(actor, t);
+    const p = await lockPartnerIn(actor, t, PANEL_STATUSES);
     const s = await lockOwnService(t, p, a.serviceId);
     if (s.status === 'archived') return s;
     const at = await now();
@@ -532,7 +549,7 @@ export async function archive(actor: AnyActor, a: { serviceId: string }, tx?: Tx
 /** ‹Подреди› (toast ‹Подредбата е запазена›); the first active fixed package is ‹Препоръчан›. */
 export async function reorder(actor: AnyActor, a: { serviceIds: string[] }, tx?: Tx) {
   return withTx(tx, async t => {
-    const p = await lockPartnerOf(actor, t);
+    const p = await lockPartnerIn(actor, t, EDITABLE_STATUSES);
     const own = await t.select({ id: service.id }).from(service).where(and(eq(service.partnerId, p.id), inArray(service.id, a.serviceIds)));
     if (own.length !== new Set(a.serviceIds).size) throw new DomainError('invalid_order');
     for (const [i, id] of a.serviceIds.entries()) await t.update(service).set({ sortOrder: i }).where(eq(service.id, id));

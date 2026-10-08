@@ -14,7 +14,7 @@ import {
   type AcquisitionSource, type ClientType, type NotificationChannel,
 } from '@/db/schema';
 import { now } from '@/lib/clock';
-import { scheduleJob } from '@/lib/jobs';
+import { cancelJobs, scheduleJob } from '@/lib/jobs';
 import { date as fmtDate } from '@/lib/format';
 import { assertCan, isSystem, SYSTEM, type AnyActor } from './actor';
 import { audit } from './audit';
@@ -152,8 +152,7 @@ export async function requestDeletion(actor: AnyActor, tx?: Tx): Promise<{ token
     if (u.deletedAt) throw new DomainError('deleted');
     const at = await now();
     const expiresAt = new Date(at.getTime() + 24 * 3600_000);
-    await t.update(accountDeletionRequest).set({ status: 'expired' })
-      .where(and(eq(accountDeletionRequest.userId, u.id), eq(accountDeletionRequest.status, 'requested')));
+    await supersedeDeletionRequests(t, u.id);
     const { token, hash } = newToken();
     const [req] = await t.insert(accountDeletionRequest).values({ userId: u.id, tokenHash: hash, requestedAt: at, expiresAt }).returning();
     await scheduleJob('deletion.expire', expiresAt, { requestId: req.id }, `deletion:${req.id}:expire`, t);
@@ -163,7 +162,14 @@ export async function requestDeletion(actor: AnyActor, tx?: Tx): Promise<{ token
   });
 }
 
-/** The open, unexpired deletion request a link points at (for the given role), marked confirmed. */
+/** A new ‹Изтрий› replaces the open link: the old request expires and its T24 job is cancelled. */
+export async function supersedeDeletionRequests(t: Tx, userId: string) {
+  const old = await t.update(accountDeletionRequest).set({ status: 'expired' })
+    .where(and(eq(accountDeletionRequest.userId, userId), eq(accountDeletionRequest.status, 'requested'))).returning({ id: accountDeletionRequest.id });
+  for (const r of old) await cancelJobs(`deletion:${r.id}:`, t);
+}
+
+/** The open, unexpired deletion request a link points at (for the given role), marked confirmed (its T24 job cancelled). */
 export async function consumeDeletionToken(tx: Tx, token: string, role: 'client' | 'partner') {
   const [req] = await tx.select().from(accountDeletionRequest).where(eq(accountDeletionRequest.tokenHash, hashToken(token ?? ''))).for('update');
   if (!req || req.status !== 'requested') throw new DomainError('invalid_token');
@@ -172,6 +178,7 @@ export async function consumeDeletionToken(tx: Tx, token: string, role: 'client'
   const [u] = await tx.select({ role: user.role }).from(user).where(eq(user.id, req.userId));
   if (!u || u.role !== role) throw new DomainError('invalid_token');
   await tx.update(accountDeletionRequest).set({ status: 'confirmed', confirmedAt: at }).where(eq(accountDeletionRequest.id, req.id));
+  await cancelJobs(`deletion:${req.id}:`, tx);
   return req;
 }
 
@@ -192,7 +199,9 @@ export async function anonymiseUser(tx: Tx, userId: string, at: Date) {
     .where(eq(clientInvoiceProfile.userId, userId));
   await tx.delete(savedSearch).where(eq(savedSearch.clientId, userId));
   await tx.delete(searchHistory).where(eq(searchHistory.clientId, userId));
-  await tx.update(dateWatch).set({ status: 'removed', closedAt: at }).where(and(eq(dateWatch.clientId, userId), eq(dateWatch.status, 'watching')));
+  const watches = await tx.update(dateWatch).set({ status: 'removed', closedAt: at })
+    .where(and(eq(dateWatch.clientId, userId), inArray(dateWatch.status, ['watching', 'notified']))).returning({ id: dateWatch.id });
+  for (const w of watches) await cancelJobs(`datewatch:${w.id}:`, tx);
   await tx.update(conversation).set({ clientDraft: null }).where(eq(conversation.clientId, userId));
 }
 

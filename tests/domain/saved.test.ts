@@ -164,9 +164,11 @@ describe('date watches', () => {
     expect(await notifyDateFreed(pr.partner.id, '2026-12-19')).toBe(0);
     expect((await db.select().from(s.dateWatch).where(eq(s.dateWatch.id, w.id)))[0].status).toBe('notified');
     expect(plain((await emails('client-date-freed', user.id))[0].vars)).toMatchObject({ partnerName: 'Snap360', partnerCategory: 'Фотокабини', eventType: 'Коледно парти', eventDate: '19 декември 2026' });
-    expect((await jobsByPrefix(`datewatch:${w.id}`))[0].status).toBe('cancelled');
+    // T21 stays: a notified watch closes when its date passes (§4.14 Close) or on a new request.
+    expect((await jobsByPrefix(`datewatch:${w.id}`))[0].status).toBe('pending');
     expect(await closeWatches({ clientId: user.id, partnerId: pr.partner.id, date: '2026-12-19' })).toBe(1);
     expect((await db.select().from(s.dateWatch).where(eq(s.dateWatch.id, w.id)))[0].status).toBe('closed');
+    expect((await jobsByPrefix(`datewatch:${w.id}`))[0].status).toBe('cancelled');
   });
 
   it('zero state ‹Уведоми ме при свободна дата›: watches every matching partner busy on the date', async () => {

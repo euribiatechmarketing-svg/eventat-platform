@@ -38,12 +38,22 @@ export async function ensureConversation(a: { clientId: string; partnerId: strin
     const evCond = a.clientEventId ? eq(conversation.clientEventId, a.clientEventId) : isNull(conversation.clientEventId);
     const [c] = await t.select().from(conversation)
       .where(and(eq(conversation.clientId, a.clientId), eq(conversation.partnerId, a.partnerId), evCond)).for('update');
+    // The context link is the LATEST booking, else the LATEST request (§4.16): opening an older
+    // request's thread (‹Пиши на изпълнителя› on a declined one) must not move it back.
     const set: Partial<Conversation> = {};
-    if (a.requestId) set.requestId = a.requestId;
-    if (a.bookingId) set.bookingId = a.bookingId;
+    if (a.requestId && a.requestId !== c.requestId && (!c.requestId || await isLater(t, 'request', a.requestId, c.requestId))) set.requestId = a.requestId;
+    if (a.bookingId && a.bookingId !== c.bookingId && (!c.bookingId || await isLater(t, 'booking', a.bookingId, c.bookingId))) set.bookingId = a.bookingId;
     if (Object.keys(set).length) return (await t.update(conversation).set(set).where(eq(conversation.id, c.id)).returning())[0];
     return c;
   });
+}
+
+/** Is request (booking) `a` at least as recent as `b`? Requests by `sent_at`, bookings by `approved_at` (when they are created). */
+async function isLater(q: Queryable, table: 'request' | 'booking', a: string, b: string): Promise<boolean> {
+  const rows = table === 'request'
+    ? await q.execute<{ later: boolean | null }>(sql`select (select sent_at from request where id = ${a}) >= (select sent_at from request where id = ${b}) as later`)
+    : await q.execute<{ later: boolean | null }>(sql`select (select approved_at from booking where id = ${a}) >= (select approved_at from booking where id = ${b}) as later`);
+  return rows[0]?.later !== false;
 }
 
 /**

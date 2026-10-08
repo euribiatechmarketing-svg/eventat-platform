@@ -27,7 +27,7 @@ import {
   DomainError, NotFoundError, count as nCount, lockPartnerOf, mail, mailEach, newToken, normalizePhone, partnerOf, partnerRecipient,
   teamRecipients, withTx, type Partner,
 } from './catalogue-kit';
-import { anonymiseUser, consumeDeletionToken } from './clients';
+import { anonymiseUser, consumeDeletionToken, supersedeDeletionRequests } from './clients';
 import { ownMedia } from './media';
 import { onboardingServiceErrors } from './services';
 import { getSetting } from './settings';
@@ -848,6 +848,12 @@ async function upcomingBookings(q: Queryable, partnerId: string): Promise<number
   return n;
 }
 
+/** Bookings the client can still pay (`awaiting_payment`): paying one after P10 would confirm a deleted partner. */
+async function payableBookings(q: Queryable, partnerId: string): Promise<number> {
+  const [{ n }] = await q.select({ n: count() }).from(booking).where(and(eq(booking.partnerId, partnerId), eq(booking.status, 'awaiting_payment')));
+  return n;
+}
+
 /**
  * P8 ‹Деактивирай›: hidden from every listing; confirmed bookings stay; pending requests stay
  * answerable; `vendor-deactivated`; toast ‹Профилът е деактивиран — можете да го върнете по всяко време›.
@@ -881,11 +887,14 @@ export async function reactivate(actor: AnyActor, tx?: Tx) {
 
 // ── P10 deletion ─────────────────────────────────────────────────────────
 
-/** Why ‹Изтрий› is disabled: upcoming bookings (D56) or an open dispute. */
+/**
+ * Why ‹Изтрий› is disabled: upcoming bookings (D56) — confirmed ones and those still waiting for
+ * the client's payment, which would otherwise confirm with a deleted partner — or an open dispute.
+ */
 export async function deletionBlockers(q: Queryable, partnerId: string): Promise<{ upcomingBookings: number; openDisputes: number }> {
   const [{ n }] = await q.select({ n: count() }).from(dispute).innerJoin(booking, eq(booking.id, dispute.bookingId))
     .where(and(eq(booking.partnerId, partnerId), inArray(dispute.status, ['collecting', 'awaiting_decision'])));
-  return { upcomingBookings: await upcomingBookings(q, partnerId), openDisputes: n };
+  return { upcomingBookings: await upcomingBookings(q, partnerId) + await payableBookings(q, partnerId), openDisputes: n };
 }
 
 /** P10 ‹Изтрий› → `vendor-delete-confirm` with a 24 h link (T24). Returns the token for the link. */
@@ -898,8 +907,7 @@ export async function requestDeletion(actor: AnyActor, tx?: Tx): Promise<{ token
     const userId = (actor as Actor).userId;
     const at = await now();
     const expiresAt = new Date(at.getTime() + 24 * 3600_000);
-    await t.update(accountDeletionRequest).set({ status: 'expired' })
-      .where(and(eq(accountDeletionRequest.userId, userId), eq(accountDeletionRequest.status, 'requested')));
+    await supersedeDeletionRequests(t, userId);
     const { token, hash } = newToken();
     const [req] = await t.insert(accountDeletionRequest).values({ userId, tokenHash: hash, requestedAt: at, expiresAt }).returning();
     await scheduleJob('deletion.expire', expiresAt, { requestId: req.id }, `deletion:${req.id}:expire`, t);
@@ -1000,20 +1008,46 @@ export async function refreshPartner(tx: Queryable, partnerId: string) {
 }
 
 /**
+ * An expired request that counts against the partner (R8: T2, or T4 on a chosen offer never
+ * confirmed). An offer that lapsed without ever being chosen (R10, O5: date taken or passed)
+ * is not the partner's silence. Shared by §12.4 responsiveness and the D44 search filter.
+ */
+export const requestLapsedSql = (requestId: unknown) => sql`not exists (select 1 from offer o where o.request_id = ${requestId}
+  and o.status = 'lapsed' and o.chosen_at is null)`;
+
+/**
  * Responsiveness ‹96% отзивчивост› (§12.4): the share of requests and brief invitations sent in
  * the last 180 days that were answered (approved, declined or offered) before their deadline.
- * Null (hidden) when there are none.
+ * R8 lapses count against it (T2 and T4, for every request kind); an offer that lapsed later
+ * (R10) does not undo an answer; one still inside its deadline is not judged yet.
+ * Null (hidden) when there is nothing to judge.
  */
 export async function responsiveness(partnerId: string, q: Queryable = db): Promise<number | null> {
-  const since = new Date((await now()).getTime() - 180 * 86_400_000);
-  const reqs = await q.select({ answeredAt: request.answeredAt, due: request.responseDueAt, status: request.status }).from(request)
-    .where(and(eq(request.partnerId, partnerId), gte(request.sentAt, since), inArray(request.kind, ['package', 'quote'])));
+  const at = await now();
+  const since = new Date(at.getTime() - 180 * 86_400_000);
+  const reqs = await q.select({
+    answeredAt: request.answeredAt, due: request.responseDueAt, status: request.status,
+    // Qualified: in a single-table select drizzle leaves `id` bare, which the subquery would read as offer.id.
+    lapsed: sql<boolean>`(${request.status} = 'expired' and ${requestLapsedSql(sql.raw('"request"."id"'))})`,
+  }).from(request).where(and(eq(request.partnerId, partnerId), gte(request.sentAt, since)));
   const invs = await q.select({ answeredAt: briefInvitation.answeredAt, due: briefInvitation.offerDueAt, status: briefInvitation.status }).from(briefInvitation)
     .where(and(eq(briefInvitation.partnerId, partnerId), gte(briefInvitation.invitedAt, since)));
-  const all = [...reqs, ...invs];
-  if (!all.length) return null;
-  const answered = all.filter(x => x.answeredAt && x.answeredAt <= x.due && !['expired', 'lapsed'].includes(x.status)).length;
-  return Math.round((answered / all.length) * 100);
+  let judged = 0, answered = 0;
+  for (const r of reqs) {
+    if (r.status === 'pending' || r.status === 'awaiting_confirmation') {
+      if (r.due > at) continue; // still inside its deadline
+      judged++; // overdue: lapses at the next tick
+      continue;
+    }
+    judged++;
+    if (!r.lapsed && r.answeredAt && r.answeredAt <= r.due) answered++;
+  }
+  for (const i of invs) {
+    if (i.status === 'invited' && i.due > at) continue;
+    judged++;
+    if (i.status !== 'lapsed' && i.status !== 'invited' && i.answeredAt && i.answeredAt <= i.due) answered++;
+  }
+  return judged ? Math.round((answered / judged) * 100) : null;
 }
 
 /** Nightly cache of responsiveness for listed partners (job `partners.metrics`). */
@@ -1029,8 +1063,12 @@ export function fromPrice(p: Pick<Partner, 'minPriceCents' | 'minPriceUnit'>): {
   return { cents: p.minPriceCents, unit: p.minPriceUnit, text: `от ${moneyShort(p.minPriceCents)}`, unitLabel: p.minPriceUnit === 'per_guest' ? 'на гост' : 'за събитие' };
 }
 
-/** Admin: bookings and turnover (§12.4) — confirmed, completed and cancelled-with-retained bookings. */
-export async function adminTotals(partnerId: string, q: Queryable = db) {
+/**
+ * Admin: bookings and turnover (§12.4) — confirmed, completed and cancelled-with-retained bookings.
+ * Turnover is a money column, so it needs `view_finance` (§1.2).
+ */
+export async function adminTotals(actor: AnyActor, partnerId: string, q: Queryable = db) {
+  assertCan(actor, 'view_finance');
   const rows = await q.execute<{ n: number; total: string | null }>(sql`
     select count(*)::int as n, coalesce(sum(b.amount_cents), 0)::bigint as total from booking b
     left join cancellation c on c.booking_id = b.id
