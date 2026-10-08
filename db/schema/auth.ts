@@ -1,10 +1,13 @@
 // Better Auth tables (user, session, account, verification, two_factor).
 // Property names are what Better Auth's Drizzle adapter expects; column
 // names are snake_case. User ids are Better Auth's text ids — every other
-// table references them as text.
+// table references them as text. Columns marked ✚ in DATA-MODEL §2.1 are
+// ours: Better Auth never writes them, so they have defaults or are nullable.
 import { pgTable, pgEnum, text, timestamp, boolean, index, integer } from 'drizzle-orm/pg-core';
+import { locale } from './enums';
 
 export const userRole = pgEnum('user_role', ['client', 'partner', 'admin']);
+export type UserRole = (typeof userRole.enumValues)[number];
 
 export const user = pgTable('user', {
   id: text('id').primaryKey(),
@@ -17,10 +20,14 @@ export const user = pgTable('user', {
   banned: boolean('banned').notNull().default(false),
   banReason: text('ban_reason'),
   twoFactorEnabled: boolean('two_factor_enabled').notNull().default(false),
+  locale: locale('locale').notNull().default('bg'),
+  lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
+  lastLoginCity: text('last_login_city'),
+  passwordChangedAt: timestamp('password_changed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
-});
+}, t => [index('user_role_created_idx').on(t.role, t.createdAt)]);
 
 export const session = pgTable('session', {
   id: text('id').primaryKey(),
@@ -29,6 +36,8 @@ export const session = pgTable('session', {
   ipAddress: text('ip_address'),
   userAgent: text('user_agent'),
   userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  deviceLabel: text('device_label'),
+  city: text('city'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, t => [index('session_user_idx').on(t.userId)]);

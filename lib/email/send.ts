@@ -29,7 +29,11 @@ export async function sendEmail(args: SendArgs, tx?: Tx): Promise<string | null>
   let status: 'queued' | 'suppressed' = 'queued';
   if (tpl.optional && args.toUserId) {
     const pref = await q.select().from(notificationPreference)
-      .where(and(eq(notificationPreference.userId, args.toUserId), eq(notificationPreference.key, tpl.preference ?? tpl.key)))
+      .where(and(
+        eq(notificationPreference.userId, args.toUserId),
+        eq(notificationPreference.key, tpl.preference ?? tpl.key),
+        eq(notificationPreference.channel, 'email'),
+      ))
       .limit(1);
     if (pref[0] && !pref[0].enabled) status = 'suppressed';
   }

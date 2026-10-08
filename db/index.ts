@@ -24,4 +24,6 @@ if (process.env.NODE_ENV !== 'production') { g.__eventatSql = sql; g.__eventatDb
 export type DB = typeof db;
 /** A transaction handle has the same query API as db. */
 export type Tx = Parameters<Parameters<DB['transaction']>[0]>[0];
+/** Either: for functions that run inside the caller's transaction when given one. */
+export type Queryable = DB | Tx;
 export { schema };

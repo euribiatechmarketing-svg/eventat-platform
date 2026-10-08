@@ -8,16 +8,22 @@ import { db } from '@/db';
 import * as schema from '@/db/schema';
 import { sendEmail } from '@/lib/email/send';
 
-/** Who an auth email goes to. Partners' emails also name the business (partner_account.business_name when it exists). */
+/** Who an auth email goes to. Partners' emails also name the business (partner.business_name once it exists). */
 async function recipient(email: string): Promise<{ role: 'client' | 'partner' | 'admin'; id: string | null; name: string; partnerName: string }> {
   const [u] = await db.select({ id: schema.user.id, role: schema.user.role, name: schema.user.name }).from(schema.user).where(eq(schema.user.email, email)).limit(1);
   if (!u) return { role: 'client', id: null, name: '', partnerName: '' };
   return { role: u.role, id: u.id, name: u.name, partnerName: (await partnerNameFor(u.id)) ?? u.name };
 }
 
-/** Business name of the partner a user belongs to; replaced by the domain layer once partner tables exist. */
-let partnerNameFor: (userId: string) => Promise<string | null> = async () => null;
-export function setPartnerNameLookup(fn: (userId: string) => Promise<string | null>) { partnerNameFor = fn; }
+/** Business name of the partner a user belongs to (partner_member → partner), or null. */
+async function partnerNameFor(userId: string): Promise<string | null> {
+  const [p] = await db.select({ name: schema.partner.businessName })
+    .from(schema.partnerMember)
+    .innerJoin(schema.partner, eq(schema.partner.id, schema.partnerMember.partnerId))
+    .where(eq(schema.partnerMember.userId, userId))
+    .limit(1);
+  return p?.name ?? null;
+}
 
 const social: Record<string, { clientId: string; clientSecret: string }> = {};
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)

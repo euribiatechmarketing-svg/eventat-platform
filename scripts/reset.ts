@@ -1,10 +1,13 @@
-// Drop and recreate the public schema, then migrate. Local/test databases only.
-import postgres from 'postgres';
-import { execSync } from 'node:child_process';
+// Drop and recreate the public schema of DATABASE_URL, then apply the current
+// schema: extensions → `drizzle-kit push --force` → db/sql/*.sql (name order).
+// Local databases only. Until launch there are no incremental migrations.
+import { DEFAULT_URL, redact, resetDatabase } from './lib/schema-sync';
 
-const url = process.env.DATABASE_URL ?? 'postgres://eventat:eventat@127.0.0.1:54329/eventat';
-if (!/127\.0\.0\.1|localhost/.test(url)) { console.error('Refusing to reset a non-local database.'); process.exit(1); }
-const sql = postgres(url, { max: 1, onnotice: () => {} });
-await sql.unsafe('drop schema if exists public cascade; drop schema if exists drizzle cascade; create schema public;');
-await sql.end();
-execSync('npx tsx scripts/migrate.ts', { stdio: 'inherit', env: process.env });
+const url = process.env.DATABASE_URL ?? DEFAULT_URL;
+try {
+  const r = await resetDatabase(url);
+  console.log(`schema reset: ${r.tables} tables, sql ${r.sqlFiles.join(', ')} — ${redact(url)}`);
+} catch (e) {
+  console.error((e as Error).message);
+  process.exit(1);
+}
