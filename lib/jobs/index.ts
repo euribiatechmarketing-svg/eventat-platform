@@ -33,7 +33,7 @@ export async function runDueJobs(limit = 100): Promise<{ ran: number; failed: nu
     const claimed = await sql.begin(async t => {
       const rows = await t<{ id: string; kind: string; payload: Record<string, unknown>; attempts: number }[]>`
         select id, kind, payload, attempts from job
-        where status = 'pending' and run_at <= ${at}
+        where status = 'pending' and run_at <= ${at.toISOString()}::timestamptz
         order by run_at limit 1 for update skip locked`;
       if (!rows.length) return null;
       const r = rows[0];
@@ -46,7 +46,7 @@ export async function runDueJobs(limit = 100): Promise<{ ran: number; failed: nu
       } catch (e) {
         const attempts = r.attempts + 1;
         await t`update job set attempts = ${attempts}, last_error = ${String(e)}, status = ${attempts >= 5 ? 'failed' : 'pending'},
-                run_at = ${new Date(at.getTime() + attempts * 60_000)} where id = ${r.id}`;
+                run_at = ${new Date(at.getTime() + attempts * 60_000).toISOString()}::timestamptz where id = ${r.id}`;
         return { ok: false };
       }
     });
