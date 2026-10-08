@@ -1,10 +1,15 @@
 // Partner panel chrome + guard (SCREENS §1, §0 guard "partner"). Onboarding lives in app/(wizard).
+import { Suspense } from 'react';
+import { randomUUID } from 'node:crypto';
 import { redirect } from 'next/navigation';
 import { requireRole } from '@/lib/session';
 import { actorFromUser } from '@/lib/domain/actor';
 import { partnerChrome, partnerRailCount } from '@/lib/domain/views-panel';
 import { bellItems } from '@/lib/bell';
 import { PanelShell, type RailGroup } from '@/components/panel/PanelShell';
+import { readFlash } from '@/lib/flash';
+import { FlashAgain, TopbarSearch } from './_ops/ui';
+import '@/styles/m-partner-ops.css';
 
 export default async function PartnerLayout({ children }: { children: React.ReactNode }) {
   const user = await requireRole('partner', '/partner');
@@ -14,6 +19,7 @@ export default async function PartnerLayout({ children }: { children: React.Reac
   if (p.status === 'submitted' || p.status === 'rejected') redirect('/partner/registratsiya/podadeno');
   const actor = await actorFromUser(user);
   const pending = await partnerRailCount(actor);
+  const flash = await readFlash();
   const groups: RailGroup[] = [
     { label: 'Партньорски панел', items: [
       { label: 'Табло', href: '/partner', icon: 'dashboard' },
@@ -31,7 +37,7 @@ export default async function PartnerLayout({ children }: { children: React.Reac
   ];
   return (
     <PanelShell area="partner" groups={groups}
-      titles={{ '/partner/saobshteniya': 'Съобщения', '/partner/poddrazhka': 'Поддръжка', '/partner/smetka': 'Сметка за изплащане', '/partner/tarsene': 'Търсене', '/partner/zapitvaniya': 'Запитвания' }}
+      titles={{ '/partner/kalendar': 'Календар и наличност', '/partner/saobshteniya': 'Съобщения', '/partner/poddrazhka': 'Поддръжка', '/partner/smetka': 'Сметка за изплащане', '/partner/tarsene': 'Търсене', '/partner/zapitvaniya': 'Запитвания' }}
       userName={p.businessName} userRole={p.categoryName ?? ''} avatarUrl={p.avatarUrl}
       menu={[
         { label: 'Съобщения', href: '/partner/saobshteniya' },
@@ -39,8 +45,10 @@ export default async function PartnerLayout({ children }: { children: React.Reac
         { label: 'Настройки', href: '/partner/nastroyki' },
         { label: 'Виж профила като клиент', href: `/partnyori/${p.slug}` },
       ]}
+      topbarExtra={<Suspense fallback={null}><TopbarSearch /></Suspense>}
       bell={await bellItems(user.id)}>
       {children}
+      <FlashAgain message={flash?.message ?? null} kind={flash?.kind} nonce={randomUUID()} />
     </PanelShell>
   );
 }
