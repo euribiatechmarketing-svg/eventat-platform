@@ -35,7 +35,8 @@ export const service = pgTable('service', {
 }, t => [
   index('service_partner_status_idx').on(t.partnerId, t.status, t.sortOrder),
   index('service_category_status_idx').on(t.categoryId, t.status),
-  check('service_price_by_kind_check', sql`(${t.kind} = 'on_request' and ${t.priceCents} is null) or (${t.kind} <> 'on_request' and ${t.priceCents} is not null and ${t.priceCents} > 0)`),
+  // A draft (‹Запази като чернова›, S1) only needs a name, so a fixed package may still lack its price.
+  check('service_price_by_kind_check', sql`(${t.kind} = 'on_request' and ${t.priceCents} is null) or (${t.kind} <> 'on_request' and ((${t.priceCents} is not null and ${t.priceCents} > 0) or (${t.status} = 'draft' and ${t.priceCents} is null)))`),
   check('service_min_guests_check', sql`${t.minGuests} is null or ${t.priceUnit} = 'per_guest'`),
 ]);
 

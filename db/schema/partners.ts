@@ -81,6 +81,12 @@ export const partner = pgTable('partner', {
   deactivatedAt: tz('deactivated_at'),
   deletedAt: tz('deleted_at'),
   approvedBy: text('approved_by').references(() => user.id),
+  /**
+   * When the partner last entered the search base set (approved, listed and accepting requests):
+   * set on approval, on re-listing and on reactivation. Saved-search alerts (T20) and ‹N нови›
+   * count partners whose coalesce(listed_at, approved_at) is after the last check (catalogue addition).
+   */
+  listedAt: tz('listed_at'),
   lastDecisionNote: text('last_decision_note'),
   /** Cached from reviews (SPEC §12.4). */
   ratingAvg: numeric('rating_avg', { precision: 2, scale: 1, mode: 'number' }),

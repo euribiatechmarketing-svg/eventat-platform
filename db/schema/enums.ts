@@ -30,6 +30,8 @@ export const providerAccountStatus = pgEnum('provider_account_status', ['not_sta
 export const mediaKind = pgEnum('media_kind', [
   'partner_avatar', 'partner_cover', 'gallery', 'service_cover', 'request_attachment', 'brief_attachment',
   'dispute_evidence', 'review_photo', 'message_attachment', 'bank_proof', 'legal_document', 'invoice_pdf', 'report_file',
+  // ✚ catalogue: a client's ‹Смени снимката› (user.image); DATA-MODEL has no kind for it.
+  'user_avatar',
 ]);
 export const serviceKind = pgEnum('service_kind', ['package_fixed', 'on_request', 'addon']);
 export const priceUnit = pgEnum('price_unit', ['per_event', 'per_guest']);
