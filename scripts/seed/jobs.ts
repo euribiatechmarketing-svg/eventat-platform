@@ -1,7 +1,7 @@
 // The timers (SPEC §3) that the seeded states imply. Kinds, dedupe keys and
 // payloads are the ones the owning modules schedule (lifecycle:
 // lib/domain/bookings.ts `jobKey`; aftercare: disputes.ts, payouts.ts;
-// catalogue: saved.ts), so their handlers pick these rows up unchanged.
+// catalogue: saved.ts, team.ts), so their handlers pick these rows up unchanged.
 //
 // Rule for the seed: a deadline job (expiry, completion, batch preparation,
 // dispute position) is always scheduled, even when already due, because its
@@ -23,6 +23,7 @@ export const JOB_KINDS = {
   /** T14 */ reviewInvite: 'booking.review_invite',
   /** T15 */ disputePosition: 'dispute.position',
   /** T17 */ payoutsPrepare: 'payouts.prepare',
+  /** T19 */ teamDigest: 'digest.daily',
   /** T20 */ savedSearchScan: 'savedsearch.scan',
   /** T21 */ dateWatchExpire: 'datewatch.expire',
   /** T25 */ teamInviteExpire: 'teaminvite.expire',
@@ -44,6 +45,7 @@ export type TimerSettings = {
   reviewInviteDaysAfter: number;
   reviewInviteTime: string;
   payoutPrepareTime: string;
+  digestTime: string;
   savedSearchScanTime: string;
 };
 
@@ -103,9 +105,12 @@ export function planJobs(i: JobInputs): PlannedJob[] {
   }
   // T17: the day before the batch, at ⚙ payout.prepare_time.
   add(JOB_KINDS.payoutsPrepare, atTime(addDays(i.nextBatchDate, -1), s.payoutPrepareTime), { batchDate: i.nextBatchDate }, `batch:${i.nextBatchDate}`);
-  // T20 runs daily and schedules the next day itself; the seed starts the chain at the next scan time.
+  // T19 and T20 run daily and schedule the next day themselves; the seed starts each chain at its next run time.
   const today = sofiaDate(i.now);
-  const scanDay = atTime(today, s.savedSearchScanTime) > i.now ? today : addDays(today, 1);
+  const nextDay = (hhmm: string) => (atTime(today, hhmm) > i.now ? today : addDays(today, 1));
+  const digestDay = nextDay(s.digestTime);
+  add(JOB_KINDS.teamDigest, atTime(digestDay, s.digestTime), { date: digestDay }, `digest:${digestDay}`);
+  const scanDay = nextDay(s.savedSearchScanTime);
   add(JOB_KINDS.savedSearchScan, atTime(scanDay, s.savedSearchScanTime), { date: scanDay }, `savedsearch:${scanDay}`);
   for (const w of i.watches) {
     add(JOB_KINDS.dateWatchExpire, sofiaInstant(addDays(w.date, 1), 0, 0), { watchId: w.id }, `datewatch:${w.id}:expire`);

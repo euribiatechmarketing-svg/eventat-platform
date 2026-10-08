@@ -120,6 +120,7 @@ export const PARTNERS: PartnerSeed[] = [
     approvedAt: '2025-02-01 10:00', // D86; time (a)
     gallery: ['v1-dj-mod', 'v1-dj-perf', 'v1-dj-doc', 'dancers', 'booth'], avatar: 'v1-dj-doc', cover: 'v1-dj-mod',
     payout: { last4: '5272', bank: 'Postbank', branch: 'София', status: 'confirmed' },
+    // (a) Not in the prototype: the SPEC §4.2 ok examples with Студио Мелодия's own data.
     checkDetails: {
       company: 'ЕИК 204512389 · Студио Мелодия ЕООД · проверено в Търговския регистър',
       contacts: 'Телефон и имейл потвърдени',
@@ -486,7 +487,7 @@ export const BOOKINGS: BookingSeed[] = [
     sentAt: '2025-04-02 09:00', approvedAt: '2025-04-02 11:00', paidAt: '2025-04-02 14:00' },
   { number: null, client: 'netera', partner: 'studio-melodiya', service: 'sm-corporate', event: 'n-corp', kind: 'quote',
     title: 'Фирмени събития' /* (a) offer title */, amountCents: 190_000, status: 'completed', reviewState: 'reviewed',
-    offer: { title: 'Фирмени събития', sentAt: '2025-02-09 10:00', chosenAt: '2025-02-10 09:00' },
+    offer: { title: 'Фирмени събития', sentAt: '2025-02-09 09:00' /* before the 24 h deadline (R4) */, chosenAt: '2025-02-10 09:00' },
     sentAt: '2025-02-08 10:00', approvedAt: '2025-02-10 11:00', paidAt: '2025-02-10 14:00' },
   // ‹Датата беше блокирана от февруари› (admin/dispute.html 0509).
   { number: '2025-0509-СВ', client: 'denitsa', partner: 'studio-melodiya', service: 'sm-full', event: 'd-wed',

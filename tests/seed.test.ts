@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { and, asc, count, eq, inArray, sql } from 'drizzle-orm';
 import type { PgTable } from 'drizzle-orm/pg-core';
 import { verifyPassword } from 'better-auth/crypto';
-import { db } from '@/db';
+import { db, sql as pool } from '@/db';
 import * as s from '@/db/schema';
 import { invalidateClock, now, setTestNow } from '@/lib/clock';
 import { money, sofiaInstant } from '@/lib/format';
@@ -135,6 +135,15 @@ describe('row counts (DATA-MODEL §3 records, plus the assumed rows listed in sc
     expect(Object.fromEntries(st.map(r => [r.status, r.n]))).toEqual({ confirmed: 11, awaiting_payment: 3, completed: 6, cancelled: 1 });
     const reqs = await db.select({ status: s.request.status, n: count() }).from(s.request).groupBy(s.request.status);
     expect(Object.fromEntries(reqs.map(r => [r.status, r.n]))).toEqual({ approved: 21, pending: 5, declined: 2 });
+  });
+
+  it('R4: every seeded offer went out before its quote request’s 24-hour answer deadline (T2 fires at the deadline)', async () => {
+    const offers = await db.select({ number: s.request.number, offerSent: s.offer.sentAt, requestSent: s.request.sentAt })
+      .from(s.offer).innerJoin(s.request, eq(s.request.id, s.offer.requestId));
+    expect(offers).toHaveLength(2);
+    for (const o of offers) {
+      expect(o.offerSent!.getTime(), o.number).toBeLessThan(o.requestSent.getTime() + 24 * 3600_000);
+    }
   });
 });
 
@@ -347,6 +356,14 @@ describe('SPEC §3 timers', () => {
     const [expire] = jobs.filter(j => j.dedupeKey === `booking:${tl.id}:payexpire`);
     expect(expire.runAt).toEqual(at('2025-08-31 18:20'));
   });
+
+  it('T19: starts the team daily digest chain at the next ⚙ digest.time (09:00), like T17 and T20', async () => {
+    const digest = await db.select().from(s.job).where(and(eq(s.job.status, 'pending'), eq(s.job.dedupeKey, 'digest:2025-09-01')));
+    expect(digest).toHaveLength(1);
+    // The kind and payload the team module schedules and handles (`digest.daily`, { date }).
+    expect(digest[0]).toMatchObject({ kind: 'digest.daily', payload: { date: '2025-09-01' } });
+    expect(digest[0].runAt).toEqual(at('2025-09-01 09:00'));
+  });
 });
 
 describe('photos', () => {
@@ -405,6 +422,39 @@ describe('re-running', () => {
       await expect(seedDemo({ force: true })).rejects.toThrow(/non-local/);
     } finally {
       process.env.DATABASE_URL = saved;
+    }
+    expect(await rows(s.user)).toBe(30);
+  });
+
+  it('checks the connection it writes through, not only DATABASE_URL: the pool is opened when @/db is first imported', async () => {
+    // DATABASE_URL still names the local test database, but the pool's host is not local.
+    const opts = pool.options as unknown as { host: string[] };
+    const saved = opts.host;
+    opts.host = ['db.example.com'];
+    try {
+      await expect(seedDemo({ force: true })).rejects.toThrow(/non-local/);
+    } finally {
+      opts.host = saved;
+    }
+    expect(await rows(s.user)).toBe(30);
+  });
+
+  it('refuses while a real email transport is configured: the seeded timers would email the prototype’s real-domain addresses', async () => {
+    const saved = process.env.EMAIL_TRANSPORT;
+    process.env.EMAIL_TRANSPORT = 'postmark';
+    try {
+      await expect(seedDemo({ force: true })).rejects.toBeInstanceOf(SeedRefusedError);
+    } finally {
+      if (saved === undefined) delete process.env.EMAIL_TRANSPORT; else process.env.EMAIL_TRANSPORT = saved;
+    }
+    expect(await rows(s.user)).toBe(30);
+    // outbox (recorded only) is the demo transport (docs/DEPLOY.md, Demo / staging).
+    const ok = process.env.EMAIL_TRANSPORT;
+    process.env.EMAIL_TRANSPORT = 'outbox';
+    try {
+      seeded = await seedDemo({ force: true });
+    } finally {
+      if (ok === undefined) delete process.env.EMAIL_TRANSPORT; else process.env.EMAIL_TRANSPORT = ok;
     }
     expect(await rows(s.user)).toBe(30);
   });

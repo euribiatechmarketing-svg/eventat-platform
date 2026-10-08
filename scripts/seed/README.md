@@ -8,7 +8,8 @@ npm run db:reset && npm run db:seed        # fresh schema + demo data
 npm run db:seed -- --force                 # truncate every table, then seed again
 ```
 
-- It only runs against a local database (`127.0.0.1`, `localhost`, `::1`).
+- It only runs against a local database (`127.0.0.1`, `localhost`, `::1`). Both `DATABASE_URL` and the host of the open connection pool are checked, because the pool is created when `@/db` is first imported.
+- It only runs with `EMAIL_TRANSPORT=outbox` (or unset). The records carry the prototype's addresses, several on real domains, and the first timers fall due minutes after "now", so demo email must stay in the outbox (docs/DEPLOY.md, Demo / staging).
 - It refuses a database that already has users. `--force` truncates every table first. The seed itself is one transaction: if it fails, the database is left empty and the next run seeds it.
 - `.env.local` fills in any variable the shell has not set.
 - `ALLOW_TIME_TRAVEL=true` is needed for the demo clock. The seed stores `clock_offset_ms` so that `now()` reads **Sunday 31 August 2025, 12:00 Sofia** at the moment of seeding (S1, D4). Business time then runs on from there.
@@ -48,7 +49,7 @@ npm run db:seed -- --force                 # truncate every table, then seed aga
   The 1 September 2025 batch is `scheduled`, with no lines. The ledger reconciles: `provider_held` equals the client funds still held for the 11 confirmed bookings, and `partner_payable` is 0.
 - **Disputes.** The 7 cases of admin/dispute.html `CASES`, verbatim. That includes facts, agreed terms, comparisons, notes, statements, options and decisions.
 - **Conversations, reviews and notes.** 8 conversations with 21 messages (S10), 3 reviews (S11) and 4 team notes (S13).
-- **Jobs.** The 79 pending timers the states imply (below).
+- **Jobs.** The 80 pending timers the states imply (below).
 
 Not written:
 - the emails and `audit_log` rows of the history;
@@ -78,11 +79,12 @@ The kinds, dedupe keys and payloads match what the owning modules schedule:
 | T14 | `booking.review_invite` | `booking:<id>:reviewinvite` | `{ bookingId }` | 11 |
 | T15 | `dispute.position` | `dispute:<id>:position` | `{ disputeId }` | 3 cases collecting |
 | T17 | `payouts.prepare` | `batch:2025-09-01` | `{ batchDate }` | due 31.08 09:00, so the first tick prepares the batch |
+| T19 | `digest.daily` | `digest:2025-09-01` | `{ date }` | starts the daily chain at ⚙ `digest.time` (team module: `team.ts`) |
 | T20 | `savedsearch.scan` | `savedsearch:2025-09-01` | `{ date }` | starts the daily chain |
 | T21 | `datewatch.expire` | `datewatch:<id>:expire` | `{ watchId }` | 2 watches |
 | T25 | `teaminvite.expire` | `teaminvite:<id>:expire` | `{ inviteId }` | 2 invites (the team module must register this kind) |
 
-T19 (team daily digest) is not seeded, because no module registers it yet.
+T19 and T20 are daily chains: each run schedules the next day, so the seed writes only the next run.
 
 ## Values the seed had to assume (for `docs/review-list.md`)
 
@@ -128,7 +130,7 @@ DATA-MODEL S14 lists the expected assumptions. The seed adds the ones below, whi
   - Legal names: `<business name> ЕООД`, legal form ЕООД, no ЕИК.
 - **Partner checks.**
   - Unverified approved partners have `company` waiting and `contacts` ok (`is_verified` = both ok).
-  - Check details are stored only where the prototype shows them: Студио Мелодия's three team checks and all six of Лунна Фотография's.
+  - Check details are stored for Лунна Фотография (all six, from admin/vendor.html) and for Студио Мелодия's three team checks. Студио Мелодия's are not in the prototype: they follow the SPEC §4.2 ok examples with its own data (‹ЕИК 204512389 · Студио Мелодия ЕООД · проверено в Търговския регистър›, ‹Телефон и имейл потвърдени›, ‹5 снимки · няма водни знаци от други студия›).
 - **Partner photos.**
   - The avatar and cover of every partner except Студио Мелодия are its catalogue photo.
   - Лунна Фотография's gallery has the 7 photos admin/vendor.html shows, in that order (D77). Position 0 is v1-photographer-mod; the catalogue card shows photographer.
@@ -158,7 +160,7 @@ DATA-MODEL S14 lists the expected assumptions. The seed adds the ones below, whi
   - The refund of 2025-0517-РД went through on 21.05.2025 at 10:00.
 - **Quote bookings.**
   - Мария's ‹Парти програма, 5 часа›: request on 04.08 at 10:00, offer on 04.08 at 16:00, chosen on 05.08 at 09:00.
-  - Нетера: request on 08.02 at 10:00, offer on 09.02 at 10:00, chosen on 10.02 at 09:00.
+  - Нетера: request on 08.02 at 10:00, offer on 09.02 at 09:00 (inside the 24 hours, R4), chosen on 10.02 at 09:00.
   - Нетера's offer and booking title is ‹Фирмени събития›.
 - **Booking service titles.**
   - 2026-0621-ТЛ: ‹Кетъринг · меню „Градина“› with ‹100 гости› (the case's agreed terms). Its request keeps the approved 3 200,00 €; the booking is at 3 600,00 €.

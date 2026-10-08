@@ -11,7 +11,7 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import { generateRandomString, hashPassword } from 'better-auth/crypto';
-import { db } from '@/db';
+import { db, sql as pool } from '@/db';
 import * as s from '@/db/schema';
 import { invalidateClock } from '@/lib/clock';
 import { addDays, date as fmtDate, sofiaDate, sofiaInstant, type DateStr } from '@/lib/format';
@@ -41,6 +41,16 @@ export type SeedResult = {
   jobs: PlannedJob[];
   numbers: Record<string, string>;
 };
+
+/**
+ * The pool the seed writes through is opened when `@/db` is first imported, so
+ * DATABASE_URL may since have changed: every host of the pool itself must be
+ * this machine (the same hosts isLocalUrl accepts). A unix-socket path is refused too.
+ */
+export function isLocalPool(options: { host: readonly string[] }): boolean {
+  const local = ['127.0.0.1', 'localhost', '::1', '[::1]'];
+  return options.host.length > 0 && options.host.every(h => local.includes(h));
+}
 
 // ── helpers ──────────────────────────────────────────────────────────────
 
@@ -111,6 +121,15 @@ export async function seedDemo(opts: SeedOptions = {}): Promise<SeedResult> {
   const log = opts.log ?? (() => {});
   const url = process.env.DATABASE_URL ?? DEFAULT_URL;
   if (!isLocalUrl(url)) throw new SeedRefusedError(`Refusing to seed a non-local database: ${redact(url)}`);
+  if (!isLocalPool(pool.options)) {
+    throw new SeedRefusedError(`Refusing to seed a non-local database: the connection goes to ${pool.options.host.join(', ')}`);
+  }
+  // The records carry the prototype's addresses, several on real domains (gmail.com, abv.bg, eventat.bg…),
+  // and the seeded timers start sending within minutes of "now": demo mail is recorded only (docs/DEPLOY.md).
+  const transport = process.env.EMAIL_TRANSPORT ?? 'outbox';
+  if (transport !== 'outbox') {
+    throw new SeedRefusedError(`Refusing to seed while EMAIL_TRANSPORT=${transport}: the demo's emails would reach real addresses; use EMAIL_TRANSPORT=outbox`);
+  }
 
   const [{ n: userCount }] = await db.select({ n: sql<number>`count(*)::int` }).from(s.user);
   if (userCount > 0) {
@@ -917,6 +936,7 @@ export async function seedDemo(opts: SeedOptions = {}): Promise<SeedResult> {
         reviewInviteDaysAfter: settings['reviews.invite_days_after'],
         reviewInviteTime: settings['reviews.invite_time'],
         payoutPrepareTime: settings['payout.prepare_time'],
+        digestTime: settings['digest.time'],
         savedSearchScanTime: settings['saved_search.scan_time'],
       },
       pendingRequests,
