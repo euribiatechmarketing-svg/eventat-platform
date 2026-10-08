@@ -33,8 +33,8 @@ import { audit } from './audit';
 import { accountBalance, partnerBalances, postTransaction } from './ledger';
 import { getSetting } from './settings';
 import {
-  AftercareError, bpOf, ctxText, loadBookingCtx, mail, mailPartner, mailTeam, pendingRefundCents, providerFor, routes, scheduleOnce, schedule,
-  withTx, type BookingRow,
+  AftercareError, bpOf, ctxText, errorText, isFinalAttempt, loadBookingCtx, mail, mailPartner, mailTeam, outstandingRefundCents, owedRefundSql,
+  providerFor, routes, scheduleOnce, schedule, withTx, type BookingRow,
 } from './aftercare-shared';
 
 type LineRow = typeof payoutLine.$inferSelect;
@@ -77,13 +77,21 @@ export function batchName(batchDate: DateStr): string {
 export const batchLabel = (batchDate: DateStr) => `Партида ${batchName(batchDate)}`;
 
 /**
- * The rail the provider pays through, for the team emails' ‹Банка› row. The
- * prototype's ‹Обединена банка› was EventAT's own bank; with a licensed
- * provider the payout leaves the provider (D6), so the provider is named.
+ * The rail label of a new batch (SPEC §8: ‹Обединена банка · SEPA›, "from the
+ * provider"). Stripe pays out over SEPA under its own name; the simulated
+ * provider has no rail of its own, so the label on record (the seed's
+ * historical batches) carries over. No label is invented: without one the
+ * batch has none (new copy would need approval).
  */
-function railBank(): string {
-  return process.env.PAYMENT_PROVIDER === 'stripe' ? 'Stripe' : 'Симулиран доставчик';
+async function railLabelFor(tx: Queryable): Promise<string | null> {
+  if ((await getSetting('payment.provider', undefined, tx)) === 'stripe') return 'Stripe · SEPA';
+  const [last] = await tx.select({ rail: payoutBatch.railLabel }).from(payoutBatch)
+    .where(isNotNull(payoutBatch.railLabel)).orderBy(desc(payoutBatch.batchDate)).limit(1);
+  return last?.rail ?? null;
 }
+
+/** The ‹Банка› of the team emails: the batch's rail without the ‹ · SEPA› the templates add. */
+const bankOf = (batch: { railLabel: string | null }) => (batch.railLabel ?? '').replace(/\s*·\s*SEPA$/, '');
 
 // ── Lines (Y1, Y2) ────────────────────────────────────────────────────────
 
@@ -136,22 +144,33 @@ export async function createPayoutLine(bookingId: string, tx: Tx): Promise<LineR
   return l;
 }
 
-/** What the partner is due for a booking before commission: the price, the retained amount after a cancellation, less dispute refunds. */
+/**
+ * What the partner is due for a booking before commission: the price, the
+ * retained amount after a cancellation, less dispute refunds the client is owed
+ * (pending, succeeded, or failed and not yet retried: F3 keeps that money held).
+ */
 async function partnerDueBase(tx: Queryable, b: BookingRow): Promise<number> {
   if (b.status === 'cancelled') {
     const [c] = await tx.select({ retained: cancellation.retainedCents }).from(cancellation).where(eq(cancellation.bookingId, b.id));
     return c?.retained ?? 0;
   }
   const [r] = await tx.select({ s: sql<number>`coalesce(sum(${refund.amountCents}), 0)::int`.mapWith(Number) }).from(refund)
-    .where(and(eq(refund.bookingId, b.id), inArray(refund.status, ['pending', 'succeeded']), eq(refund.reason, 'dispute_decision')));
+    .where(and(eq(refund.bookingId, b.id), eq(refund.reason, 'dispute_decision'), owedRefundSql));
   return b.amountCents + b.bookingFeeCents - (r?.s ?? 0);
 }
 
 /** Base already released to the partner (Σ released lines, net of clawbacks). */
 async function releasedBase(tx: Queryable, bookingId: string): Promise<number> {
-  const [r] = await tx.select({ s: sql<number>`coalesce(sum(${payoutLine.baseCents}), 0)::int`.mapWith(Number) }).from(payoutLine)
-    .where(and(eq(payoutLine.bookingId, bookingId), isNotNull(payoutLine.readyAt)));
-  return r?.s ?? 0;
+  return (await released(tx, bookingId)).base;
+}
+
+/** Σ base and commission of the booking's released lines (net of clawbacks). */
+async function released(tx: Queryable, bookingId: string): Promise<{ base: number; commission: number }> {
+  const [r] = await tx.select({
+    base: sql<number>`coalesce(sum(${payoutLine.baseCents}), 0)::int`.mapWith(Number),
+    commission: sql<number>`coalesce(sum(${payoutLine.commissionCents}), 0)::int`.mapWith(Number),
+  }).from(payoutLine).where(and(eq(payoutLine.bookingId, bookingId), isNotNull(payoutLine.readyAt)));
+  return { base: r?.base ?? 0, commission: r?.commission ?? 0 };
 }
 
 export type ReleaseResult = { releasedCents: number; commissionCents: number; lineId: string | null; held: boolean };
@@ -174,11 +193,13 @@ export async function releaseBookingFunds(
   if (!b) throw new AftercareError('not_found');
   if (b.payoutHold && !a.early) return { releasedCents: 0, commissionCents: 0, lineId: null, held: true };
   const held = await accountBalance(tx, 'client_funds', { bookingId: b.id });
-  const available = held - (await pendingRefundCents(tx, b.id));
-  const due = (await partnerDueBase(tx, b)) - (await releasedBase(tx, b.id));
+  const available = held - (await outstandingRefundCents(tx, b.id));
+  const already = await released(tx, b.id);
+  const due = (await partnerDueBase(tx, b)) - already.base;
   const B = Math.min(available, due, a.baseCents ?? Number.POSITIVE_INFINITY);
   if (B <= 0) return { releasedCents: 0, commissionCents: 0, lineId: null, held: false };
-  const C = bpOf(B, b.commissionBp ?? 0);
+  // Rounded once per booking (SPEC §0, §6): a release in parts (T18, then K13) adds up to round_half_up(base × rate).
+  const C = Math.min(B, Math.max(0, bpOf(already.base + B, b.commissionBp ?? 0) - already.commission));
   await postTransaction(tx, {
     kind: a.early ? 'early_release' : 'release', bookingId: b.id, partnerId: b.partnerId, chargeId: a.early?.chargeId ?? null,
     description: a.description ?? `${a.early ? 'L3 early release' : 'L3 release'} ${b.number}`,
@@ -527,7 +548,8 @@ async function payoutAmount(tx: Tx, partnerId: string, linesSum: number, post?: 
 }
 
 async function getOrCreateBatch(tx: Tx, batchDate: DateStr): Promise<BatchRow> {
-  await tx.insert(payoutBatch).values({ batchDate, label: batchLabel(batchDate), railLabel: `${railBank()} · SEPA` }).onConflictDoNothing();
+  const [exists] = await tx.select({ id: payoutBatch.id }).from(payoutBatch).where(eq(payoutBatch.batchDate, batchDate));
+  if (!exists) await tx.insert(payoutBatch).values({ batchDate, label: batchLabel(batchDate), railLabel: await railLabelFor(tx) }).onConflictDoNothing();
   const [b] = await tx.select().from(payoutBatch).where(eq(payoutBatch.batchDate, batchDate)).for('update');
   return b;
 }
@@ -543,6 +565,8 @@ export async function prepareBatch(batchDate: DateStr, tx?: Tx): Promise<{ batch
     const days = await getSetting('payout.days', undefined, tx);
     await ensureBatchScheduled(payoutDayOnOrAfter(addDays(batchDate, 1), days), tx);
     if (batch.status !== 'scheduled') return { batchId: batch.id, prepared: false };
+    // A batch created without a rail (e.g. seeded as `scheduled`) takes the current one now.
+    if (!batch.railLabel) await tx.update(payoutBatch).set({ railLabel: await railLabelFor(tx) }).where(eq(payoutBatch.id, batch.id));
     const synced = await syncBatch(tx, batch);
     const net: number[] = [];
     for (const s of synced.ready) {
@@ -561,7 +585,7 @@ export async function prepareBatch(batchDate: DateStr, tx?: Tx): Promise<{ batch
     }
     if (b.partnerCount > 0 || b.heldCents > 0) {
       await mailTeam(tx, 'view_finance', 'team-batch-ready', {
-        batchDate: fmtDate(batchDate), partnerCount: b.partnerCount, total: money(b.netCents), bank: railBank(), ...(heldVar ? { held: heldVar } : {}),
+        batchDate: fmtDate(batchDate), partnerCount: b.partnerCount, total: money(b.netCents), bank: bankOf(b), ...(heldVar ? { held: heldVar } : {}),
       }, `batch:${batchDate}:ready`);
     }
     await audit(tx, {
@@ -630,16 +654,27 @@ export async function releaseBatch(actor: Actor, input: { batchId: string }, tx?
   });
 }
 
-/** Job `payout.submit`: hand one sent item to the provider (idempotency key = item id), then apply the result. */
+/**
+ * Job `payout.submit`: hand one sent item to the provider (idempotency key =
+ * item id), then apply the result. A provider call that still throws on the
+ * job's last attempt is a failed transfer (Y8), not an item left `sent` for good.
+ */
 export async function submitPayoutItem(itemId: string): Promise<void> {
   const [item] = await db.select().from(payoutItem).where(eq(payoutItem.id, itemId));
   if (!item || item.status !== 'sent' || item.providerPayoutRef) return;
   const [p] = await db.select().from(partner).where(eq(partner.id, item.partnerId));
   const [batch] = await db.select().from(payoutBatch).where(eq(payoutBatch.id, item.batchId));
   const provider = providerFor(p.provider ?? (await getSetting('payment.provider')));
-  const r = await provider.payout({
-    payoutItemId: item.id, partnerAccountRef: p.providerAccountRef ?? '', amountCents: item.amountCents, description: `EventAT · ${batch.label}`,
-  });
+  let r: Awaited<ReturnType<typeof provider.payout>>;
+  try {
+    r = await provider.payout({
+      payoutItemId: item.id, partnerAccountRef: p.providerAccountRef ?? '', amountCents: item.amountCents, description: `EventAT · ${batch.label}`,
+    });
+  } catch (e) {
+    if (!(await isFinalAttempt(`payout_item:${itemId}:submit`))) throw e;
+    await db.transaction(tx => markItemFailed(tx, itemId, errorText(e)));
+    return;
+  }
   await db.transaction(async tx => {
     const [cur] = await tx.select().from(payoutItem).where(eq(payoutItem.id, itemId)).for('update');
     if (!cur || cur.status !== 'sent') return;
@@ -723,7 +758,7 @@ export async function markItemFailed(tx: Tx, itemId: string, reason: string): Pr
   const [acct] = item.payoutAccountId ? await tx.select().from(payoutAccount).where(eq(payoutAccount.id, item.payoutAccountId)) : [];
   await mailTeam(tx, 'view_finance', 'team-transfer-failed', {
     partnerName: p.name, amount: money(item.amountCents), ibanLast4: acct?.ibanLast4 ?? '', batchDate: fmtDate(batch.batchDate),
-    bank: railBank(), reason,
+    bank: bankOf(batch), reason,
   }, `payout_item:${item.id}:failed`);
   await audit(tx, {
     actor: SYSTEM, action: 'payout.item_failed', entity: 'payout_item', entityId: item.id,
@@ -746,7 +781,7 @@ async function checkBatchCompletion(tx: Tx, batchId: string): Promise<void> {
       const days = await getSetting('payout.days', undefined, tx);
       await mailTeam(tx, 'view_finance', 'team-batch-paid', {
         batchName: batchName(batch.batchDate), paidOn: fmtDate(sofiaDate(at)), partnerCount: items.length,
-        total: money(items.reduce((s, i) => s + i.amountCents, 0)), bank: railBank(),
+        total: money(items.reduce((s, i) => s + i.amountCents, 0)), bank: bankOf(batch),
         nextBatchDate: fmtDate(payoutDayOnOrAfter(addDays(batch.batchDate, 1), days)),
       }, `batch:${batch.batchDate}:paid`);
     }
@@ -833,7 +868,7 @@ export async function requestBatchReport(actor: Actor, input: { batchId: string 
     const [u] = await tx.select({ email: user.email }).from(user).where(eq(user.id, actor.userId));
     await mail(tx, {
       key: 'team-batch-report', to: u.email, toUserId: actor.userId, dedupeKey: `report:${r.id}`,
-      vars: { batchName: batchName(batch.batchDate), paidOn: fmtDate(sofiaDate(batch.paidAt ?? at)), partnerCount: batch.partnerCount, total: money(batch.netCents), bank: railBank() },
+      vars: { batchName: batchName(batch.batchDate), paidOn: fmtDate(sofiaDate(batch.paidAt ?? at)), partnerCount: batch.partnerCount, total: money(batch.netCents), bank: bankOf(batch) },
     });
     await audit(tx, { actor, action: 'report.requested', entity: 'report_job', entityId: r.id, data: { kind: 'batch_report', batchId: batch.id } });
     return { reportId: r.id };
@@ -979,7 +1014,7 @@ export async function partnerEarnings(partnerId: string, opts: { at?: Date } = {
     .where(and(eq(booking.partnerId, partnerId), isNotNull(booking.paidAt), gte(booking.paidAt, sofiaInstant(monthStart(months[0]))),
       inArray(booking.status, ['confirmed', 'cancellation_requested', 'completed', 'cancelled'])));
   const disputeRefunds = rows.length ? await q.select({ bookingId: refund.bookingId, s: sql<number>`sum(${refund.amountCents})::int`.mapWith(Number) }).from(refund)
-    .where(and(inArray(refund.bookingId, rows.map(r => r.b.id)), inArray(refund.status, ['pending', 'succeeded']), eq(refund.reason, 'dispute_decision')))
+    .where(and(inArray(refund.bookingId, rows.map(r => r.b.id)), eq(refund.reason, 'dispute_decision'), owedRefundSql))
     .groupBy(refund.bookingId) : [];
   const dr = new Map(disputeRefunds.map(r => [r.bookingId, r.s]));
   const perMonth = new Map<string, number>();

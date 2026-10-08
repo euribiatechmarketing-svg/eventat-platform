@@ -15,16 +15,16 @@ import {
   type DisputeDecisionKind, type DisputeParty, type DisputeReason,
 } from '@/db/schema';
 import { now } from '@/lib/clock';
-import { addDays, date as fmtDate, dateTime, money, moneyShort, sofiaDate } from '@/lib/format';
+import { addDays, date as fmtDate, dateTime, money, moneyShort, sofiaDate, sofiaInstant } from '@/lib/format';
 import { ForbiddenError, SYSTEM, assertCan, type Actor, type AnyActor } from './actor';
 import { audit } from './audit';
 import { getSetting } from './settings';
-import { cancelBookingCore, policiesFor, quote } from './cancellation';
+import { cancelBookingCore, quoteFor } from './cancellation';
 import { syncBookingHold } from './payouts';
 import { createRefunds, refundableCharges } from './refunds';
 import {
   AftercareError, DISPUTE_REASON_LABEL, bpOf, cancelPending, ctxText, loadBookingCtx, low, mailClient, mailPartner, mailTeam, paidCents,
-  percentOf, routes, schedule, withTx, type BookingCtx,
+  percentOf, refundablePaidCents, routes, schedule, withTx, type BookingCtx,
 } from './aftercare-shared';
 
 export type DisputeRow = typeof dispute.$inferSelect;
@@ -390,19 +390,38 @@ export async function setOptions(actor: Actor, input: { disputeId: string; optio
   });
 }
 
-/** The team's case notes: title, summary, facts, agreed terms, comparison, urgency. */
+/**
+ * The team's case notes: title, summary, facts, agreed terms, comparison,
+ * urgency — and the position deadline, which the team may change while the
+ * case is collecting (X2): T15 moves with it.
+ */
 export async function updateCase(actor: Actor, input: {
   disputeId: string; title?: string; summary?: string | null; facts?: unknown[]; agreedTerms?: unknown[]; comparison?: unknown[] | null;
-  note?: string | null; urgent?: boolean;
+  note?: string | null; urgent?: boolean; positionDueAt?: Date;
 }, tx?: Tx): Promise<void> {
   assertCan(actor, 'resolve_disputes');
   return withTx(tx, async tx => {
     const d = await lockDispute(tx, input.disputeId);
-    const { disputeId: _id, ...patch } = input;
+    const { disputeId: _id, title, summary, facts, agreedTerms, comparison, note, urgent, positionDueAt } = input;
     void _id;
-    if (patch.title !== undefined && !patch.title.trim()) throw new AftercareError('title_required');
-    await tx.update(dispute).set({ ...patch, updatedAt: await now() }).where(eq(dispute.id, d.id));
-    await audit(tx, { actor, action: 'dispute.updated', entity: 'dispute', entityId: d.id, data: { fields: Object.keys(patch) } });
+    const patch = { title, summary, facts, agreedTerms, comparison, note, urgent, positionDueAt };
+    for (const k of Object.keys(patch) as (keyof typeof patch)[]) if (patch[k] === undefined) delete patch[k];
+    if (title !== undefined && !title.trim()) throw new AftercareError('title_required');
+    const at = await now();
+    if (positionDueAt !== undefined) {
+      if (d.status !== 'collecting' || !(positionDueAt instanceof Date) || Number.isNaN(positionDueAt.getTime()) || positionDueAt <= at) {
+        throw new AftercareError('bad_position_date');
+      }
+    }
+    await tx.update(dispute).set({ ...patch, updatedAt: at }).where(eq(dispute.id, d.id));
+    // A team-opened case notified nobody (D68) and has no T15; the others' timer follows the new deadline.
+    if (positionDueAt !== undefined && d.openedBy !== 'team') {
+      await schedule('dispute.position', positionDueAt, { disputeId: d.id }, `dispute:${d.id}:position`, tx);
+    }
+    await audit(tx, {
+      actor, action: 'dispute.updated', entity: 'dispute', entityId: d.id,
+      data: { fields: Object.keys(patch), ...(positionDueAt ? { positionDueAt: positionDueAt.toISOString() } : {}) },
+    });
   });
 }
 
@@ -482,7 +501,8 @@ export async function decide(actor: Actor, input: DecideInput, tx?: Tx): Promise
     const kind = opt?.kind ?? input.kind;
     if (!kind) throw new AftercareError('kind_required');
     const at = await now();
-    const paid = await paidCents(tx, b.id);
+    // What can still be given back: refunds already on their way and chargebacks are not refunded twice.
+    const paid = await refundablePaidCents(tx, b.id);
     let refundCents = 0, cancelled = false, newAmount: number | null = null;
     let complianceDueAt: Date | null = null;
     let title = input.title?.trim() || opt?.label || DEFAULT_TITLE[kind] || null;
@@ -508,7 +528,7 @@ export async function decide(actor: Actor, input: DecideInput, tx?: Tx): Promise
       case 'cancel_unpaid': {
         if (kind === 'cancel_unpaid' && b.status !== 'awaiting_payment') throw new AftercareError('not_awaiting_payment');
         if (!(DISPUTABLE as readonly string[]).includes(b.status)) throw new AftercareError('not_cancellable');
-        const q = quote({ ...b, paidCents: paid }, at, 'dispute', await policiesFor(b, tx));
+        const q = await quoteFor(tx, ctx, 'dispute');
         await cancelBookingCore(tx, ctx, { actor, initiatedBy: 'dispute', quote: q, refundReason: 'dispute_decision', disputeId: d.id });
         refundCents = q.refundCents;
         cancelled = true;
@@ -524,8 +544,15 @@ export async function decide(actor: Actor, input: DecideInput, tx?: Tx): Promise
         }
         if (amount === null || !Number.isSafeInteger(amount) || amount <= 0) throw new AftercareError('bad_amount');
         newAmount = amount;
-        // K16: restore_price also opens a new 24 h payment window.
-        await repriceBooking(tx, b, amount, kind === 'restore_price' ? new Date(at.getTime() + (await getSetting('payment.window_hours', undefined, tx)) * 3600_000) : null);
+        // K16: restore_price also opens a new 24 h payment window, clamped like K1's (§3): never past the event start.
+        let newDueAt: Date | null = null;
+        if (kind === 'restore_price') {
+          const window = new Date(at.getTime() + (await getSetting('payment.window_hours', undefined, tx)) * 3600_000);
+          const [hh, mm] = (b.startTime ?? '00:00').split(':').map(Number);
+          const eventStart = sofiaInstant(b.eventDate, hh, mm);
+          newDueAt = window < eventStart ? window : eventStart;
+        }
+        await repriceBooking(tx, b, amount, newDueAt);
         break;
       }
       case 'enforce_terms': {
@@ -631,7 +658,7 @@ export async function complianceDeadline(input: { disputeId: string }, tx?: Tx):
     const ctx = await loadBookingCtx(tx, d.bookingId, { lock: true });
     const b = ctx.booking;
     if (!(DISPUTABLE as readonly string[]).includes(b.status)) return false;
-    const q = quote({ ...b, paidCents: await paidCents(tx, b.id) }, await now(), 'dispute', await policiesFor(b, tx));
+    const q = await quoteFor(tx, ctx, 'dispute');
     await cancelBookingCore(tx, ctx, { actor: SYSTEM, initiatedBy: 'dispute', quote: q, refundReason: 'dispute_decision', disputeId: d.id });
     await tx.update(dispute).set({ refundCents: q.refundCents, partnerKeepsCents: 0, heldCents: 0, updatedAt: await now() }).where(eq(dispute.id, d.id));
     await audit(tx, { actor: SYSTEM, action: 'dispute.fallback_applied', entity: 'dispute', entityId: d.id, data: { refundCents: q.refundCents } });

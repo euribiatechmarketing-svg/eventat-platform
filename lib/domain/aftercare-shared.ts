@@ -14,7 +14,7 @@ import { sendEmail } from '@/lib/email/send';
 import { TEMPLATES } from '@/lib/email/templates';
 import { addDays, date as fmtDate, sofiaDate, type DateStr } from '@/lib/format';
 import { notify } from '@/lib/notify';
-import { scheduleJob } from '@/lib/jobs';
+import { MAX_JOB_ATTEMPTS, scheduleJob } from '@/lib/jobs';
 import { simulatedProvider } from '@/lib/payments/simulated';
 import { stripeProvider } from '@/lib/payments/stripe';
 import type { PaymentProvider, ProviderId } from '@/lib/payments/types';
@@ -236,6 +236,18 @@ export async function cancelPending(prefix: string, tx: Tx): Promise<void> {
     for update skip locked)`);
 }
 
+/**
+ * Inside a job handler: is this the job's last try before runDueJobs gives it
+ * up? A provider call that keeps throwing must then end in a recorded failure
+ * (F3 / Y8) instead of a row left pending forever that nobody sees.
+ */
+export async function isFinalAttempt(dedupeKey: string): Promise<boolean> {
+  const [j] = await db.select({ attempts: job.attempts }).from(job).where(eq(job.dedupeKey, dedupeKey)).limit(1);
+  return !!j && j.attempts + 1 >= MAX_JOB_ATTEMPTS;
+}
+
+export const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e)) || 'error';
+
 // ── Payments ──────────────────────────────────────────────────────────────
 
 /** A charge keeps the provider it was created with (D5). */
@@ -246,20 +258,65 @@ export function providerFor(id: ProviderId | null | undefined): PaymentProvider 
 /** Charge statuses that mean the money arrived (refunds change the status but not that fact). */
 export const RECEIVED: ('succeeded' | 'partially_refunded' | 'refunded')[] = ['succeeded', 'partially_refunded', 'refunded'];
 
-/** paid = Σ succeeded charges − Σ succeeded refunds (SPEC §5.1). */
+// The correlated subqueries below name the outer table explicitly ("charge"."id",
+// "refund"."…"): drizzle renders a select-list column unqualified, which inside
+// a subquery would bind to the subquery's own table.
+
+/** Σ of a charge's open or lost chargebacks: money the card network took back (SQL, correlated on `charge`). */
+export const chargedBackSql = sql<number>`coalesce((select sum(cb.amount_cents) from chargeback cb
+  where cb.charge_id = "charge"."id" and cb.status in ('open', 'lost')), 0)`;
+
+/**
+ * paid = Σ succeeded charges − Σ succeeded refunds (SPEC §5.1), per charge and
+ * never below 0, less what an open or lost chargeback took back: that money is
+ * no longer the platform's to refund.
+ */
 export async function paidCents(q: Queryable, bookingId: string): Promise<number> {
-  const [c] = await q.select({ s: sql<number>`coalesce(sum(${charge.amountCents}), 0)::int`.mapWith(Number) }).from(charge)
-    .where(and(eq(charge.bookingId, bookingId), inArray(charge.status, RECEIVED)));
-  const [r] = await q.select({ s: sql<number>`coalesce(sum(${refund.amountCents}), 0)::int`.mapWith(Number) }).from(refund)
-    .where(and(eq(refund.bookingId, bookingId), eq(refund.status, 'succeeded')));
-  return (c?.s ?? 0) - (r?.s ?? 0);
+  const [c] = await q.select({
+    s: sql<number>`coalesce(sum(greatest(0, "charge"."amount_cents"
+      - coalesce((select sum(r.amount_cents) from refund r where r.charge_id = "charge"."id" and r.status = 'succeeded'), 0)
+      - ${chargedBackSql})), 0)::int`.mapWith(Number),
+  }).from(charge).where(and(eq(charge.bookingId, bookingId), inArray(charge.status, RECEIVED)));
+  return c?.s ?? 0;
 }
+
+/**
+ * A failed refund that no retry or manual refund has replaced yet (same charge,
+ * reason, cancellation and decision, created no earlier): the client is still owed it.
+ */
+export const uncoveredFailedSql = sql<boolean>`("refund"."status" = 'failed' and not exists (
+  select 1 from refund r2 where r2.charge_id = "refund"."charge_id" and r2.reason = "refund"."reason" and r2.id <> "refund"."id"
+    and r2.created_at >= "refund"."created_at" and r2.status in ('pending', 'succeeded')
+    and r2.cancellation_id is not distinct from "refund"."cancellation_id" and r2.dispute_id is not distinct from "refund"."dispute_id"))`;
+
+/** A refund the client is owed or has had: pending, succeeded, or failed and not replaced yet. */
+export const owedRefundSql = sql<boolean>`("refund"."status" in ('pending', 'succeeded') or ${uncoveredFailedSql})`;
 
 /** Σ refunds still pending at the provider (the money is still held for the booking). */
 export async function pendingRefundCents(q: Queryable, bookingId: string): Promise<number> {
   const [r] = await q.select({ s: sql<number>`coalesce(sum(${refund.amountCents}), 0)::int`.mapWith(Number) }).from(refund)
     .where(and(eq(refund.bookingId, bookingId), eq(refund.status, 'pending')));
   return r?.s ?? 0;
+}
+
+/**
+ * Money held for the booking that must still go back to the client: refunds
+ * pending at the provider plus failed ones the team has not retried or paid by
+ * hand yet (F3, D67). Never released to the partner.
+ */
+export async function outstandingRefundCents(q: Queryable, bookingId: string): Promise<number> {
+  const [r] = await q.select({ s: sql<number>`coalesce(sum(${refund.amountCents}), 0)::int`.mapWith(Number) }).from(refund)
+    .where(and(eq(refund.bookingId, bookingId), sql`(${refund.status} = 'pending' or ${uncoveredFailedSql})`));
+  return r?.s ?? 0;
+}
+
+/**
+ * What a new refund or a cancellation quote may still give back: paid less the
+ * refunds already on their way (pending at the provider). Refunds never exceed
+ * what was paid.
+ */
+export async function refundablePaidCents(q: Queryable, bookingId: string): Promise<number> {
+  return Math.max(0, (await paidCents(q, bookingId)) - (await pendingRefundCents(q, bookingId)));
 }
 
 /** The latest received charge: what ‹Карта Visa •••• 4242› and „картата, завършваща на …“ show. */

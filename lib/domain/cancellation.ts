@@ -27,7 +27,8 @@ import { adjustLinesForCancellation, releaseBookingFunds } from './payouts';
 import { createRefunds, type RefundRow } from './refunds';
 import {
   AftercareError, CANCELLATION_REASON_LABEL, POLICY_DEFINITE, POLICY_NAME, bpOf, cancelPending, ctxText, fireDateWatches, loadBookingCtx,
-  low, mailClient, mailPartner, mailTeam, paidCents, payingCharge, paymentMethodText, percentOf, routes, schedule, withTx, type BookingCtx,
+  low, mailClient, mailPartner, mailTeam, paidCents, payingCharge, paymentMethodText, percentOf, refundablePaidCents, routes, schedule, withTx,
+  type BookingCtx,
 } from './aftercare-shared';
 
 // ── The engine (pure) ─────────────────────────────────────────────────────
@@ -39,7 +40,10 @@ export type QuoteBooking = {
   eventDate: DateStr;
   amountCents: number;
   bookingFeeCents?: number;
-  /** Σ succeeded charges − Σ succeeded refunds. */
+  /**
+   * Σ succeeded charges − Σ succeeded refunds (§5.1), less refunds still pending
+   * at the provider and chargebacks: what a cancellation can still give back.
+   */
   paidCents: number;
   cancellationPolicy: CancellationPolicy;
   depositPercent: number;
@@ -233,7 +237,7 @@ export const policiesFor = (b: { approvedAt: Date }, q: Queryable = db) => getSe
 export async function quoteBooking(bookingId: string, opts: { at?: Date; initiatedBy?: Initiator } = {}, q: Queryable = db): Promise<CancellationQuote> {
   const [b] = await q.select().from(booking).where(eq(booking.id, bookingId));
   if (!b) throw new AftercareError('not_found');
-  return quote({ ...b, paidCents: await paidCents(q, b.id) }, opts.at ?? (await now()), opts.initiatedBy ?? 'client', await policiesFor(b, q));
+  return quote({ ...b, paidCents: await refundablePaidCents(q, b.id) }, opts.at ?? (await now()), opts.initiatedBy ?? 'client', await policiesFor(b, q));
 }
 
 const OPEN_DISPUTE = ['collecting', 'awaiting_decision'] as const;
@@ -319,8 +323,9 @@ async function lockedCtx(tx: Tx, bookingId: string) {
   return loadBookingCtx(tx, bookingId, { lock: true });
 }
 
-async function quoteFor(tx: Tx, ctx: BookingCtx, initiatedBy: Initiator): Promise<CancellationQuote> {
-  return quote({ ...ctx.booking, paidCents: await paidCents(tx, ctx.booking.id) }, await now(), initiatedBy, await policiesFor(ctx.booking, tx));
+/** The quote a cancellation runs on: what can still be refunded (pending refunds and chargebacks excluded), tiers as at approval. */
+export async function quoteFor(tx: Tx, ctx: BookingCtx, initiatedBy: Initiator): Promise<CancellationQuote> {
+  return quote({ ...ctx.booking, paidCents: await refundablePaidCents(tx, ctx.booking.id) }, await now(), initiatedBy, await policiesFor(ctx.booking, tx));
 }
 
 /** The date shown after „безплатно до“: the free-cancel date, or for Строга the date until which the remainder comes back. */

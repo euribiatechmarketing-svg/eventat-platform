@@ -22,8 +22,8 @@ import { audit } from './audit';
 import { accountBalance, postTransaction } from './ledger';
 import { clawBackReleased } from './payouts';
 import {
-  AftercareError, POLICY_DEFINITE, RECEIVED, ctxText, loadBookingCtx, mailClient, paymentMethodText, providerFor, routes, schedule,
-  withTx, type BookingRow,
+  AftercareError, POLICY_DEFINITE, RECEIVED, chargedBackSql, ctxText, errorText, isFinalAttempt, loadBookingCtx, mailClient, paymentMethodText,
+  providerFor, routes, schedule, uncoveredFailedSql, withTx, type BookingRow,
 } from './aftercare-shared';
 
 export type RefundRow = typeof refund.$inferSelect;
@@ -31,16 +31,22 @@ export type RefundRow = typeof refund.$inferSelect;
 /** Proportional share, rounded half up: fee × part / whole. */
 const proportional = (fee: number, part: number, whole: number) => (whole > 0 ? Math.floor((fee * part + Math.floor(whole / 2)) / whole) : 0);
 
-/** What can still be refunded on each received charge (amount − refunded − pending refunds), newest first. */
-export async function refundableCharges(q: Queryable, bookingId: string, chargeId?: string) {
-  const charges = await q.select().from(charge)
+/**
+ * What can still be refunded on each received charge (amount − refunded −
+ * pending refunds − what an open or lost chargeback took back), newest first.
+ * `lock` takes the charge rows FOR UPDATE so concurrent refunds of the same
+ * charge are serialised.
+ */
+export async function refundableCharges(q: Queryable, bookingId: string, chargeId?: string, opts: { lock?: boolean } = {}) {
+  const base = q.select({ charge, chargedBack: sql<number>`${chargedBackSql}::int`.mapWith(Number) }).from(charge)
     .where(and(eq(charge.bookingId, bookingId), inArray(charge.status, RECEIVED), ...(chargeId ? [eq(charge.id, chargeId)] : [])))
     .orderBy(sql`${charge.succeededAt} desc nulls last`, desc(charge.createdAt));
+  const charges = opts.lock ? await base.for('update', { of: charge }) : await base;
   const out: { charge: typeof charge.$inferSelect; refundable: number }[] = [];
-  for (const c of charges) {
+  for (const { charge: c, chargedBack } of charges) {
     const [p] = await q.select({ s: sql<number>`coalesce(sum(${refund.amountCents}), 0)::int`.mapWith(Number) }).from(refund)
       .where(and(eq(refund.chargeId, c.id), eq(refund.status, 'pending')));
-    out.push({ charge: c, refundable: c.amountCents - c.refundedCents - (p?.s ?? 0) });
+    out.push({ charge: c, refundable: Math.max(0, c.amountCents - c.refundedCents - (p?.s ?? 0) - chargedBack) });
   }
   return out;
 }
@@ -55,8 +61,8 @@ export async function createRefunds(tx: Tx, a: {
   cancellationId?: string | null; disputeId?: string | null; chargeId?: string;
 }): Promise<RefundRow[]> {
   if (!Number.isSafeInteger(a.amountCents) || a.amountCents <= 0) throw new AftercareError('bad_amount');
-  const charges = await refundableCharges(tx, a.bookingId, a.chargeId);
-  if (charges.reduce((s, c) => s + Math.max(0, c.refundable), 0) < a.amountCents) throw new AftercareError('refund_exceeds_paid');
+  const charges = await refundableCharges(tx, a.bookingId, a.chargeId, { lock: true });
+  if (charges.reduce((s, c) => s + c.refundable, 0) < a.amountCents) throw new AftercareError('refund_exceeds_paid');
   const at = await now();
   const out: RefundRow[] = [];
   let rem = a.amountCents;
@@ -78,14 +84,26 @@ export async function createRefunds(tx: Tx, a: {
   return out;
 }
 
-/** Job `refund.submit`: call the charge's provider (idempotency key = refund id), then apply a synchronous result. */
+/**
+ * Job `refund.submit`: call the charge's provider (idempotency key = refund id),
+ * then apply a synchronous result. A provider call that still throws on the
+ * job's last attempt records F3 (failed, on the team's list) rather than
+ * leaving the refund pending for good.
+ */
 export async function submitRefund(refundId: string): Promise<void> {
   const [r] = await db.select().from(refund).where(eq(refund.id, refundId));
   if (!r || r.status !== 'pending' || r.providerRef) return;
   const [c] = await db.select().from(charge).where(eq(charge.id, r.chargeId));
-  const res = await providerFor(c.provider).refund({
-    refundId: r.id, providerChargeRef: c.providerRef ?? '', amountCents: r.amountCents, refundApplicationFee: true,
-  });
+  let res: Awaited<ReturnType<ReturnType<typeof providerFor>['refund']>>;
+  try {
+    res = await providerFor(c.provider).refund({
+      refundId: r.id, providerChargeRef: c.providerRef ?? '', amountCents: r.amountCents, refundApplicationFee: true,
+    });
+  } catch (e) {
+    if (!(await isFinalAttempt(`refund:${refundId}:submit`))) throw e;
+    await db.transaction(tx => applyRefundFailed(tx, refundId, errorText(e)));
+    return;
+  }
   await db.transaction(async tx => {
     const [cur] = await tx.select().from(refund).where(eq(refund.id, refundId)).for('update');
     if (!cur || cur.status !== 'pending') return;
@@ -256,19 +274,24 @@ export async function issueCreditNote(tx: Tx, r: RefundRow, b: BookingRow): Prom
 
 // ── The team's tools for failed refunds ───────────────────────────────────
 
-/** Failed refunds not yet covered by a later refund of the same charge and reason (admin attention list, D67). */
+/** Failed refunds not yet covered by a later refund of the same charge, reason, cancellation and decision (admin attention list, D67). */
 export async function failedRefunds(q: Queryable = db) {
   return q.select({ refund, number: booking.number }).from(refund).innerJoin(booking, eq(booking.id, refund.bookingId))
-    .where(and(eq(refund.status, 'failed'), sql`not exists (
-      select 1 from refund r2 where r2.charge_id = ${refund.chargeId} and r2.reason = ${refund.reason} and r2.id <> ${refund.id}
-        and r2.created_at >= ${refund.createdAt} and r2.status in ('pending', 'succeeded'))`))
+    .where(uncoveredFailedSql)
     .orderBy(desc(refund.createdAt));
 }
 
+/**
+ * A failed refund the team may act on once: retried or paid by hand already
+ * (a later pending or succeeded refund replaces it) → `refund_already_retried`,
+ * so the client is never paid twice.
+ */
 async function failedRefund(tx: Tx, refundId: string): Promise<RefundRow> {
   const [r] = await tx.select().from(refund).where(eq(refund.id, refundId)).for('update');
   if (!r) throw new AftercareError('not_found');
   if (r.status !== 'failed') throw new AftercareError('refund_not_failed');
+  const [open] = await tx.select({ open: uncoveredFailedSql }).from(refund).where(eq(refund.id, r.id));
+  if (!open?.open) throw new AftercareError('refund_already_retried');
   return r;
 }
 
