@@ -42,7 +42,8 @@ export const serviceTier = pgEnum('service_tier', ['required', 'common', 'extra'
 export const spaceType = pgEnum('space_type', ['indoor', 'garden_hall', 'outdoor', 'undecided']);
 export const budgetBand = pgEnum('budget_band', ['lt_1000', 'b1000_2000', 'gt_2000', 'unknown']);
 export const requestKind = pgEnum('request_kind', ['package', 'quote', 'brief']);
-export const requestStatus = pgEnum('request_status', ['pending', 'offer_sent', 'awaiting_confirmation', 'approved', 'declined', 'expired']);
+// `withdrawn`: the client cancelled the request before the partner answered (lib/domain/requests.ts cancelPendingRequest).
+export const requestStatus = pgEnum('request_status', ['pending', 'offer_sent', 'awaiting_confirmation', 'approved', 'declined', 'expired', 'withdrawn']);
 export const declineReason = pgEnum('decline_reason', ['date_taken', 'other']);
 export const briefStatus = pgEnum('brief_status', ['open', 'offer_chosen', 'closed']);
 export const invitationStatus = pgEnum('invitation_status', ['invited', 'offered', 'declined', 'lapsed']);
