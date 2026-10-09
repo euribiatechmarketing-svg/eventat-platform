@@ -11,8 +11,9 @@
 /* The dispute decision's radios are visually hidden: ring the option that holds the focused one. */
 .res-opt:has(> input:focus-visible) { outline: 2px solid var(--primary-500); outline-offset: 2px; }
 
-/* The email preview frame takes focus (it scrolls); a frame never matches :focus, so PreviewFrame marks it. */
-.em-frame.is-focused { outline: 2px solid var(--primary-500); outline-offset: 2px; }
+/* The email preview frame: PreviewFrame marks it while a keyboard focus is inside. Drawn inside the frame
+   because the card clips (overflow: hidden). */
+.em-frame.is-focused { outline: 2px solid var(--primary-500); outline-offset: -2px; }
 
 /* A register row's own link (keyboard and screen readers) reads as the cell's text. */
 .am-cell-link { color: inherit; text-decoration: none; }

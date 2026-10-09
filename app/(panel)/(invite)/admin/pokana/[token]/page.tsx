@@ -2,6 +2,7 @@
 // admin guard: the invitee has no team role yet. The copy is the invite email's own.
 import { notFound, redirect } from 'next/navigation';
 import '@/styles/m-admin-ops.css';
+import '@/styles/m-admin-a11y.css';
 import { roleDescription, ROLE_SCOPE } from '@/lib/domain/team';
 import { invitePage } from '@/lib/domain/views-admin-ops';
 import { Email } from '@/app/(panel)/admin/_ops/fmt';
@@ -20,7 +21,7 @@ export default async function TeamInvitePage({ params }: { params: Promise<{ tok
   const isNew = !page.existingUser;
 
   return (
-    <div className="ops-invite">
+    <div className="ops-invite" role="main" id="main">
       <div className="ops-invite-card">
         <img className="ops-invite-logo" src="/assets/eventat-logo.png" alt="EventAT" />
         <section className="dcard">

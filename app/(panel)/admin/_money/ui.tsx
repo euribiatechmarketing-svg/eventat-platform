@@ -196,18 +196,30 @@ export function NoteField({ action, hidden }: { action: FormAction; hidden: Reco
   );
 }
 
-/* ---------- the email preview: a frame shows no :focus while its page has the focus, so mark it ---------- */
+/* ---------- the email preview: its links take the focus inside the frame, which the page cannot style
+   (the frame never matches :focus), so the frame is marked while a keyboard focus is inside it ---------- */
 export function PreviewFrame({ src, title, className }: { src: string; title: string; className: string }) {
   const ref = useRef<HTMLIFrameElement>(null);
-  const [focused, setFocused] = useState(false);
   useEffect(() => {
-    const sync = () => setTimeout(() => setFocused(document.activeElement === ref.current), 0);
-    window.addEventListener('blur', sync);
-    window.addEventListener('focus', sync);
-    document.addEventListener('focusin', sync);
-    return () => { window.removeEventListener('blur', sync); window.removeEventListener('focus', sync); document.removeEventListener('focusin', sync); };
+    const f = ref.current;
+    if (!f) return;
+    let win: Window | null = null;
+    // Synchronous, so the ring is there as soon as the focus is; a mouse click inside shows none.
+    const sync = () => {
+      const d = f.contentDocument, at = d?.activeElement;
+      f.classList.toggle('is-focused', document.activeElement === f && !!d?.hasFocus() && !!at && at !== d.body && at.matches(':focus-visible'));
+    };
+    const attach = () => {
+      win?.removeEventListener('focusin', sync); win?.removeEventListener('blur', sync);
+      win = f.contentWindow;  // a new page in the frame (another email) is a new window
+      win?.addEventListener('focusin', sync); win?.addEventListener('blur', sync);
+      sync();
+    };
+    attach();
+    f.addEventListener('load', attach);
+    return () => { f.removeEventListener('load', attach); win?.removeEventListener('focusin', sync); win?.removeEventListener('blur', sync); };
   }, []);
-  return <iframe ref={ref} className={`${className}${focused ? ' is-focused' : ''}`} src={src} title={title} />;
+  return <iframe ref={ref} className={className} src={src} title={title} />;
 }
 
 /* ---------- open a print view in a new tab (‹Свали PDF›) ---------- */

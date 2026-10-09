@@ -1,6 +1,7 @@
 'use client';
 // Keyboard behaviour shared by the dropdowns (menus, filter menus) and the bell panel (WAI-ARIA menu button /
-// disclosure): a click outside, Escape or focus leaving closes the popup; Escape returns focus to the trigger.
+// disclosure): a click outside, Escape or focus leaving closes the popup; Escape (and, in a menu, choosing an item)
+// returns focus to the trigger.
 // For a menu (`items: true`) focus moves to the checked item (else the first) when it opens, and the arrow
 // keys, Home and End move between the items (role="menuitem…", tabIndex -1); Tab leaves it from the trigger.
 import { useEffect, useRef, type RefObject } from 'react';
@@ -52,15 +53,27 @@ export function usePopup({ open, setOpen, wrap, trigger, items = false }: {
       const to = e.relatedTarget as Node | null;
       if (to && !w?.contains(to)) close(false);
     };
+    // A chosen item closes the menu; focus goes back to the trigger instead of being lost with the item. It waits
+    // until React has run the item's own handler (a Link navigates in the app) and closed the menu: closing it
+    // here, before React sees the click, would remove the Link first and the browser would reload the page.
+    const onPick = (e: MouseEvent) => {
+      if (!items || !(e.target as Element | null)?.closest?.(ITEM)) return;
+      setTimeout(() => {
+        const at = document.activeElement;
+        if (!at || at === document.body || w?.contains(at)) trigger.current?.focus({ preventScroll: true });
+      }, 0);
+    };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onDocKey);
     w?.addEventListener('keydown', onKey);
     w?.addEventListener('focusout', onFocusOut);
+    w?.addEventListener('click', onPick);
     return () => {
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown', onDocKey);
       w?.removeEventListener('keydown', onKey);
       w?.removeEventListener('focusout', onFocusOut);
+      w?.removeEventListener('click', onPick);
     };
   }, [open, items, wrap, trigger]);
 
