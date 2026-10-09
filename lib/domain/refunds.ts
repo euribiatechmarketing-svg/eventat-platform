@@ -13,7 +13,7 @@
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Queryable, type Tx } from '@/db';
 import {
-  booking, charge, city, clientInvoiceProfile, invoice, invoiceLine, invoiceSequence, partner, refund, user, type RefundReason,
+  booking, cancellation, charge, city, clientInvoiceProfile, invoice, invoiceLine, invoiceSequence, partner, refund, user, type RefundReason,
 } from '@/db/schema';
 import { now } from '@/lib/clock';
 import { date as fmtDate, money, sofiaDate } from '@/lib/format';
@@ -200,11 +200,16 @@ async function sendRefundEmail(tx: Tx, r: RefundRow): Promise<void> {
   const [c] = await tx.select().from(charge).where(eq(charge.id, r.chargeId));
   const [paid] = await tx.select({ s: sql<number>`coalesce(sum(${charge.amountCents}), 0)::int`.mapWith(Number) }).from(charge)
     .where(and(eq(charge.bookingId, r.bookingId), inArray(charge.status, RECEIVED)));
+  // ‹…в безплатния срок…, затова се връща цялата сума без удръжки› holds only for a client's cancellation that kept nothing.
+  const [c0] = r.cancellationId
+    ? await tx.select({ initiatedBy: cancellation.initiatedBy, retainedCents: cancellation.retainedCents }).from(cancellation).where(eq(cancellation.id, r.cancellationId))
+    : [];
   await mailClient(tx, ctx, 'client-refund-sent', {
     bookingNo: t.bookingNo, partnerName: t.partnerName, packageName: t.packageName, eventDate: t.eventDate,
     paid: money(paid.s), paidOn: ctx.booking.paidAt ? fmtDate(sofiaDate(ctx.booking.paidAt)) : '',
     refund: money(total), cardLast4: c.cardLast4 ?? '', paymentMethod: paymentMethodText(c),
     policyDefinite: POLICY_DEFINITE[ctx.booking.cancellationPolicy],
+    inFreePeriod: c0?.initiatedBy === 'client' && c0.retainedCents === 0,
   }, `refund-sent:${r.bookingId}:${groupKey}`, routes.clientBookings());
 }
 

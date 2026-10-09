@@ -15,7 +15,7 @@
 import { and, asc, count, desc, eq, gte, inArray, isNull, lte, ne, sql } from 'drizzle-orm';
 import { db, type Queryable, type Tx } from '@/db';
 import {
-  auditLog, availabilityBlock, availabilityOpenDate, booking, category, charge, city, clientEvent, conversation, dateWatch, dispute, eventType,
+  auditLog, availabilityBlock, availabilityOpenDate, booking, category, charge, city, clientEvent, conversation, dispute, eventType,
   invoice, partner, partnerMember, paymentExtension, payoutLine, refund, request, review, service, serviceInclusion, teamMember, user,
   type BookingStatus,
 } from '@/db/schema';
@@ -30,6 +30,7 @@ import { audit } from './audit';
 import { bookingSplit, split, type Split } from './commission';
 import { accountBalance, bookingBalances, postTransaction, type LedgerLine } from './ledger';
 import { getSettings, type Settings } from './settings';
+import { notifyDateFreed } from './saved';
 
 // ── Types, errors, transactions ──────────────────────────────────────────
 
@@ -356,33 +357,7 @@ export async function checkPartnerDate(
  * for it → `notified` and `client-date-freed` goes out at once (SPEC §4.14, D21).
  */
 export async function notifyDateWatchers(tx: Tx, a: { partnerId: string; date: DateStr }): Promise<number> {
-  const at = await now();
-  const [p] = await tx.select().from(partner).where(eq(partner.id, a.partnerId)).limit(1);
-  if (!p) return 0;
-  const check = await checkPartnerDate(tx, p, a.date, { today: sofiaDate(at) });
-  if (!check.requestable) return 0;
-  const watches = await tx.select().from(dateWatch)
-    .where(and(eq(dateWatch.partnerId, a.partnerId), eq(dateWatch.date, a.date), eq(dateWatch.status, 'watching')));
-  if (!watches.length) return 0;
-  const [cat] = p.primaryCategoryId ? await tx.select({ name: category.name }).from(category).where(eq(category.id, p.primaryCategoryId)).limit(1) : [];
-  for (const w of watches) {
-    await tx.update(dateWatch).set({ status: 'notified', notifiedAt: at }).where(eq(dateWatch.id, w.id));
-    const [c] = await tx.select({ email: user.email }).from(user).where(eq(user.id, w.clientId)).limit(1);
-    const [ev] = w.clientEventId
-      ? await tx.select({ title: clientEvent.title }).from(clientEvent).where(eq(clientEvent.id, w.clientEventId)).limit(1)
-      : await tx.select({ title: clientEvent.title }).from(clientEvent)
-        .where(and(eq(clientEvent.clientId, w.clientId), eq(clientEvent.date, a.date))).limit(1);
-    if (!c) continue;
-    await mail(tx, {
-      key: 'client-date-freed', to: c.email, toUserId: w.clientId, dedupeKey: `datewatch:${w.id}:freed`,
-      vars: {
-        partnerSlug: p.slug, partnerName: p.businessName, partnerCategory: cat?.name ?? '',
-        eventType: ev?.title ?? '', eventDate: date(a.date), watchingSince: date(w.createdAt),
-      },
-    });
-    await audit(tx, { actor: SYSTEM, action: 'date_watch.notified', entity: 'date_watch', entityId: w.id, data: { partnerId: p.id, date: a.date } });
-  }
-  return watches.length;
+  return notifyDateFreed(a.partnerId, a.date, tx);
 }
 
 // ── Plans and dates derived from settings ────────────────────────────────
@@ -800,6 +775,10 @@ export async function teamPaymentAlertJob(p: Record<string, unknown>): Promise<v
   });
 }
 
+/** How long the client has to pay this booking: approval → deadline, extensions (K3) and the event-start clamp included. */
+export const paymentWindowHours = (b: { approvedAt: Date; paymentDueAt: Date }) =>
+  Math.max(1, Math.round((b.paymentDueAt.getTime() - b.approvedAt.getTime()) / HOUR));
+
 /**
  * T8 / K6: the payment window closed without a succeeded charge. An awaiting
  * bank transfer does not stop it (D6): open charges → `expired`.
@@ -822,6 +801,7 @@ export async function expirePaymentJob(p: Record<string, unknown>): Promise<void
       vars: {
         partnerSlug: pt.partner.slug, requestNo: b.number, partnerName: pt.partner.businessName, partnerCategory: pt.partnerCategory,
         serviceName: b.serviceTitle, eventType: pt.eventType.name, eventDate: date(b.eventDate), amount: money(b.amountCents),
+        hours: paymentWindowHours(b),
       },
     });
     if (pt.partnerUserId) {

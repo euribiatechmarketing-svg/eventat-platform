@@ -128,9 +128,12 @@ describe('blocks and the calendar month', () => {
     expect((await db.select().from(s.dateWatch).where(eq(s.dateWatch.id, w2.id)))[0].status).toBe('watching');
     const [mail] = await emails('client-date-freed', client.id);
     expect(plain(mail.vars)).toEqual({
-      partnerSlug: pr.partner.slug, partnerName: 'Ана Петрова Photography', partnerCategory: 'Фотография', eventType: '—',
-      eventDate: '14 юни 2026', watchingSince: '10 август 2025',
+      partnerSlug: pr.partner.slug, partnerName: 'Ана Петрова Photography', partnerCategory: 'Фотография', eventType: '',
+      eventDate: '14 юни 2026', date: '2026-06-14', watchingSince: '10 август 2025',
     });
+    // No event of the watcher's on that date: the ‹Събитие› row is the date alone; the CTA keeps the date.
+    expect(mail.text).toMatch(/Събитие: 14\sюни 2026\n/);
+    expect(mail.text).toContain(`/partnyori/${pr.partner.slug}?data=2026-06-14`);
     const [bell] = await db.select().from(s.notification).where(eq(s.notification.userId, client.id));
     expect(bell.href).toBe(`/partnyori/${pr.partner.slug}?data=2026-06-14`);
     await blockDate(pr.actor, { date: '2026-06-14' });

@@ -122,7 +122,11 @@ describe('K7 client cancels', () => {
     const [vc] = await emails('vendor-client-cancelled', partner.user.id);
     expect(vc.vars).toMatchObject({ policyDefinite: 'умерената', reason: 'Залата ще осигури собствено озвучаване.', partnerAmount: money(0) });
     expect(vc.toEmail).toBe(partner.partner.notificationEmail);
-    expect(await emails('client-date-freed', watcher.user.id)).toHaveLength(1);
+    const freed = await emails('client-date-freed', watcher.user.id);
+    expect(freed).toHaveLength(1);
+    // The watcher has no event that day: nothing of the cancelled booking (another client's event) is shown.
+    expect(freed[0].vars).toMatchObject({ eventType: '', eventDate: date(b.eventDate) });
+    expect(freed[0].text).toContain(`Събитие: ${date(b.eventDate)}\n`);
     expect((await db.select().from(dateWatch).where(eq(dateWatch.id, w.id)))[0].status).toBe('notified');
     expect(await bells(client.user.id, 'client-cancel-confirmed')).toHaveLength(1);
     expect(await bells(partner.user.id, 'vendor-client-cancelled')).toHaveLength(1);
@@ -134,6 +138,8 @@ describe('K7 client cancels', () => {
     expect((await db.select().from(charge).where(eq(charge.bookingId, b.id)))[0]).toMatchObject({ status: 'refunded', refundedCents: 145_000 });
     const sent = await emails('client-refund-sent', client.user.id);
     expect(sent).toHaveLength(1);
+    expect(sent[0].text).toContain('затова се връща цялата сума без удръжки');
+    expect((await emails('client-cancel-confirmed', client.user.id))[0].text).toContain('Анулирането е в безплатния срок и сумата се възстановява изцяло.');
     expect(sent[0].vars).toMatchObject({ refund: money(145_000), paid: money(145_000), paymentMethod: 'Visa •••• 4242', policyDefinite: 'умерената' });
     const [cn] = await db.select().from(invoice).where(and(eq(invoice.refundId, r.id), eq(invoice.type, 'credit_note')));
     expect(cn).toMatchObject({ issuerKey: partner.partner.id, totalCents: 145_000, bookingId: b.id });
@@ -151,7 +157,18 @@ describe('K7 client cancels', () => {
     expect(res.quote).toMatchObject({ daysBefore: 29, refundCents: 101_500, retainedCents: 43_500, partnerAmountCents: 39_150 });
     const [vc] = await emails('vendor-client-cancelled', partner.user.id);
     expect(vc.vars).toMatchObject({ reason: 'Промяна в датата', partnerAmount: money(39_150) });
+    // The emails tell the real split: no full refund for the client, a payout for the partner.
+    expect(vc.text).not.toContain('няма изплащане');
+    expect(vc.text).toContain(`Получавате: ${money(39_150)}`);
+    const [cc] = await emails('client-cancel-confirmed', client.user.id);
+    expect(cc.text).not.toContain('изцяло');
+    expect(cc.text).toContain(`Задържа се: ${money(43_500)}`);
+    expect(cc.text).toContain('Възстановяването тръгва автоматично към картата, завършваща на 4242');
+    expect(cc.text).not.toContain('Другите ви резервации');   // no other booking on that date
     await runJobs();
+    const [rs] = await emails('client-refund-sent', client.user.id);
+    expect(rs.vars).toMatchObject({ refund: money(101_500) });
+    expect(rs.text).not.toContain('без удръжки');
     expect((await bookingBalances(db, b.id)).client_funds).toBe(43_500);
     const [line] = await db.select().from(payoutLine).where(eq(payoutLine.bookingId, b.id));
     expect(line).toMatchObject({ status: 'awaiting_event', baseCents: 43_500, commissionCents: 4_350, amountCents: 39_150 });
@@ -165,6 +182,29 @@ describe('K7 client cancels', () => {
     const [ready] = await db.select().from(payoutLine).where(eq(payoutLine.bookingId, b.id));
     expect(ready).toMatchObject({ status: 'ready', amountCents: 39_150, batchDate: '2026-06-15' });
     expect(await releaseRetained({ bookingId: b.id })).toBe(0); // idempotent
+    await expectLedgerHealthy();
+  });
+
+  it('Строга within 14 days: nothing back — the emails promise no refund and give the policy, not a free date', async () => {
+    setTestNow(at('2026-06-04'));
+    const { client, partner, booking: b } = await paidBooking({ policy: 'strict', commissionBp: 500 });
+    const other = await paidBooking({ client, eventDate: b.eventDate });
+    const res = await cancelByClient(client.actor, { bookingId: b.id, reason: 'event_cancelled' });
+    expect(res.quote).toMatchObject({ daysBefore: 10, tier: 'total', refundCents: 0, retainedCents: 145_000, partnerAmountCents: 137_750 });
+    const [cc] = await emails('client-cancel-confirmed', client.user.id);
+    expect(cc.vars).toMatchObject({ refund: money(0), kept: money(145_000), freeCancelUntil: '', inFreePeriod: false, refunded: false });
+    expect(cc.text).not.toContain('изцяло');
+    expect(cc.text).not.toContain('Възстановяването тръгва');
+    expect(cc.text).toContain('Политика: Строга — депозитът не се връща; остатъкът се възстановява до 14 дни преди събитието');
+    expect(cc.text).toContain(`Другите ви резервации за ${date('2026-06-14').replace(/\s+\d{4}$/, '')} остават непроменени.`);
+    const [bell] = await bells(client.user.id, 'client-cancel-confirmed');
+    expect(bell.body).toBe(`Анулирахте резервацията си при ${partner.partner.businessName} за ${date('2026-06-14')}.`);
+    const [vc] = await emails('vendor-client-cancelled', partner.user.id);
+    expect(vc.text).not.toContain('безплатния срок');
+    expect(vc.vars).toMatchObject({ partnerAmount: money(137_750) });
+    await runJobs();
+    expect(await emails('client-refund-sent', client.user.id)).toHaveLength(0);
+    expect((await reloadBooking(other.booking.id)).status).toBe('confirmed');
     await expectLedgerHealthy();
   });
 
@@ -226,7 +266,9 @@ describe('K8–K10 partner cancellation through the team', () => {
     const [r] = await db.select().from(refund).where(eq(refund.bookingId, b.id));
     expect(r).toMatchObject({ reason: 'partner_cancel', applicationFeeRefundCents: 14_500 });
     await runJobs();
-    expect(await emails('client-refund-sent', client.user.id)).toHaveLength(1);
+    const sentK9 = await emails('client-refund-sent', client.user.id);
+    expect(sentK9).toHaveLength(1);
+    expect(sentK9[0].text).not.toContain('безплатния срок');   // the partner cancelled: no policy period to cite
     expect(await bookingBalances(db, b.id)).toMatchObject({ client_funds: 0, provider_held: 0 });
     expect(await failure(completePartnerCancellation(admin, { bookingId: b.id }))).toContain('no_cancellation_request');
     await expectLedgerHealthy();

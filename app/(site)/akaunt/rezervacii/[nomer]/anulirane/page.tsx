@@ -100,7 +100,7 @@ export default async function CancelPage({ params }: { params: Promise<{ nomer: 
 
           <div className="cx-next">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
-            <span>Изпълнителят получава известие веднага и датата му се освобождава. Потвърждението за анулирането и за възстановената сума идва на {v.email}.</span>
+            <span>Изпълнителят получава известие веднага и датата му се освобождава. Потвърждението за анулирането{q.refundCents > 0 ? ' и за възстановената сума' : ''} идва на {v.email}.</span>
           </div>
 
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 20, flexWrap: 'wrap' }}>

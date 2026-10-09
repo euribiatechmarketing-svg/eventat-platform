@@ -284,8 +284,10 @@ export async function removeWatch(actor: AnyActor, a: { id: string }, tx?: Tx) {
 /**
  * §4.14 Notify: when the partner's date stops being busy, every `watching` watch on it →
  * `notified` and `client-date-freed` goes out at once (D21). Safe to call after any change
- * (K4, K6, K7, K9, K11, a block removed): it re-checks availability and does nothing while the
- * date is still busy. Returns how many watches fired. Call inside the transaction of the change.
+ * (K4, K6, K7, K9, K11, a block removed): it re-checks availability with the rule search uses
+ * (availability.isBusy) and does nothing while the date is still busy. Returns how many watches
+ * fired. Call inside the transaction of the change. The one implementation: lifecycle
+ * (bookings.notifyDateWatchers) and aftercare (fireDateWatches) call it.
  */
 export async function notifyDateFreed(partnerId: string, d: DateStr, tx?: Tx): Promise<number> {
   return withTx(tx, async t => {
@@ -302,15 +304,15 @@ export async function notifyDateFreed(partnerId: string, d: DateStr, tx?: Tx): P
       await t.update(dateWatch).set({ status: 'notified', notifiedAt: at }).where(eq(dateWatch.id, w.id));
       const [u] = await t.select().from(user).where(and(eq(user.id, w.clientId), isNull(user.deletedAt)));
       if (!u) continue;
-      // The watch's event, else the client's event on that date.
-      const [ev] = w.clientEventId
-        ? await t.select({ title: clientEvent.title }).from(clientEvent).where(eq(clientEvent.id, w.clientEventId))
-        : await t.select({ title: clientEvent.title }).from(clientEvent).where(and(eq(clientEvent.clientId, w.clientId), eq(clientEvent.date, d))).limit(1);
+      // The watcher's own event — the watch's, else theirs on that date — never the freed booking's (another client's).
+      // None: the ‹Събитие› row shows the date alone.
+      const [ev] = await t.select({ title: clientEvent.title }).from(clientEvent)
+        .where(w.clientEventId ? eq(clientEvent.id, w.clientEventId) : and(eq(clientEvent.clientId, w.clientId), eq(clientEvent.date, d))).limit(1);
       await mail(t, {
         key: 'client-date-freed', to: u.email, toUserId: u.id, dedupeKey: `datewatch:${w.id}:freed`,
         vars: {
           partnerSlug: p.p.slug, partnerName: p.p.businessName, partnerCategory: p.categoryName ?? '',
-          eventType: ev?.title ?? '—', eventDate: fmtDate(d), watchingSince: fmtDate(w.createdAt),
+          eventType: ev?.title ?? '', eventDate: fmtDate(d), date: d, watchingSince: fmtDate(w.createdAt),
         },
         bell: { href: `/partnyori/${p.p.slug}?data=${d}` },
       });

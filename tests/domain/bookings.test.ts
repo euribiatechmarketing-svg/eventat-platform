@@ -204,7 +204,8 @@ describe('T5–T8 payment timers', () => {
     expect((await bookingRow(plain.bookingId)).status).toBe('payment_expired');
     expect((await bookingRow(disputed.bookingId)).status).toBe('payment_expired');
     expect((await db.select().from(s.charge).where(eq(s.charge.id, pending.chargeId)))[0].status).toBe('expired');
-    expect(await emails('client-payment-expired', plain.client.user.id)).toHaveLength(1);
+    const [exp] = await emails('client-payment-expired', plain.client.user.id);
+    expect(exp.text).toContain('в рамките на 24 часа');
     expect((await emails('vendor-hold-expired', plain.partner.user.id))[0].vars).toMatchObject({ expiredAt: dateTime(plain.paymentDueAt) });
     expect(await emails('client-date-freed', watcher.user.id)).toHaveLength(1);
     await expirePaymentJob({ bookingId: plain.bookingId });
@@ -219,6 +220,10 @@ describe('T5–T8 payment timers', () => {
     expect((await bookingRow(a.bookingId)).status).toBe('awaiting_payment');
     await tickAt(newDueAt);
     expect((await bookingRow(a.bookingId)).status).toBe('payment_expired');
+    // The client had 48 hours (24 + the team's 24), and the email says so.
+    const [expired] = await emails('client-payment-expired', a.client.user.id);
+    expect(expired.vars).toMatchObject({ hours: 48 });
+    expect(expired.text).toContain('в рамките на 48 часа');
     expect((await failure(extendPaymentDeadline(admin, { number: a.number }))).code).toBe('invalid_state');
   });
 });

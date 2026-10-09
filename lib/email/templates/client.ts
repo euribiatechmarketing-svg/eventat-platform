@@ -229,7 +229,7 @@ export const clientOfferReceived: EmailTemplate<OfferReceivedVars> = {
   }),
 };
 
-/** payHours: the payment window in hours (24). */
+/** payHours: this booking's payment window in hours (24; less when the event start clamps it). */
 type RequestApprovedVars = {
   bookingId: string; requestNo: string;
   partnerName: string; partnerCategory: string; packageName: string;
@@ -239,12 +239,12 @@ type RequestApprovedVars = {
 export const clientRequestApproved: EmailTemplate<RequestApprovedVars> = {
   key: 'client-request-approved', audience: 'client', optional: false,
   render: v => ({
-    subject: `${v.partnerName} одобри заявката ви — платете до ${v.payHours} часа`,
+    subject: `${v.partnerName} одобри заявката ви — платете до ${pl(v.payHours, 'час', 'часа')}`,
     preheader: `Датата ${v.eventDate} е запазена за вас до ${v.payBy}.`,
     trigger: 'Одобрена заявка',
     heading: `${v.partnerName} одобри заявката ви`,
     paragraphs: [
-      `Датата ${v.eventDate} е запазена за вас. За да потвърдите резервацията, платете в рамките на ${v.payHours} часа — след това датата се освобождава автоматично.`,
+      `Датата ${v.eventDate} е запазена за вас. За да потвърдите резервацията, платете в рамките на ${pl(v.payHours, 'час', 'часа')} — след това датата се освобождава автоматично.`,
       'Сумата се задържа от платформата и се превежда на изпълнителя чак след като събитието се проведе.',
     ],
     details: [
@@ -286,10 +286,11 @@ export const clientPaymentReminder: EmailTemplate<PaymentReminderVars> = {
   }),
 };
 
+/** hours: how long the client had to pay — 24, more after ‹Удължи срока›, less when the event start clamps it (default 24). */
 type PaymentExpiredVars = {
   partnerSlug: string; requestNo: string;
   partnerName: string; partnerCategory: string; serviceName: string;
-  eventType: string; eventDate: string; amount: string;
+  eventType: string; eventDate: string; amount: string; hours?: number;
 };
 export const clientPaymentExpired: EmailTemplate<PaymentExpiredVars> = {
   key: 'client-payment-expired', audience: 'client', optional: false,
@@ -299,7 +300,7 @@ export const clientPaymentExpired: EmailTemplate<PaymentExpiredVars> = {
     trigger: 'Изтекъл срок за плащане',
     heading: 'Срокът за плащане изтече',
     paragraphs: [
-      `Не получихме плащане по заявката ви към ${v.partnerName} в рамките на 24 часа. Датата ${v.eventDate} е освободена автоматично и не дължите нищо.`,
+      `Не получихме плащане по заявката ви към ${v.partnerName} в рамките на ${pl(v.hours ?? 24, 'час', 'часа')}. Датата ${v.eventDate} е освободена автоматично и не дължите нищо.`,
       'Ако все още искате тази услуга, изпратете нова заявка — датата може вече да е заета.',
     ],
     details: [
@@ -535,39 +536,54 @@ export const clientEventReminder: EmailTemplate<EventReminderVars> = {
 
 // ── Cancellations, disputes, refunds ──────────────────────────────────────
 
-/** policyName: 'Умерена'. The running text is the in-period (full refund) case. cardLast4: '4242'. */
+/**
+ * policyName: 'Умерена'. cardLast4: '4242'. The prototype's running text is the in-period (full refund) case,
+ * which the optional flags default to. A late cancellation (`inFreePeriod: false`) keeps only the sentences
+ * that stay true — the amounts are in ‹Връща се› / ‹Задържа се› (the partial and no-refund wording is new
+ * copy, SPEC §5.5); with nothing to refund (`refunded: false`) nothing is promised to the card. A policy with
+ * no free period (Строга) has `freeCancelUntil: ''`: the ‹Политика› row then gives its canonical description.
+ */
 type CancelConfirmedVars = {
   bookingNo: string; partnerName: string; packageName: string; eventType: string; eventDate: string;
   policyName: string; freeCancelUntil: string; paid: string; refund: string; kept: string; cardLast4: string;
+  inFreePeriod?: boolean; refunded?: boolean; otherBookingsSameDay?: boolean; policyDescription?: string;
 };
 export const clientCancelConfirmed: EmailTemplate<CancelConfirmedVars> = {
   key: 'client-cancel-confirmed', audience: 'client', optional: false,
-  render: v => ({
-    subject: `Резервацията при ${v.partnerName} е анулирана`,
-    preheader: `Връщаме ${v.refund} към картата, завършваща на ${v.cardLast4}.`,
-    trigger: 'Анулиране на резервация',
-    heading: 'Резервацията е анулирана',
-    paragraphs: [
-      `Анулирахте резервацията си при ${v.partnerName} за ${v.eventDate}. Анулирането е в безплатния срок и сумата се възстановява изцяло.`,
-      `Възстановяването тръгва автоматично към картата, завършваща на ${v.cardLast4} — същата, с която платихте. Другите ви резервации за ${dayMonth(v.eventDate)} остават непроменени.`,
-      'Ако размислите, ще трябва нова заявка — датата може вече да е заета.',
-    ],
-    details: [
-      ['Резервация №', v.bookingNo],
-      ['Изпълнител', `${v.partnerName} · Пакет „${v.packageName}“`],
-      ['Събитие', `${v.eventType} · ${v.eventDate}`],
-      ['Политика', `${v.policyName} — безплатно до ${v.freeCancelUntil}`],
-      ['Платено', v.paid],
-      ['Връща се', v.refund],
-      ['Задържа се', v.kept],
-    ],
-    cta: { label: 'Моите резервации', href: '/akaunt/rezervacii' },
-  }),
+  render: v => {
+    const inFree = v.inFreePeriod ?? true, refunded = v.refunded ?? true, others = v.otherBookingsSameDay ?? true;
+    const done = `Анулирахте резервацията си при ${v.partnerName} за ${v.eventDate}.`;
+    const toCard = `Възстановяването тръгва автоматично към картата, завършваща на ${v.cardLast4} — същата, с която платихте.`;
+    const sameDay = `Другите ви резервации за ${dayMonth(v.eventDate)} остават непроменени.`;
+    return {
+      subject: `Резервацията при ${v.partnerName} е анулирана`,
+      preheader: refunded ? `Връщаме ${v.refund} към картата, завършваща на ${v.cardLast4}.` : done,
+      trigger: 'Анулиране на резервация',
+      heading: 'Резервацията е анулирана',
+      paragraphs: [
+        inFree ? `${done} Анулирането е в безплатния срок и сумата се възстановява изцяло.` : done,
+        [refunded && toCard, others && sameDay].filter(Boolean).join(' '),
+        'Ако размислите, ще трябва нова заявка — датата може вече да е заета.',
+      ].filter(Boolean),
+      details: [
+        ['Резервация №', v.bookingNo],
+        ['Изпълнител', `${v.partnerName} · Пакет „${v.packageName}“`],
+        ['Събитие', `${v.eventType} · ${v.eventDate}`],
+        ['Политика', v.freeCancelUntil ? `${v.policyName} — безплатно до ${v.freeCancelUntil}`
+          : v.policyDescription ? `${v.policyName} — ${low(v.policyDescription)}` : v.policyName],
+        ['Платено', v.paid],
+        ['Връща се', v.refund],
+        ['Задържа се', v.kept],
+      ],
+      cta: { label: 'Моите резервации', href: '/akaunt/rezervacii' },
+    };
+  },
 };
 
+/** otherBookingsSameDay: the client has other bookings on that date (default true, as in the prototype). */
 type VendorCancelledVars = {
   bookingNo: string; partnerName: string; packageName: string; eventType: string; eventDate: string;
-  refund: string; cardLast4: string; paymentMethod: string;
+  refund: string; cardLast4: string; paymentMethod: string; otherBookingsSameDay?: boolean;
 };
 export const clientVendorCancelled: EmailTemplate<VendorCancelledVars> = {
   key: 'client-vendor-cancelled', audience: 'client', optional: false,
@@ -578,7 +594,7 @@ export const clientVendorCancelled: EmailTemplate<VendorCancelledVars> = {
     heading: 'Изпълнителят анулира резервацията',
     paragraphs: [
       `${v.partnerName} анулира резервация № ${v.bookingNo} за ${v.eventDate}. Връщаме ви цялата сума — ${v.refund} — към картата, завършваща на ${v.cardLast4}.`,
-      `Другите ви резервации за ${dayMonth(v.eventDate)} остават непроменени. Вижте други изпълнители, които са свободни на тази дата.`,
+      `${v.otherBookingsSameDay ?? true ? `Другите ви резервации за ${dayMonth(v.eventDate)} остават непроменени. ` : ''}Вижте други изпълнители, които са свободни на тази дата.`,
     ],
     details: [
       ['Резервация №', v.bookingNo],
@@ -731,9 +747,10 @@ export const clientSavedSearchAlert: EmailTemplate<SavedSearchAlertVars> = {
   },
 };
 
+/** eventType: the watcher's own event ('' when they have none that day: the row shows the date alone). date: ISO, for the CTA's ?data=. */
 type DateFreedVars = {
   partnerSlug: string; partnerName: string; partnerCategory: string;
-  eventType: string; eventDate: string; watchingSince: string;
+  eventType: string; eventDate: string; watchingSince: string; date?: string;
 };
 export const clientDateFreed: EmailTemplate<DateFreedVars> = {
   key: 'client-date-freed', audience: 'client', optional: true, preference: 'client.date-watch',
@@ -748,10 +765,10 @@ export const clientDateFreed: EmailTemplate<DateFreedVars> = {
     ],
     details: [
       ['Изпълнител', `${v.partnerName} · ${v.partnerCategory}`],
-      ['Събитие', `${v.eventType} · ${v.eventDate}`],
+      ['Събитие', v.eventType ? `${v.eventType} · ${v.eventDate}` : v.eventDate],
       ['Следите от', v.watchingSince],
     ],
-    cta: { label: 'Изпрати запитване', href: `/partnyori/${v.partnerSlug}` },
+    cta: { label: 'Изпрати запитване', href: `/partnyori/${v.partnerSlug}${v.date ? `?data=${v.date}` : ''}` },
   }),
 };
 
@@ -840,10 +857,15 @@ export const clientTicketReminder: EmailTemplate<TicketReminderVars> = {
   }),
 };
 
-/** policyDefinite: 'умерената'. The running text is the in-period cancellation case. */
+/**
+ * policyDefinite: 'умерената'. The prototype's running text is the in-period cancellation case (the default);
+ * any other refund (`inFreePeriod: false`: a late cancellation's part, the partner's or the team's
+ * cancellation, a case decision) does not claim the policy gave everything back.
+ */
 type RefundSentVars = {
   bookingNo: string; partnerName: string; packageName: string; eventDate: string;
   paid: string; paidOn: string; refund: string; cardLast4: string; paymentMethod: string; policyDefinite: string;
+  inFreePeriod?: boolean;
 };
 export const clientRefundSent: EmailTemplate<RefundSentVars> = {
   key: 'client-refund-sent', audience: 'client', optional: false,
@@ -854,8 +876,8 @@ export const clientRefundSent: EmailTemplate<RefundSentVars> = {
     heading: 'Сумата е възстановена',
     paragraphs: [
       `Върнахме ${v.refund} по анулираната резервация при ${v.partnerName} за ${v.eventDate}. Сумата е преведена към картата, завършваща на ${v.cardLast4} — същата, с която платихте.`,
-      `Анулирането беше в безплатния срок по ${v.policyDefinite} политика на изпълнителя, затова се връща цялата сума без удръжки.`,
-    ],
+      (v.inFreePeriod ?? true) ? `Анулирането беше в безплатния срок по ${v.policyDefinite} политика на изпълнителя, затова се връща цялата сума без удръжки.` : '',
+    ].filter(Boolean),
     details: [
       ['Резервация', v.bookingNo],
       ['Изпълнител', `${v.partnerName} · Пакет „${v.packageName}“`],

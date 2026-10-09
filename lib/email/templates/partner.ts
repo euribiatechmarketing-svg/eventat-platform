@@ -509,10 +509,14 @@ export const vendorEventReminder: EmailTemplate<EventReminderVars> = {
   }),
 };
 
-/** policyDefinite: 'умерената'. The running text is the in-period (full refund) case. */
+/**
+ * policyDefinite: 'умерената'. The prototype's running text is the in-period (full refund) case, the default.
+ * A late cancellation (`inFreePeriod: false`) leaves the partner the kept amount (‹Получавате›), so the
+ * sentence that says everything goes back and nothing is paid out is left out.
+ */
 type ClientCancelledVars = {
   bookingNo: string; clientName: string; eventType: string; hosts: string; eventDate: string; packageName: string;
-  policyDefinite: string; freeCancelUntil: string; reason: string; partnerAmount: string;
+  policyDefinite: string; freeCancelUntil: string; reason: string; partnerAmount: string; inFreePeriod?: boolean;
 };
 export const vendorClientCancelled: EmailTemplate<ClientCancelledVars> = {
   key: 'vendor-client-cancelled', audience: 'partner', optional: false,
@@ -523,8 +527,8 @@ export const vendorClientCancelled: EmailTemplate<ClientCancelledVars> = {
     heading: `Резервацията за ${v.eventDate} е анулирана`,
     paragraphs: [
       `${v.clientName} анулира резервация № ${v.bookingNo}. Датата ${v.eventDate} е освободена в календара ви и отново се показвате в търсенето за нея.`,
-      `Анулирането е в безплатния срок по ${v.policyDefinite} ви политика — до ${v.freeCancelUntil}. Сумата се връща изцяло на клиента и по тази резервация няма изплащане.`,
-    ],
+      (v.inFreePeriod ?? true) ? `Анулирането е в безплатния срок по ${v.policyDefinite} ви политика — до ${v.freeCancelUntil}. Сумата се връща изцяло на клиента и по тази резервация няма изплащане.` : '',
+    ].filter(Boolean),
     details: [
       ['Резервация №', v.bookingNo],
       ['Събитие', `${v.eventType} · ${v.hosts}`],
