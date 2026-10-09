@@ -13,8 +13,12 @@ export const simulatedProvider: PaymentProvider = {
   async createCheckout({ chargeId }) {
     return { redirectUrl: `/plashtane/test/${chargeId}`, providerRef: ref('pi', chargeId) };
   },
+  async expireCheckout() { /* the test checkout reads the charge's status itself */ },
   async chargeOffSession({ chargeId }) { return { providerRef: ref('pi', chargeId), status: 'succeeded' }; },
   async refund({ refundId }) { return { refundRef: ref('re', refundId), status: 'succeeded' }; },
   async payout({ payoutItemId }) { return { payoutRef: ref('po', payoutItemId), status: 'paid' }; },
+  // Simulated calls never throw, so nothing is ever made without an answer.
+  async findRefund() { return null; },
+  async findPayout() { return null; },
   async parseWebhook() { return []; },
 };

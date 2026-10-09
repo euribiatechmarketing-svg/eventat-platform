@@ -28,6 +28,8 @@ import {
 
 export type RefundRow = typeof refund.$inferSelect;
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** Proportional share, rounded half up: fee × part / whole. */
 const proportional = (fee: number, part: number, whole: number) => (whole > 0 ? Math.floor((fee * part + Math.floor(whole / 2)) / whole) : 0);
 
@@ -86,9 +88,11 @@ export async function createRefunds(tx: Tx, a: {
 
 /**
  * Job `refund.submit`: call the charge's provider (idempotency key = refund id),
- * then apply a synchronous result. A provider call that still throws on the
- * job's last attempt records F3 (failed, on the team's list) rather than
- * leaving the refund pending for good.
+ * then apply a synchronous result. A call that throws may still have made the
+ * refund, so on the job's last attempt the provider is asked for one made for
+ * this refund (metadata): found → its result is applied; certainly none → F3
+ * (failed, on the team's list; a retry cannot pay twice); the provider cannot be
+ * asked → the refund stays pending (its money stays held) until refund.* arrives.
  */
 export async function submitRefund(refundId: string): Promise<void> {
   const [r] = await db.select().from(refund).where(eq(refund.id, refundId));
@@ -101,8 +105,20 @@ export async function submitRefund(refundId: string): Promise<void> {
     });
   } catch (e) {
     if (!(await isFinalAttempt(`refund:${refundId}:submit`))) throw e;
-    await db.transaction(tx => applyRefundFailed(tx, refundId, errorText(e)));
-    return;
+    let found: Awaited<ReturnType<ReturnType<typeof providerFor>['findRefund']>>;
+    try {
+      found = await providerFor(c.provider).findRefund({ refundId: r.id, providerChargeRef: c.providerRef ?? '' });
+    } catch (lookup) {
+      await db.transaction(tx => audit(tx, {
+        actor: SYSTEM, action: 'refund.unknown', entity: 'refund', entityId: refundId, data: { error: errorText(e), lookup: errorText(lookup) },
+      }));
+      throw e;
+    }
+    if (!found) {
+      await db.transaction(tx => applyRefundFailed(tx, refundId, errorText(e)));
+      return;
+    }
+    res = found;
   }
   await db.transaction(async tx => {
     const [cur] = await tx.select().from(refund).where(eq(refund.id, refundId)).for('update');
@@ -119,10 +135,15 @@ export async function submitRefund(refundId: string): Promise<void> {
  * can answer with an error and be retried once the ref is stored.
  */
 export async function applyRefundEvent(
-  ev: { type: 'refund.succeeded'; refundRef: string } | { type: 'refund.failed'; refundRef: string; reason: string }, tx?: Tx,
+  ev: { type: 'refund.succeeded'; refundRef: string; refundId?: string } | { type: 'refund.failed'; refundRef: string; reason: string; refundId?: string }, tx?: Tx,
 ): Promise<{ handled: boolean }> {
   return withTx(tx, async tx => {
-    const [r] = await tx.select({ id: refund.id }).from(refund).where(eq(refund.providerRef, ev.refundRef)).limit(1);
+    let [r] = await tx.select({ id: refund.id }).from(refund).where(eq(refund.providerRef, ev.refundRef)).limit(1);
+    if (!r && ev.refundId && UUID_RE.test(ev.refundId)) {
+      // The provider call that created it never returned (its ref was not stored): matched by our id in the metadata.
+      [r] = await tx.update(refund).set({ providerRef: ev.refundRef })
+        .where(and(eq(refund.id, ev.refundId), sql`${refund.providerRef} is null`)).returning({ id: refund.id });
+    }
     if (!r) return { handled: false };
     if (ev.type === 'refund.succeeded') await applyRefundSucceeded(tx, r.id);
     else await applyRefundFailed(tx, r.id, ev.reason);

@@ -35,10 +35,11 @@ import { accountBalance, partnerBalances, postTransaction } from './ledger';
 import { getSetting } from './settings';
 import {
   AftercareError, bpOf, ctxText, errorText, isFinalAttempt, loadBookingCtx, mail, mailPartner, mailTeam, outstandingRefundCents, owedRefundSql,
-  providerFor, routes, scheduleOnce, schedule, withTx, type BookingRow,
+  providerFor, routes, scheduleOnce, schedule, uncoveredFailedSql, withTx, type BookingRow,
 } from './aftercare-shared';
 
 type LineRow = typeof payoutLine.$inferSelect;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type ItemRow = typeof payoutItem.$inferSelect;
 type BatchRow = typeof payoutBatch.$inferSelect;
 
@@ -526,8 +527,12 @@ type SyncedItem = { item: ItemRow; lines: LineRow[] };
  * payout hold (§8.3) gets a `held` item. Writes items and line links only.
  */
 async function syncBatch(tx: Tx, batch: BatchRow): Promise<{ ready: SyncedItem[]; heldItems: SyncedItem[]; disputeHeld: { partnerId: string; amount: number }[] }> {
-  // A booking with a refund still pending at the provider is not paid out until the refund settles (L2 may claw back).
-  const pendingRefund = sql<boolean>`exists (select 1 from refund r where r.booking_id = ${payoutLine.bookingId} and r.status = 'pending')`;
+  // A booking with a refund still pending at the provider is not paid out until the refund settles (L2 may claw back);
+  // nor one whose failed refund (F3, not retried yet) is no longer covered by the money still held for it — the
+  // partner's share would then pay out what the client is owed (a refund that failed after the release).
+  const pendingRefund = sql<boolean>`(exists (select 1 from refund r where r.booking_id = ${payoutLine.bookingId} and r.status = 'pending')
+    or (select coalesce(sum("refund"."amount_cents"), 0) from refund where "refund"."booking_id" = ${payoutLine.bookingId} and ${uncoveredFailedSql})
+       > (select coalesce(sum(e.credit_cents - e.debit_cents), 0) from ledger_entry e where e.booking_id = ${payoutLine.bookingId} and e.account = 'client_funds'))`;
   const rows = await tx.select({ line: payoutLine, payoutHold: booking.payoutHold, pendingRefund, itemStatus: payoutItem.status, itemBatch: payoutItem.batchId })
     .from(payoutLine)
     .innerJoin(booking, eq(booking.id, payoutLine.bookingId))
@@ -710,8 +715,12 @@ export async function releaseBatch(actor: Actor, input: { batchId: string }, tx?
 
 /**
  * Job `payout.submit`: hand one sent item to the provider (idempotency key =
- * item id), then apply the result. A provider call that still throws on the
- * job's last attempt is a failed transfer (Y8), not an item left `sent` for good.
+ * item id), then apply the result. A call that throws (timeout, 5xx) may still
+ * have made the payout, so on the job's last attempt the provider is asked for
+ * one made for this item (metadata) before anything is decided: found → its
+ * result is applied; certainly none → a failed transfer (Y8), whose lines may go
+ * out again; the provider cannot be asked → the item stays `sent` (its lines are
+ * never paid twice) until payout.paid / payout.failed arrives for it.
  */
 export async function submitPayoutItem(itemId: string): Promise<void> {
   const [item] = await db.select().from(payoutItem).where(eq(payoutItem.id, itemId));
@@ -726,8 +735,20 @@ export async function submitPayoutItem(itemId: string): Promise<void> {
     });
   } catch (e) {
     if (!(await isFinalAttempt(`payout_item:${itemId}:submit`))) throw e;
-    await db.transaction(tx => markItemFailed(tx, itemId, errorText(e)));
-    return;
+    let found: Awaited<ReturnType<typeof provider.findPayout>>;
+    try {
+      found = await provider.findPayout({ payoutItemId: item.id, partnerAccountRef: p.providerAccountRef ?? '', since: item.sentAt ?? item.createdAt });
+    } catch (lookup) {
+      await db.transaction(tx => audit(tx, {
+        actor: SYSTEM, action: 'payout.item_unknown', entity: 'payout_item', entityId: itemId, data: { error: errorText(e), lookup: errorText(lookup) },
+      }));
+      throw e;
+    }
+    if (!found) {
+      await db.transaction(tx => markItemFailed(tx, itemId, errorText(e)));
+      return;
+    }
+    r = found;
   }
   await db.transaction(async tx => {
     const [cur] = await tx.select().from(payoutItem).where(eq(payoutItem.id, itemId)).for('update');
@@ -743,10 +764,15 @@ export async function submitPayoutItem(itemId: string): Promise<void> {
  * lib/payments/apply.ts. Unknown refs return handled: false.
  */
 export async function applyPayoutEvent(
-  ev: { type: 'payout.paid'; payoutRef: string } | { type: 'payout.failed'; payoutRef: string; reason: string }, tx?: Tx,
+  ev: { type: 'payout.paid'; payoutRef: string; payoutItemId?: string } | { type: 'payout.failed'; payoutRef: string; reason: string; payoutItemId?: string }, tx?: Tx,
 ): Promise<{ handled: boolean }> {
   return withTx(tx, async tx => {
-    const [item] = await tx.select({ id: payoutItem.id }).from(payoutItem).where(eq(payoutItem.providerPayoutRef, ev.payoutRef)).limit(1);
+    let [item] = await tx.select({ id: payoutItem.id }).from(payoutItem).where(eq(payoutItem.providerPayoutRef, ev.payoutRef)).limit(1);
+    if (!item && ev.payoutItemId && UUID_RE.test(ev.payoutItemId)) {
+      // The provider call that created it never returned (its ref was not stored): matched by our id in the metadata.
+      [item] = await tx.update(payoutItem).set({ providerPayoutRef: ev.payoutRef })
+        .where(and(eq(payoutItem.id, ev.payoutItemId), isNull(payoutItem.providerPayoutRef))).returning({ id: payoutItem.id });
+    }
     if (!item) return { handled: false };
     if (ev.type === 'payout.paid') await markItemPaid(tx, item.id);
     else await markItemFailed(tx, item.id, ev.reason);

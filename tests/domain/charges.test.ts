@@ -16,6 +16,7 @@ import { approveRequest, sendQuote } from '@/lib/domain/requests';
 import { simulatedProvider } from '@/lib/payments/simulated';
 import { applyProviderEvent } from '@/lib/payments/apply';
 import { createClient, createPartner } from '../helpers/factories';
+import { confirmPayoutAccount } from '../helpers/aftercare';
 import {
   EVENT, H, NOW, approvedBooking, bell, bookingRow, emails, expectLedgerHealthy, failure, forceSetting, jobs, paidBooking, requestRow, sendFor, tickAt,
 } from '../helpers/lifecycle';
@@ -156,6 +157,7 @@ describe('C3 → K5 confirmation', () => {
 describe('duplicates and late money (§4.8)', () => {
   it('flags a second payment as a duplicate, holds it and never releases it to the partner', async () => {
     const a = await approvedBooking();
+    await confirmPayoutAccount(a.partner.partner.id); // the K13 release joins the batch T17 prepared (no account_check hold)
     const transfer = await startPayment(a.client.actor, { number: a.number, method: 'bank_transfer' });
     const card = await startPayment(a.client.actor, { number: a.number, method: 'card' });
     await succeed(card.chargeId);
@@ -249,6 +251,7 @@ describe('the provider hold limit: T18 early release (§7.4)', () => {
     await forceSetting('payment.provider_max_hold_days', 90);
     try {
       const a = await paidBooking();
+      await confirmPayoutAccount(a.partner.partner.id); // a batch prepared by an earlier test would hold it for account_check
       const [hl] = await jobs(`charge:${a.chargeId}:holdlimit`);
       expect(hl.runAt).toEqual(new Date(NOW.getTime() + 83 * DAY));
       await tickAt(hl.runAt);
@@ -376,7 +379,7 @@ describe('bank transfer availability (D6)', () => {
 });
 
 describe('other provider events, the simulated checkout guard and the webhook route', () => {
-  it('applies account.updated (P11) and records events other modules handle', async () => {
+  it('applies account.updated (P11); an event about a record not stored yet asks for a retry', async () => {
     const p = await createPartner();
     await db.update(s.partner).set({ providerAccountRef: `acct_${p.partner.id.slice(0, 8)}` }).where(eq(s.partner.id, p.partner.id));
     const r = await applyProviderEvent({ type: 'account.updated', accountRef: `acct_${p.partner.id.slice(0, 8)}`, status: { chargesEnabled: true, payoutsEnabled: false, requirementsDue: ['external_account'] } });
@@ -384,9 +387,9 @@ describe('other provider events, the simulated checkout guard and the webhook ro
     const [row] = await db.select().from(s.partner).where(eq(s.partner.id, p.partner.id));
     expect(row).toMatchObject({ providerChargesEnabled: true, providerPayoutsEnabled: false, providerRequirements: ['external_account'], providerStatus: 'restricted' });
     expect((await applyProviderEvent({ type: 'account.updated', accountRef: 'acct_unknown', status: { chargesEnabled: true, payoutsEnabled: true, requirementsDue: [] } })).applied).toBe(false);
-    expect(await applyProviderEvent({ type: 'refund.succeeded', refundRef: 're_1' })).toEqual({ applied: false, reason: 'unhandled' });
-    const [a] = await db.select().from(s.auditLog).where(eq(s.auditLog.action, 'provider.event_unhandled'));
-    expect(a.entityId).toBe('refund.succeeded');
+    // refund.* / payout.* / dispute.created are applied by their modules (tests/security/provider-events.test.ts).
+    expect(await applyProviderEvent({ type: 'refund.succeeded', refundRef: 're_1' })).toEqual({ applied: false, reason: 'unknown_ref', retry: true });
+    expect(await db.select().from(s.auditLog).where(eq(s.auditLog.action, 'provider.event_unhandled'))).toHaveLength(0);
   });
 
   it('opens the test checkout only for the owner, only with the simulated provider', async () => {

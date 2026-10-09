@@ -56,11 +56,24 @@ export const stripeProvider: PaymentProvider = {
         metadata: { chargeId: a.chargeId, viaCheckout: '1' },
       },
       metadata: { chargeId: a.chargeId },
+      // Not past the payment window (Stripe accepts 30 minutes to 24 hours from now).
+      ...(a.expiresAt ? { expires_at: Math.floor(Math.min(Math.max(a.expiresAt.getTime(), Date.now() + 31 * 60_000), Date.now() + 23.5 * 3600_000) / 1000) } : {}),
       success_url: a.successUrl,
       cancel_url: a.cancelUrl,
       locale: 'bg',
     }, { idempotencyKey: `checkout-${a.chargeId}` });
     return { redirectUrl: s.url!, providerRef: s.id };
+  },
+
+  async expireCheckout(providerRef) {
+    if (!providerRef.startsWith('cs_')) return; // an off-session or already completed charge has no open session
+    try {
+      await stripe().checkout.sessions.expire(providerRef);
+    } catch (e) {
+      // Already complete or expired: nothing to close (a late payment is flagged as a duplicate on arrival).
+      if ((e as Stripe.errors.StripeError).type === 'StripeInvalidRequestError') return;
+      throw e;
+    }
   },
 
   async chargeOffSession(a) {
@@ -87,6 +100,25 @@ export const stripeProvider: PaymentProvider = {
     return { refundRef: r.id, status: r.status === 'succeeded' ? 'succeeded' : r.status === 'failed' ? 'failed' : 'pending', reason: r.failure_reason ?? undefined };
   },
 
+  async findRefund(a) {
+    for await (const r of stripe().refunds.list({ payment_intent: a.providerChargeRef, limit: 100 })) {
+      if (r.metadata?.refundId === a.refundId) {
+        return { refundRef: r.id, status: r.status === 'succeeded' ? 'succeeded' : r.status === 'failed' ? 'failed' : 'pending', reason: r.failure_reason ?? undefined };
+      }
+    }
+    return null;
+  },
+
+  async findPayout(a) {
+    const since = Math.floor(a.since.getTime() / 1000) - 24 * 3600;
+    for await (const p of stripe().payouts.list({ created: { gte: since }, limit: 100 }, { stripeAccount: a.partnerAccountRef })) {
+      if (p.metadata?.payoutItemId === a.payoutItemId) {
+        return { payoutRef: p.id, status: p.status === 'paid' ? 'paid' : p.status === 'failed' ? 'failed' : 'pending', reason: p.failure_message ?? undefined };
+      }
+    }
+    return null;
+  },
+
   async payout(a) {
     const p = await stripe().payouts.create(
       { amount: a.amountCents, currency: 'eur', description: a.description, metadata: { payoutItemId: a.payoutItemId } },
@@ -98,7 +130,15 @@ export const stripeProvider: PaymentProvider = {
   async parseWebhook(req) {
     const sig = req.headers.get('stripe-signature') ?? '';
     const body = await req.text();
-    const ev = stripe().webhooks.constructEvent(body, sig, process.env.STRIPE_WEBHOOK_SECRET ?? '');
+    // Two endpoints may post here: the platform account's (checkout, refunds, disputes) and the
+    // Connect one for events on the partners' accounts (payouts, account.updated), each with its secret.
+    const secrets = [process.env.STRIPE_WEBHOOK_SECRET, process.env.STRIPE_CONNECT_WEBHOOK_SECRET].filter((x): x is string => !!x);
+    let ev: Stripe.Event | null = null;
+    let lastError: unknown = new Error('STRIPE_WEBHOOK_SECRET is not set');
+    for (const secret of secrets) {
+      try { ev = stripe().webhooks.constructEvent(body, sig, secret); break; } catch (e) { lastError = e; }
+    }
+    if (!ev) throw lastError;
     const out: ProviderEvent[] = [];
     switch (ev.type) {
       case 'checkout.session.completed': {
@@ -130,14 +170,19 @@ export const stripeProvider: PaymentProvider = {
       }
       case 'refund.updated': case 'refund.created': {
         const r = ev.data.object as Stripe.Refund;
-        if (r.status === 'succeeded') out.push({ type: 'refund.succeeded', refundRef: r.id });
-        if (r.status === 'failed') out.push({ type: 'refund.failed', refundRef: r.id, reason: r.failure_reason ?? 'failed' });
+        const refundId = r.metadata?.refundId || undefined;
+        if (r.status === 'succeeded') out.push({ type: 'refund.succeeded', refundRef: r.id, refundId });
+        if (r.status === 'failed') out.push({ type: 'refund.failed', refundRef: r.id, reason: r.failure_reason ?? 'failed', refundId });
         break;
       }
-      case 'payout.paid': out.push({ type: 'payout.paid', payoutRef: (ev.data.object as Stripe.Payout).id }); break;
+      case 'payout.paid': {
+        const p = ev.data.object as Stripe.Payout;
+        out.push({ type: 'payout.paid', payoutRef: p.id, payoutItemId: p.metadata?.payoutItemId || undefined });
+        break;
+      }
       case 'payout.failed': {
         const p = ev.data.object as Stripe.Payout;
-        out.push({ type: 'payout.failed', payoutRef: p.id, reason: p.failure_message ?? 'failed' });
+        out.push({ type: 'payout.failed', payoutRef: p.id, reason: p.failure_message ?? 'failed', payoutItemId: p.metadata?.payoutItemId || undefined });
         break;
       }
       case 'account.updated': {

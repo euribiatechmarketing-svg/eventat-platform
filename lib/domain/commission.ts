@@ -62,13 +62,19 @@ export async function commissionRateFor(
  * Locks the partner row first, so two bookings of one partner confirmed at the
  * same moment cannot both take the last intro slot. Returns the stored rate;
  * a booking that already has a rate keeps it.
+ *
+ * `chargedBp`: the rate the paying charge's application fee was computed with when its checkout was
+ * created. The provider has already split the money at that rate (the fee is fixed in the checkout),
+ * so the ledger takes the same rate — otherwise L3 would book a commission the platform never received.
  */
-export async function snapshotCommission(q: Queryable, b: { id: string; partnerId: string; clientId: string; commissionBp: number | null }, at: Date): Promise<number> {
+export async function snapshotCommission(
+  q: Queryable, b: { id: string; partnerId: string; clientId: string; commissionBp: number | null }, at: Date, chargedBp?: number | null,
+): Promise<number> {
   if (b.commissionBp != null) return b.commissionBp;
   await q.select({ id: partner.id }).from(partner).where(eq(partner.id, b.partnerId)).for('update');
-  const rate = await commissionRateFor(q, { partnerId: b.partnerId, clientId: b.clientId, at, excludeBookingId: b.id });
-  await q.update(booking).set({ commissionBp: rate.bp, updatedAt: at }).where(eq(booking.id, b.id));
-  return rate.bp;
+  const bp = chargedBp ?? (await commissionRateFor(q, { partnerId: b.partnerId, clientId: b.clientId, at, excludeBookingId: b.id })).bp;
+  await q.update(booking).set({ commissionBp: bp, updatedAt: at }).where(eq(booking.id, b.id));
+  return bp;
 }
 
 /** The projected split for an unpaid amount (SPEC §6 Before payment). */

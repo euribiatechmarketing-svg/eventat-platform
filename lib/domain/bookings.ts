@@ -31,6 +31,7 @@ import { bookingSplit, split, type Split } from './commission';
 import { accountBalance, bookingBalances, postTransaction, type LedgerLine } from './ledger';
 import { getSettings, type Settings } from './settings';
 import { notifyDateFreed } from './saved';
+import { releaseBookingFunds } from './payouts';
 
 // ── Types, errors, transactions ──────────────────────────────────────────
 
@@ -212,6 +213,7 @@ export const LIFECYCLE_JOBS = {
   complete: 'booking.complete',                   // T13
   reviewInvite: 'booking.review_invite',          // T14
   holdLimit: 'charge.hold_limit',                 // T18
+  expireCheckout: 'charge.expire_checkout',       // a charge expired on our side: close its provider checkout
   offerLapse: 'request.offer_lapse',              // R10 (O5: the event date passed)
 } as const;
 
@@ -232,7 +234,23 @@ export const jobKey = {
   complete: (id: string) => `booking:${id}:complete`,
   reviewInvite: (id: string) => `booking:${id}:reviewinvite`,
   holdLimit: (chargeId: string) => `charge:${chargeId}:holdlimit`,
+  expireCheckout: (chargeId: string) => `charge:${chargeId}:expirecheckout`,
 };
+
+/**
+ * The booking's open charges (a pending checkout, an awaited transfer) can no longer complete: they
+ * become `expired`, and each card checkout is closed at the provider after commit (job
+ * charge.expire_checkout). A payment that still arrives on one is never taken as the booking's
+ * payment (charges.onChargeSucceeded): it is flagged as a duplicate for a refund. Used by T8, K16
+ * repricing and cancellations.
+ */
+export async function expireOpenCharges(tx: Tx, bookingId: string, at: Date): Promise<void> {
+  const rows = await tx.update(charge).set({ status: 'expired', updatedAt: at })
+    .where(and(eq(charge.bookingId, bookingId), inArray(charge.status, ['pending', 'awaiting_transfer']))).returning();
+  for (const c of rows) {
+    if (c.method === 'card' && c.providerRef) await scheduleJob(LIFECYCLE_JOBS.expireCheckout, at, { chargeId: c.id }, jobKey.expireCheckout(c.id), tx);
+  }
+}
 
 /** Schedule only when the moment is still ahead (a "6 hours left" reminder at 1 hour left would be wrong). */
 async function scheduleAhead(tx: Tx, kind: string, at: Date, nowAt: Date, payload: Record<string, unknown>, key: string) {
@@ -792,8 +810,7 @@ export async function expirePaymentJob(p: Record<string, unknown>): Promise<void
     if (at < b.paymentDueAt) return; // extended (K3): the moved job will come
     if (bw.charges.some(c => c.status === 'succeeded')) return;
     await t.update(booking).set({ status: 'payment_expired', updatedAt: at }).where(eq(booking.id, b.id));
-    await t.update(charge).set({ status: 'expired', updatedAt: at })
-      .where(and(eq(charge.bookingId, b.id), inArray(charge.status, ['pending', 'awaiting_transfer'])));
+    await expireOpenCharges(t, b.id, at);
     await cancelPaymentJobs(t, b.id, { keepExpiry: true });
     const pt = bw.parties;
     await mail(t, {
@@ -831,7 +848,9 @@ export async function payoutHeldByDispute(q: Queryable, b: Pick<BookingRow, 'id'
  * K13: `confirmed` → `completed` at 00:00 the day after the event. The funds
  * are released to the partner (L3) and the payout line becomes `ready`, unless
  * an open dispute holds the payout: then the line is `held` and the release
- * waits for the decision (the dispute module calls releaseToPartner + markPayoutLineReady).
+ * waits for the decision. The release goes through payouts.releaseBookingFunds(),
+ * which keeps back what the client is still owed (a pending refund, or a failed one
+ * not retried yet) and never releases more than the partner is due.
  */
 export async function completeBooking(bookingId: string, tx?: Tx): Promise<'completed' | 'held' | 'skipped'> {
   return withTx(tx, async t => {
@@ -845,9 +864,10 @@ export async function completeBooking(bookingId: string, tx?: Tx): Promise<'comp
       await audit(t, { actor: SYSTEM, action: 'booking.completed', entity: 'booking', entityId: b.id, data: { number: b.number, payoutHeld: true } });
       return 'held';
     }
-    const s = await releaseToPartner(t, { bookingId: b.id, actor: SYSTEM, description: `K13 completion ${b.number}` });
-    await markPayoutLineReady(t, { bookingId: b.id, split: s, at });
-    await audit(t, { actor: SYSTEM, action: 'booking.completed', entity: 'booking', entityId: b.id, data: { number: b.number, releasedCents: s.baseCents } });
+    const r = await releaseBookingFunds({ bookingId: b.id, description: `K13 completion ${b.number}` }, t);
+    // Nothing left to release (all of it went early under T18, or back to the client): the projection closes.
+    if (r.releasedCents === 0 && !r.held) await markPayoutLineReady(t, { bookingId: b.id, split: split(0, b.commissionBp ?? 0), at });
+    await audit(t, { actor: SYSTEM, action: 'booking.completed', entity: 'booking', entityId: b.id, data: { number: b.number, releasedCents: r.releasedCents } });
     return 'completed';
   });
 }
@@ -1107,7 +1127,7 @@ export async function getBookingForAdmin(actor: AnyActor, number: string, q: Que
 }
 
 /** Audit data keys that carry the commission or the split it implies (shown only with view_finance, SPEC §1.2). */
-const COMMISSION_KEY = /commission|partner_?amount|partnerKeeps|applicationFee/i;
+const COMMISSION_KEY = /commission|partner_?amount|partner_?cents|partnerKeeps|applicationFee/i;
 
 /** An audit record's data without its commission figures, at any depth. */
 export function withoutCommission(data: unknown): unknown {

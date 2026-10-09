@@ -24,7 +24,7 @@ import { ForbiddenError, SYSTEM, assertCan, type Actor, type AnyActor } from './
 import { audit } from './audit';
 import { DEFAULT_CANCELLATION_POLICIES, getSetting, type CancellationPolicies } from './settings';
 import { adjustLinesForCancellation, releaseBookingFunds } from './payouts';
-import { HOLDING_STATUSES, LIFECYCLE_JOBS, jobKey } from './bookings';
+import { HOLDING_STATUSES, LIFECYCLE_JOBS, expireOpenCharges, jobKey } from './bookings';
 import { scheduleJob } from '@/lib/jobs';
 import { createRefunds, type RefundRow } from './refunds';
 import {
@@ -291,8 +291,7 @@ export async function cancelBookingCore(tx: Tx, ctx: BookingCtx, a: {
   await cancelPending(`booking:${b.id}:`, tx);
   const charges = await tx.select({ id: charge.id }).from(charge).where(eq(charge.bookingId, b.id));
   for (const ch of charges) await cancelPending(`charge:${ch.id}:`, tx);
-  await tx.update(charge).set({ status: 'expired', updatedAt: at })
-    .where(and(eq(charge.bookingId, b.id), inArray(charge.status, ['pending', 'awaiting_transfer'])));
+  await expireOpenCharges(tx, b.id, at);
   await tx.update(partnerCancellationRequest).set({ status: 'completed', decidedBy: 'userId' in a.actor ? a.actor.userId : null, decidedAt: at })
     .where(and(eq(partnerCancellationRequest.bookingId, b.id), eq(partnerCancellationRequest.status, 'pending')));
   if (q.retainedCents > 0) {
