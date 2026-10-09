@@ -1,5 +1,6 @@
 'use client';
 import { useRef, useState, useTransition } from 'react';
+import { focusSoon } from '@/components/ui/a11y';
 import { toast } from '@/components/ui/client';
 import { moneyShort } from '@/lib/format';
 import type { OnboardingService } from '@/lib/domain/views-partner-onboarding';
@@ -25,8 +26,11 @@ const bg = (url: string | null) => (url ? { backgroundImage: `url('${url}')` } :
 function Err({ name }: { name: string }) {
   const { state } = useStepState();
   const e = state.fields?.[name];
-  return e ? <span className="field-message">{e}</span> : null;
+  return e ? <span className="field-message" id={`${name}-msg`}>{e}</span> : null;
 }
+/** The control's error state for screen readers: invalid, described by its message (Err). */
+const errAttrs = (fields: StepState['fields'], name: string) =>
+  (fields?.[name] ? { 'aria-invalid': true, 'aria-describedby': `${name}-msg` } : {});
 const errCls = (fields: StepState['fields'], name: string) => (fields?.[name] ? ' field--error' : '');
 
 function Editor({ p, first, categories, defaultCategoryId, cityName, collapsed, onCollapse, onRemove, onName }: {
@@ -52,28 +56,29 @@ function Editor({ p, first, categories, defaultCategoryId, cityName, collapsed, 
       <div className="wiz-fieldset-head">
         <div style={{ minWidth: 0 }}>
           <div className="m-pkg-title">
-            <h4 className="wiz-fieldset-title"><Num>{p.name || KIND_LABEL[p.kind]}</Num></h4>
+            <h3 className="wiz-fieldset-title" id={`${k}.title`}><Num>{p.name || KIND_LABEL[p.kind]}</Num></h3>
             {first && <span className="badge badge--primary">Препоръчан</span>}
           </div>
           {first && <p className="wiz-fieldset-sub">Този пакет ще се показва първи сред пакетите ви.</p>}
         </div>
         <div className="m-pkg-actions">
-          <button type="button" className="btn btn--outline btn--icon btn--sm" aria-label="Премахни" onClick={onRemove}><Trash /></button>
-          <button type="button" className="btn btn--outline btn--icon btn--sm" aria-label={collapsed ? 'Разгъни' : 'Свий'} aria-expanded={!collapsed} onClick={onCollapse}><ChevronUp /></button>
+          <button type="button" className="btn btn--outline btn--icon btn--sm" aria-label="Премахни" aria-describedby={`${k}.title`} onClick={onRemove}><Trash /></button>
+          <button type="button" className="btn btn--outline btn--icon btn--sm" aria-label={collapsed ? 'Разгъни' : 'Свий'} aria-expanded={!collapsed}
+            aria-controls={`${k}.body`} aria-describedby={`${k}.title`} onClick={onCollapse}><ChevronUp /></button>
         </div>
       </div>
 
-      <div className="m-pkg-body" hidden={collapsed} style={{ marginTop: 'var(--space-5)' }}>
+      <div className="m-pkg-body" id={`${k}.body`} hidden={collapsed} style={{ marginTop: 'var(--space-5)' }}>
         <div className="wiz-row">
           <div className={`field${errCls(f, `${k}.name`)}`}>
             <label className="field-label" htmlFor={`${k}.name`}>{isFixed ? 'Име на пакета' : 'Име на услугата'}<span className="required-mark">*</span></label>
-            <input id={`${k}.name`} className="field-input" type="text" name={`${k}.name`} value={p.name} maxLength={80} onChange={e => onName(e.target.value)} />
+            <input id={`${k}.name`} className="field-input" type="text" name={`${k}.name`} value={p.name} maxLength={80} onChange={e => onName(e.target.value)} aria-required {...errAttrs(f, `${k}.name`)} />
             <Err name={`${k}.name`} />
           </div>
           <div className={`field${errCls(f, `${k}.categoryId`)}`}>
             <label className="field-label" htmlFor={`${k}.categoryId`}>Категория<span className="required-mark">*</span></label>
             <div className="select-wrap">
-              <select id={`${k}.categoryId`} className="field-select" name={`${k}.categoryId`} defaultValue={p.categoryId || defaultCategoryId || ''}>
+              <select id={`${k}.categoryId`} className="field-select" name={`${k}.categoryId`} defaultValue={p.categoryId || defaultCategoryId || ''} aria-required {...errAttrs(f, `${k}.categoryId`)}>
                 <option value="" disabled>Изберете</option>
                 {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
@@ -86,15 +91,15 @@ function Editor({ p, first, categories, defaultCategoryId, cityName, collapsed, 
         <div className="wiz-row--full">
           <div className={`field${errCls(f, `${k}.description`)}`}>
             <label className="field-label" htmlFor={`${k}.description`}>Кратко описание<span className="required-mark">*</span></label>
-            <textarea id={`${k}.description`} className="field-textarea" name={`${k}.description`} defaultValue={p.description} maxLength={600} />
+            <textarea id={`${k}.description`} className="field-textarea" name={`${k}.description`} defaultValue={p.description} maxLength={600} aria-required {...errAttrs(f, `${k}.description`)} />
             <Err name={`${k}.description`} />
           </div>
         </div>
 
         <div className="wiz-row--full">
           <div className="field">
-            <label className="field-label">Какво е включено</label>
-            <div className="checklist-editor" ref={listRef}>
+            <label className="field-label" id={`${k}.inc-l`}>Какво е включено</label>
+            <div className="checklist-editor" ref={listRef} role="group" aria-labelledby={`${k}.inc-l`}>
               {points.map((pt, i) => (
                 <div key={pt.k} className="checklist-item">
                   <ListCheck />
@@ -114,10 +119,11 @@ function Editor({ p, first, categories, defaultCategoryId, cityName, collapsed, 
             <div className={`field${errCls(f, `${k}.price`)}`}>
               <label className="field-label" htmlFor={`${k}.price`}>Цена<span className="required-mark">*</span></label>
               <div className="input-with-suffix">
-                <input id={`${k}.price`} className="field-input" type="text" inputMode="decimal" name={`${k}.price`} defaultValue={priceInput(p.priceCents)} maxLength={12} />
+                <input id={`${k}.price`} className="field-input" type="text" inputMode="decimal" name={`${k}.price`} defaultValue={priceInput(p.priceCents)} maxLength={12}
+                  aria-required aria-describedby={`${k}.price-msg`} aria-invalid={!!f?.[`${k}.price`]} />
                 <span className="input-suffix">€</span>
               </div>
-              {f?.[`${k}.price`] ? <Err name={`${k}.price`} /> : <span className="field-message">Цена за целия пакет.</span>}
+              {f?.[`${k}.price`] ? <Err name={`${k}.price`} /> : <span className="field-message" id={`${k}.price-msg`}>Цена за целия пакет.</span>}
             </div>
           )}
           <div className="field">
@@ -132,7 +138,7 @@ function Editor({ p, first, categories, defaultCategoryId, cityName, collapsed, 
               <input type="checkbox" name={`${k}.extraHour`} defaultChecked={p.extraHourEnabled} />
               <span className="check-box" />
               <span>Допълнителен час: <strong>+<input className="m-inline-amount" type="text" inputMode="decimal" name={`${k}.extraHourPrice`}
-                defaultValue={priceInput(p.extraHourPriceCents)} maxLength={8} aria-label="Допълнителен час" onClick={e => e.preventDefault()}
+                defaultValue={priceInput(p.extraHourPriceCents)} maxLength={8} aria-label="Допълнителен час" onClick={e => e.preventDefault()} aria-invalid={!!f?.[`${k}.extraHourPrice`]}
                 onFocus={touch} /> €</strong></span>
             </label>
             <label className="check">
@@ -155,7 +161,7 @@ function Row({ p, onEdit, onRemove, busy }: { p: Pkg; onEdit: () => void; onRemo
     <div className={`service-row${busy ? ' m-busy' : ''}`} data-key={p.key}>
       <div className="service-row-thumb" style={bg(p.thumbUrl)} />
       <div className="service-row-info">
-        <p className="service-row-title">{p.name}</p>
+        <p className="service-row-title" id={`row-${p.key}`}>{p.name}</p>
         <div className="service-row-meta">
           {price && <span>{price}</span>}
           {price && text && <span>·</span>}
@@ -163,8 +169,8 @@ function Row({ p, onEdit, onRemove, busy }: { p: Pkg; onEdit: () => void; onRemo
         </div>
       </div>
       <div className="service-row-actions">
-        <button type="button" className="btn btn--ghost btn--sm" onClick={onEdit}>Редактирай</button>
-        <button type="button" className="btn btn--outline btn--icon btn--sm" aria-label="Премахни" onClick={onRemove}><Trash /></button>
+        <button type="button" className="btn btn--ghost btn--sm" onClick={onEdit} aria-describedby={`row-${p.key}`}>Редактирай</button>
+        <button type="button" className="btn btn--outline btn--icon btn--sm" aria-label="Премахни" aria-describedby={`row-${p.key}`} onClick={onRemove}><Trash /></button>
       </div>
     </div>
   );
@@ -223,7 +229,12 @@ export function ServicesForm(props: Props) {
     setTimeout(() => (document.getElementById(`pkg.${p.key}.name`) as HTMLInputElement | null)?.focus(), 0);
   };
   const removePkg = (p: Pkg) => {
-    const drop = () => { setPkgs(ps => ps.filter(x => x.key !== p.key)); toast('Пакетът е премахнат'); };
+    // The package's controls are gone with it: focus goes to its section's ‹Добави…› button.
+    const drop = () => {
+      setPkgs(ps => ps.filter(x => x.key !== p.key));
+      toast('Пакетът е премахнат');
+      focusSoon(() => document.querySelector<HTMLElement>(`[data-add="${p.kind}"]`));
+    };
     if (!p.id) { drop(); return; }
     setRemoving(p.key);
     start(async () => {
@@ -239,45 +250,46 @@ export function ServicesForm(props: Props) {
     ? <Editor key={p.key} p={p} first={p === fixedPkgs[0]} categories={categories} defaultCategoryId={defaultCategoryId} cityName={cityName}
         collapsed={folded.has(p.key)} onCollapse={() => setFolded(f => toggle(f, p.key))} onRemove={() => removePkg(p)}
         onName={v => setPkgs(ps => ps.map(x => (x.key === p.key ? { ...x, name: v } : x)))} />
-    : <Row key={p.key} p={p} busy={removing === p.key} onEdit={() => setOpen(o => toggle(o, p.key, true))} onRemove={() => removePkg(p)} />;
+    : <Row key={p.key} p={p} busy={removing === p.key} onRemove={() => removePkg(p)}
+        onEdit={() => { setOpen(o => toggle(o, p.key, true)); focusSoon(() => document.getElementById(`pkg.${p.key}.name`)); }} />;
 
   return (
     <WizardForm action={servicesAction} onResult={onResult}>
       <section className="wiz-fieldset">
         <div className="wiz-fieldset-head">
           <div>
-            <h3 className="wiz-fieldset-title">Как определяте цената?</h3>
+            <h2 className="wiz-fieldset-title">Как определяте цената?</h2>
             <p className="wiz-fieldset-sub">Можете да комбинирате двата подхода — например пакети за сватби и оферта за фирмени събития.</p>
           </div>
         </div>
         <div className="wiz-row">
           <label className={`option-card${fixed ? ' is-selected' : ''}`}>
-            <input type="checkbox" name="offersFixedPackages" checked={fixed} onChange={e => setFixed(e.target.checked)} />
+            <input type="checkbox" name="offersFixedPackages" checked={fixed} onChange={e => setFixed(e.target.checked)} aria-labelledby="m-offer-fixed" aria-describedby="m-offer-fixed-d" />
             <div className="option-card-head">
               <div className="option-card-icon">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
               </div>
               <div>
-                <p className="option-card-title">Фиксирани пакети</p>
+                <p className="option-card-title" id="m-offer-fixed">Фиксирани пакети</p>
                 <p className="option-card-sub">Ясна цена, ясно включено</p>
               </div>
               <span className="option-card-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg></span>
             </div>
-            <p className="option-card-body">Подходящо, ако услугата ви е еднаква за всяко събитие&nbsp;— клиентите виждат цената, преди да ви пишат.</p>
+            <p className="option-card-body" id="m-offer-fixed-d">Подходящо, ако услугата ви е еднаква за всяко събитие&nbsp;— клиентите виждат цената, преди да ви пишат.</p>
           </label>
           <label className={`option-card${onRequest ? ' is-selected' : ''}`}>
-            <input type="checkbox" name="offersOnRequest" checked={onRequest} onChange={e => setOnRequest(e.target.checked)} />
+            <input type="checkbox" name="offersOnRequest" checked={onRequest} onChange={e => setOnRequest(e.target.checked)} aria-labelledby="m-offer-req" aria-describedby="m-offer-req-d" />
             <div className="option-card-head">
               <div className="option-card-icon">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" /></svg>
               </div>
               <div>
-                <p className="option-card-title">По запитване</p>
+                <p className="option-card-title" id="m-offer-req">По запитване</p>
                 <p className="option-card-sub">Цената зависи от събитието</p>
               </div>
               <span className="option-card-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg></span>
             </div>
-            <p className="option-card-body">Подходящо за по-сложни услуги — клиентът описва събитието, а вие изпращате индивидуална оферта.</p>
+            <p className="option-card-body" id="m-offer-req-d">Подходящо за по-сложни услуги — клиентът описва събитието, а вие изпращате индивидуална оферта.</p>
           </label>
         </div>
       </section>
@@ -285,12 +297,12 @@ export function ServicesForm(props: Props) {
       <section className="wiz-fieldset">
         <div className="wiz-fieldset-head">
           <div>
-            <h3 className="wiz-fieldset-title">Вашите пакети</h3>
+            <h2 className="wiz-fieldset-title">Вашите пакети</h2>
             <p className="wiz-fieldset-sub">Подредете ги по популярност. Първият се откроява в каталога.</p>
           </div>
         </div>
         <div>{fixedPkgs.map(render)}</div>
-        <button type="button" className="btn btn--outline m-add-btn" onClick={() => add('package_fixed')} disabled={fixedPkgs.length >= maxPackages}>
+        <button type="button" className="btn btn--outline m-add-btn" data-add="package_fixed" onClick={() => add('package_fixed')} disabled={fixedPkgs.length >= maxPackages}>
           <Plus className="btn-icon" />Добави пакет
         </button>
       </section>
@@ -298,12 +310,12 @@ export function ServicesForm(props: Props) {
       <section className="wiz-fieldset">
         <div className="wiz-fieldset-head">
           <div>
-            <h3 className="wiz-fieldset-title">Услуги по запитване <span className="t-caption t-muted">(незадължително)</span></h3>
+            <h2 className="wiz-fieldset-title">Услуги по запитване <span className="t-caption t-muted">(незадължително)</span></h2>
             <p className="wiz-fieldset-sub">Услуги без фиксирана цена — клиентите ви пишат и получават индивидуална оферта.</p>
           </div>
         </div>
         {requestPkgs.length > 0 && <div>{requestPkgs.map(render)}</div>}
-        <button type="button" className="btn btn--outline m-add-btn" onClick={() => add('on_request')}>
+        <button type="button" className="btn btn--outline m-add-btn" data-add="on_request" onClick={() => add('on_request')}>
           <Plus className="btn-icon" />Добави услуга по запитване
         </button>
       </section>

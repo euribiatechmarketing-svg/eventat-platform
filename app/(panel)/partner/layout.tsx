@@ -8,7 +8,9 @@ import { bellItems } from '@/lib/bell';
 import { PanelShell, type RailGroup } from '@/components/panel/PanelShell';
 import { readFlash } from '@/lib/flash';
 import { FlashAgain, TopbarLang, TopbarSearch } from './_ops/ui';
+import { FocusKeeper } from '@/components/ui/a11y';
 import '@/styles/m-partner-ops.css';
+import '@/styles/m-a11y-partner.css';
 
 export default async function PartnerLayout({ children }: { children: React.ReactNode }) {
   const user = await requireRole('partner', '/partner');
@@ -49,6 +51,7 @@ export default async function PartnerLayout({ children }: { children: React.Reac
       bell={await bellItems(user.id)}>
       {children}
       <FlashAgain message={flash?.message ?? null} kind={flash?.kind} nonce={randomUUID()} />
+      <FocusKeeper />
     </PanelShell>
   );
 }

@@ -42,10 +42,10 @@ export default async function EarningsPage({ searchParams }: { searchParams: Pro
               {delta > 0 ? '+' : delta < 0 ? '−' : ''}{Math.abs(delta)}% спрямо {v.month.prevMonthName}
             </div>
           )}
-          <div className="eh-bars">
+          <div className="eh-bars" role="img" aria-label={`Приходи: ${v.bars.map(b => `${b.label} ${euros(b.cents)} €`).join(', ')}`}>
             {v.bars.map((b, i) => <i key={i} className={b.isNow ? 'is-now' : undefined} style={{ height: `${b.pct}%` }} />)}
           </div>
-          <div className="eh-x">{v.bars.map((b, i) => <span key={i}>{b.label}</span>)}</div>
+          <div className="eh-x" aria-hidden="true">{v.bars.map((b, i) => <span key={i}>{b.label}</span>)}</div>
         </div>
         <div className="eh-side">
           <div className="eh-stat eh-stat--gold">
@@ -82,7 +82,7 @@ export default async function EarningsPage({ searchParams }: { searchParams: Pro
                   {v.lines.map(l => (
                     <ClickRow key={l.id} href={`/partner/rezervacii/${encodeURIComponent(l.number)}`}>
                       <td className="muted">{l.date}</td>
-                      <td><div className="tbl-event"><Segs parts={l.event} /></div><div className="tbl-sub">{l.sub}</div></td>
+                      <td><Link className="tbl-event pc-row-link" href={`/partner/rezervacii/${encodeURIComponent(l.number)}`}><Segs parts={l.event} /></Link><div className="tbl-sub">{l.sub}</div></td>
                       <td className="num strong">{l.amount}</td>
                       <td><span className={`badge badge--${l.badge.tone} badge--dot`}>{l.badge.label}</span></td>
                     </ClickRow>

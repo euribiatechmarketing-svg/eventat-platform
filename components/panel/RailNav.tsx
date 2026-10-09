@@ -29,9 +29,10 @@ export function RailNav({ groups, home, aliases }: { groups: RailGroup[]; home: 
       {groups.map((g, gi) => (
         <div key={g.label}>
           <div className={`side-label${gi === 0 ? ' side-label--first' : ''}`}>{g.label}</div>
-          <nav className="side-nav">
+          <nav className="side-nav" aria-label={g.label}>
             {g.items.map(it => (
-              <Link key={it.href} className={`side-item${active === it.href ? ' is-active' : ''}`} href={it.href}>
+              <Link key={it.href} className={`side-item${active === it.href ? ' is-active' : ''}`} href={it.href}
+                aria-current={active === it.href ? (path === it.href ? 'page' : 'true') : undefined}>
                 <Icon name={it.icon} />{it.label}{it.count ? <span className="side-count">{it.count}</span> : null}
               </Link>
             ))}

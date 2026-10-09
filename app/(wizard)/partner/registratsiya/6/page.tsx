@@ -17,7 +17,7 @@ const B = '/partner/registratsiya';
 function Section({ title, step, children }: { title: string; step: number; children: React.ReactNode }) {
   return (
     <div className="review-section">
-      <div className="review-section-head"><h3>{title}</h3><Link href={`${B}/${step}`}>Редактирай</Link></div>
+      <div className="review-section-head"><h2 id={`review-${step}`}>{title}</h2><Link href={`${B}/${step}`} aria-describedby={`review-${step}`}>Редактирай</Link></div>
       {children}
     </div>
   );
@@ -53,7 +53,7 @@ export default async function ReviewStep() {
               <span className="avatar avatar--lg">{r.avatarUrl && <img src={r.avatarUrl} alt="" />}</span>
               <div>
                 <p className="t-overline">{[r.categoryName, r.cityName].filter(Boolean).join(' · ')}</p>
-                <h3 className="t-h3" style={{ margin: '4px 0 4px' }}><Num>{p.businessName}</Num></h3>
+                <h2 className="t-h3" style={{ margin: '4px 0 4px' }}><Num>{p.businessName}</Num></h2>
                 <p className="t-body t-muted">{p.shortDescription}</p>
               </div>
             </div>

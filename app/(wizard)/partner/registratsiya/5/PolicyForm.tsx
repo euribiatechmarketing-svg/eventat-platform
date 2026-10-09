@@ -55,25 +55,26 @@ function Cards({ initial, days: d }: { initial: Policy | ''; days: Props['days']
     <section className="wiz-fieldset">
       <div className="wiz-fieldset-head">
         <div>
-          <h3 className="wiz-fieldset-title">Политика за анулиране</h3>
+          <h2 className="wiz-fieldset-title" id="m-pol-t">Политика за анулиране</h2>
           <p className="wiz-fieldset-sub">Една политика за всички ваши пакети и услуги.</p>
         </div>
       </div>
-      <div className="ob-policy-list">
+      <div className="ob-policy-list" role="radiogroup" aria-labelledby="m-pol-t" aria-describedby={state.fields?.cancellationPolicy ? 'm-pol-e' : undefined}>
         {cards.map(c => (
           <label key={c.key} className={`option-card${policy === c.key ? ' is-selected' : ''}`}>
-            <input type="radio" name="cancellationPolicy" value={c.key} checked={policy === c.key} onChange={() => setPolicy(c.key)} />
+            <input type="radio" name="cancellationPolicy" value={c.key} checked={policy === c.key} onChange={() => setPolicy(c.key)}
+              aria-labelledby={`m-pol-${c.key}`} aria-describedby={`m-pol-${c.key}-d`} />
             <div className="option-card-head">
               <div className="option-card-icon">{c.icon}</div>
-              <div><p className="option-card-title">{c.title}</p><p className="option-card-sub">{c.sub}</p></div>
+              <div><p className="option-card-title" id={`m-pol-${c.key}`}>{c.title}</p><p className="option-card-sub">{c.sub}</p></div>
               {CHECK}
             </div>
-            <p className="option-card-body">{c.body}</p>
+            <p className="option-card-body" id={`m-pol-${c.key}-d`}>{c.body}</p>
             <div className="policy-timeline">{c.cells}</div>
           </label>
         ))}
       </div>
-      {state.fields?.cancellationPolicy && <p className="m-section-error" role="alert">{state.fields.cancellationPolicy}</p>}
+      {state.fields?.cancellationPolicy && <p className="m-section-error" role="alert" id="m-pol-e">{state.fields.cancellationPolicy}</p>}
     </section>
   );
 }
@@ -86,7 +87,7 @@ export function PolicyForm({ values: v, days }: Props) {
       <section className="wiz-fieldset">
         <div className="wiz-fieldset-head">
           <div>
-            <h3 className="wiz-fieldset-title">Размер на депозита</h3>
+            <h2 className="wiz-fieldset-title">Размер на депозита</h2>
             <p className="wiz-fieldset-sub">Каква част от общата цена се смята за депозит при анулиране.</p>
           </div>
         </div>

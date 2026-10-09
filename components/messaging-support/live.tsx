@@ -38,7 +38,7 @@ export function OpenWhenShown({ href }: { href: string }) {
  * there when it gets shorter (a file chip or a taller reply box under it), so the newest message never
  * slides out of view.
  */
-export function ThreadBody({ className, lastId, labelledBy, children }: { className: string; lastId: string | null; labelledBy?: string; children: ReactNode }) {
+export function ThreadBody({ className, lastId, labelledBy, label, children }: { className: string; lastId: string | null; labelledBy?: string; label?: string; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
   useEffect(() => {
@@ -54,7 +54,7 @@ export function ThreadBody({ className, lastId, labelledBy, children }: { classN
     ro.observe(el);
     return () => { el.removeEventListener('scroll', onScroll); ro.disconnect(); };
   }, []);
-  return <div className={className} ref={ref} tabIndex={0} role="log" aria-labelledby={labelledBy}>{children}</div>;
+  return <div className={className} ref={ref} tabIndex={0} role="log" aria-labelledby={labelledBy} aria-label={labelledBy ? undefined : label}>{children}</div>;
 }
 
 /** ‹Търсене по изпълнител или събитие›: filters the list through ?q= (shareable), keeping other params. */

@@ -58,7 +58,7 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
             <div className="dist">
               {v.summary.distribution.map(d => (
                 <div key={d.stars} className="dist-row">
-                  <span>{d.stars} ★</span><span className="dist-bar"><i style={{ width: `${d.pct}%` }} /></span><span className="dist-n">{d.count}</span>
+                  <span>{d.stars} ★</span><span className="dist-bar" aria-hidden="true"><i style={{ width: `${d.pct}%` }} /></span><span className="dist-n">{d.count}</span>
                 </div>
               ))}
             </div>

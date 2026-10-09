@@ -37,7 +37,7 @@ export default async function PartnerNewCasePage({ searchParams }: { searchParam
         aside={
           <aside>
             <div className="panel">
-              <h3 className="panel-title">Какво следва</h3>
+              <h2 className="panel-title">Какво следва</h2>
               <div className="rules">
                 <div className="rule"><span className="rule-num">1</span><span>Екипът отговаря до <strong>{plural(s.teamHours, 'час', 'часа')}</strong> и иска позиция от клиента.</span></div>
                 <div className="rule"><span className="rule-num">2</span><span>Изплащането по резервацията <strong>спира до решение</strong>.</span></div>

@@ -11,7 +11,7 @@ import { MiniCalendar } from './_ops/calendar';
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Табло' };
 
-const chevron = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M9 6l6 6-6 6" /></svg>;
+const chevron = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>;
 const star = <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3l2.7 5.8 6.3.8-4.6 4.3 1.2 6.2L12 17.8 6.4 20.1l1.2-6.2L3 9.6l6.3-.8L12 3z" /></svg>;
 
 export default async function PartnerDashboard({ searchParams }: { searchParams: Promise<{ mesec?: string }> }) {
@@ -110,10 +110,10 @@ export default async function PartnerDashboard({ searchParams }: { searchParams:
                 <span className={`earn-delta${v.revenue.deltaPct < 0 ? ' po-down' : ''}`}>{v.revenue.deltaPct < 0 ? '−' : '+'}{Math.abs(v.revenue.deltaPct)}% спрямо {v.revenue.prevMonthName}</span>
               )}
             </div>
-            <div className="bars">
+            <div className="bars" role="img" aria-label={`Приходи: ${v.revenue.bars.map(b => `${b.label} ${moneyShort(b.cents)}`).join(', ')}`}>
               {v.revenue.bars.map(b => <i key={b.label} className={b.now ? 'is-now' : undefined} style={{ height: `${b.pct}%` }} />)}
             </div>
-            <div className="bars-x">{v.revenue.bars.map(b => <span key={b.label}>{b.label}</span>)}</div>
+            <div className="bars-x" aria-hidden="true">{v.revenue.bars.map(b => <span key={b.label}>{b.label}</span>)}</div>
             <div className="earn-note">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 15, height: 15, color: 'var(--gold-600)' }}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
               За изплащане след събитията: <b>{moneyShort(v.revenue.toBePaidCents)}</b>
@@ -126,7 +126,7 @@ export default async function PartnerDashboard({ searchParams }: { searchParams:
               <div className="rate">
                 <span className="rate-value">{v.rating.avgText}</span>
                 <div>
-                  <span className="stars" aria-label={v.rating.avgText}>{[1, 2, 3, 4, 5].map(i => <span key={i} className={i <= Math.round(v.rating!.avg) ? undefined : 'is-off'}>{star}</span>)}</span>
+                  <span className="stars" aria-hidden="true">{[1, 2, 3, 4, 5].map(i => <span key={i} className={i <= Math.round(v.rating!.avg) ? undefined : 'is-off'}>{star}</span>)}</span>
                   <div className="rate-count">от {v.rating.countLabel}{v.rating.responsiveness != null ? ` · ${v.rating.responsiveness}% отзивчивост` : ''}</div>
                 </div>
               </div>

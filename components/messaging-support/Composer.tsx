@@ -85,7 +85,7 @@ function useComposer(conversationId: string, initialDraft: string, actions: Comp
   const chip = file && (
     <span className="ms-chip">
       <span className="ms-chip-n">{file.name}</span>
-      <button type="button" aria-label="Премахни" onClick={() => setFile(null)}>{X}</button>
+      <button type="button" aria-label={`Премахни ${file.name}`} onClick={() => setFile(null)}>{X}</button>
     </span>
   );
   return { body, onType, submit, sending, uploading, fileInput, fileField, chip, canSend: !!(body.trim() || file) && !uploading };

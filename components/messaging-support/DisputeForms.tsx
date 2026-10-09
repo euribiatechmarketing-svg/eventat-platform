@@ -2,7 +2,7 @@
 // ‹Изпрати сигнала› forms (client/dispute.html, vendor/dispute.html) and the case page's reply
 // (‹Отговори на екипа›). Real <form>s posting to the route's server actions; the evidence is
 // uploaded as it is chosen.
-import { useActionState, useState } from 'react';
+import { useActionState, useId, useState } from 'react';
 import Link from 'next/link';
 import { radioKeys, radioTab } from '@/components/ui/dropdown';
 import { Evidence } from './Evidence';
@@ -83,6 +83,7 @@ export function PartnerDisputeForm({ choices, reasons, defaultReason, preselect,
   action: FormAction; upload: (fd: FormData) => Promise<Upload>; maxPhotos: number; maxMb: number; aside: React.ReactNode;
 }) {
   const [state, formAction, pending] = useActionState(action, {});
+  const uid = useId();
   // vendor/dispute.html opens with a booking and ‹Клиентът не отговаря› already picked.
   const [booking, setBooking] = useState(choices.find(c => c.number === preselect)?.id ?? choices[0]?.id ?? '');
   const [reason, setReason] = useState(defaultReason);
@@ -129,9 +130,9 @@ export function PartnerDisputeForm({ choices, reasons, defaultReason, preselect,
           <label className="fld">
             <span className="fld-l">Описание</span>
             <textarea className="fld-i fld-i--area" name="description" maxLength={2000} required value={text} onChange={e => setText(e.target.value)}
-              placeholder="Опишете по дати какво се случи, какво сте направили и какво искате от екипа." />
+              placeholder="Опишете по дати какво се случи, какво сте направили и какво искате от екипа." aria-describedby={`${uid}-h`} />
           </label>
-          <div className="fld-hint">Конкретните дати, часове и имена помагат случаят да се реши по-бързо.</div>
+          <div className="fld-hint" id={`${uid}-h`}>Конкретните дати, часове и имена помагат случаят да се реши по-бързо.</div>
         </section>
 
         <section className="dcard">
@@ -157,6 +158,7 @@ export function StatementForm({ variant, disputeId, number, submitLabel, action,
 }) {
   const [state, formAction, pending] = useActionState(action, {});
   const [text, setText] = useState('');
+  const uid = useId();
   if (variant === 'client') {
     return (
       <form className="form-card" action={formAction}>
@@ -186,9 +188,9 @@ export function StatementForm({ variant, disputeId, number, submitLabel, action,
       <label className="fld">
         <span className="fld-l">Описание</span>
         <textarea className="fld-i fld-i--area" name="body" maxLength={4000} required value={text} onChange={e => setText(e.target.value)}
-          placeholder="Опишете по дати какво се случи, какво сте направили и какво искате от екипа." />
+          placeholder="Опишете по дати какво се случи, какво сте направили и какво искате от екипа." aria-describedby={`${uid}-h`} />
       </label>
-      <div className="fld-hint">Конкретните дати, часове и имена помагат случаят да се реши по-бързо.</div>
+      <div className="fld-hint" id={`${uid}-h`}>Конкретните дати, часове и имена помагат случаят да се реши по-бързо.</div>
       <div style={{ marginTop: 18 }}>
         <Evidence variant="partner" upload={upload} max={maxPhotos} maxMb={maxMb} />
       </div>

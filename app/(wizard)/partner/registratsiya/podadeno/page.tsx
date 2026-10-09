@@ -17,7 +17,7 @@ export const metadata: Metadata = { title: 'Профилът е подаден' 
 
 function Step({ n, state, title, meta }: { n: number; state: 'done' | 'current' | 'todo'; title: string; meta: string }) {
   return (
-    <div className={`pending-step${state === 'todo' ? '' : ` pending-step--${state}`}`}>
+    <div className={`pending-step${state === 'todo' ? '' : ` pending-step--${state}`}`} aria-current={state === 'current' ? 'step' : undefined}>
       <span className="pending-step-bullet">{state === 'done' ? <Check /> : n}</span>
       <div className="pending-step-content">
         <p className="pending-step-title">{title}</p>
@@ -40,6 +40,7 @@ export default async function PendingPage() {
 
   return (
     <div className="pending-shell">
+      <a className="ui-skip" href="#main">Към съдържанието</a>
       <PendingLive watching={s.status === 'submitted'} />
       <header className="wiz-top">
         <Link className="wiz-logo" href="/"><img src="/assets/eventat-logo.png" alt="EventAT" /></Link>
@@ -50,7 +51,7 @@ export default async function PendingPage() {
         </div>
       </header>
 
-      <main className="pending-hero">
+      <main className="pending-hero" id="main">
         <div className="pending-card" data-status={s.status}>
           {rejected ? (
             <>
@@ -64,7 +65,7 @@ export default async function PendingPage() {
           ) : (
             <>
               <div className="pending-icon"><CircleCheck /></div>
-              <span className="pending-eyebrow">{approved ? 'Профилът ви е одобрен' : 'Профилът ви е подаден'}</span>
+              <span className="pending-eyebrow" role="status">{approved ? 'Профилът ви е одобрен' : 'Профилът ви е подаден'}</span>
               <h1 className="pending-title">Благодарим, <Num>{s.firstName}</Num>.</h1>
               {approved
                 ? <p className="pending-text"><strong>{s.businessName}</strong> вече се показва в каталога и можете да приемате заявки.</p>
