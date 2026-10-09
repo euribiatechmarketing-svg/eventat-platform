@@ -12,7 +12,7 @@ import {
   accountDeletionRequest, booking, briefInvitation, category, city, consent, dispute, eventType, partner,
   partnerCheck, partnerDecision, partnerEventType, partnerInvite, partnerMember, partnerPhoto, partnerTag, payoutAccount, request,
   review, service, serviceEventType, user,
-  type CancellationPolicy, type CheckState, type PartnerCheckKind, type PartnerStatus,
+  type CancellationPolicy, type CheckState, type PartnerCheckKind, type PartnerStatus, type PriceUnit, type ServiceKind, type ServiceStatus,
 } from '@/db/schema';
 import { now } from '@/lib/clock';
 import { scheduleJob } from '@/lib/jobs';
@@ -969,6 +969,29 @@ export async function applyAccountUpdate(a: { accountRef: string; status: Partne
 // ── Derived fields (§12.4, §13.3) ────────────────────────────────────────
 
 /**
+ * The service statuses a profile lists. Live services once the partner is approved; before that
+ * (the owner's or the team's ‹Виж профила като клиент› preview) also the `ready` onboarding
+ * packages, which go live with the profile on approval (S5, P5).
+ */
+export function profileServiceStatuses(status: PartnerStatus): ServiceStatus[] {
+  return status === 'draft' || status === 'submitted' || status === 'returned' ? ['ready', 'active'] : ['active'];
+}
+
+/**
+ * The from-price (§12.4) of the services a profile lists: the lowest `per_event` fixed package
+ * shown in the profile, else the lowest `per_guest` one; null with on-request services only.
+ */
+export function lowestPrice(svcs: { kind: ServiceKind; priceCents: number | null; priceUnit: PriceUnit; showInProfile: boolean }[]):
+  { cents: number; unit: PriceUnit } | null {
+  const priced = svcs.filter(x => x.kind === 'package_fixed' && x.showInProfile && x.priceCents != null);
+  for (const unit of ['per_event', 'per_guest'] as const) {
+    const prices = priced.filter(x => x.priceUnit === unit).map(x => x.priceCents!);
+    if (prices.length) return { cents: Math.min(...prices), unit };
+  }
+  return null;
+}
+
+/**
  * Recompute what is cached on `partner`: the stem-matcher haystack `search_text` (§13.3:
  * business name + primary category + categories of active services + base city + event types,
  * lower-case), the from-price (§12.4), `is_verified` (checks company and contacts ok) and the
@@ -987,12 +1010,10 @@ export async function refreshPartner(tx: Queryable, partnerId: string) {
   const words = [p.p.businessName, p.cat, ...svcCats.map(c => c.name), p.cityName, ...types.map(t => t.name)].filter(Boolean) as string[];
   const searchText = [...new Set(words)].join(' ').toLowerCase();
 
-  const priced = await tx.select({ price: service.priceCents, unit: service.priceUnit }).from(service)
-    .where(and(eq(service.partnerId, partnerId), eq(service.status, 'active'), eq(service.kind, 'package_fixed'), eq(service.showInProfile, true)));
-  const perEvent = priced.filter(s => s.unit === 'per_event' && s.price != null).map(s => s.price!);
-  const perGuest = priced.filter(s => s.unit === 'per_guest' && s.price != null).map(s => s.price!);
-  const minPrice = perEvent.length ? Math.min(...perEvent) : perGuest.length ? Math.min(...perGuest) : null;
-  const minUnit = perEvent.length ? 'per_event' as const : perGuest.length ? 'per_guest' as const : null;
+  const from = lowestPrice(await tx.select({ kind: service.kind, priceCents: service.priceCents, priceUnit: service.priceUnit, showInProfile: service.showInProfile })
+    .from(service).where(and(eq(service.partnerId, partnerId), eq(service.status, 'active'))));
+  const minPrice = from?.cents ?? null;
+  const minUnit = from?.unit ?? null;
 
   const checks = await tx.select().from(partnerCheck).where(and(eq(partnerCheck.partnerId, partnerId), inArray(partnerCheck.kind, ['company', 'contacts'])));
   const verified = checks.length === 2 && checks.every(c => c.state === 'ok');

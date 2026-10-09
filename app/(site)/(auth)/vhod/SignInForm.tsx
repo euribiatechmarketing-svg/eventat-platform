@@ -55,7 +55,7 @@ export function SignInForm({ as, next, email, social }: { as: AuthRole; next: st
           </div>
           </>)}
 
-          <form ref={formRef} className={team ? 'acc-team' : undefined} onSubmit={onSubmit} noValidate>
+          <form ref={formRef} method="post" className={team ? 'acc-team' : undefined} onSubmit={onSubmit} noValidate>
             <input type="hidden" name="next" value={next ?? ''} />
             <div className={`field${errs.email ? ' field--error' : ''}`} style={{ marginBottom: 14 }}>
               <label className="field-label" htmlFor="vhod-email">Имейл</label>

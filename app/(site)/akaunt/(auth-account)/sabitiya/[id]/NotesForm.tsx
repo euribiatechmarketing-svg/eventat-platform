@@ -9,7 +9,7 @@ export function NotesForm({ eventId, notes, updated }: { eventId: string; notes:
   const { state, onSubmit, pending } = useSubmit(saveNotesAction);
   useEffect(() => { if (state?.error) toast(state.error, 'error'); }, [state]);
   return (
-    <form className="ev-note" onSubmit={onSubmit}>
+    <form className="ev-note" method="post" onSubmit={onSubmit}>
       <input type="hidden" name="eventId" value={eventId} />
       <textarea className="ev-note-box" name="notes" defaultValue={notes} aria-label="Бележки" rows={Math.min(14, Math.max(3, notes.split('\n').reduce((n, l) => n + Math.ceil((l.length || 1) / 70), 0)))} maxLength={4000} />
       <div className="ev-note-foot">

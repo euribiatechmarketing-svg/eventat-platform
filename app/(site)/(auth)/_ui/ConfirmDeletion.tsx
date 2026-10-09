@@ -7,7 +7,7 @@ import type { FormState } from './messages';
 export function ConfirmDeletion({ action, token }: { action: (p: FormState, fd: FormData) => Promise<FormState>; token: string }) {
   const { state, onSubmit, pending } = useSubmit(action);
   return (
-    <form onSubmit={onSubmit} style={{ marginTop: 28 }}>
+    <form method="post" onSubmit={onSubmit} style={{ marginTop: 28 }}>
       <input type="hidden" name="token" value={token} />
       {state?.error && <p className="acc-err acc-err--box" style={{ marginTop: 0 }} role="alert">{state.error}</p>}
       <button className="btn btn--danger btn--lg btn--block" type="submit" disabled={pending}>Потвърди изтриването</button>

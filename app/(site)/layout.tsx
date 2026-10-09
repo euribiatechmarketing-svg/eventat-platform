@@ -10,6 +10,7 @@ import '@/styles/platform.css';
 import { fontVars } from '@/lib/fonts';
 import { Toaster, FlashToast, DrawerAutoClose } from '@/components/ui/client';
 import { readFlash } from '@/lib/flash';
+import { AfterParse } from '@/components/ui/AfterParse';
 
 export const metadata: Metadata = {
   title: { default: 'EventAT — изпълнители за събития', template: '%s · EventAT' },
@@ -24,7 +25,7 @@ export default async function SiteRoot({ children }: { children: React.ReactNode
     <html lang="bg" className={fontVars}>
       <body>
         <a className="ui-skip" href="#main">Към съдържанието</a>
-        <div id="frame"><div className="site">{children}</div></div>
+        <div id="frame"><div className="site"><AfterParse>{children}</AfterParse></div></div>
         <Toaster />
         <FlashToast message={flash?.message ?? null} kind={flash?.kind} />
         <DrawerAutoClose />

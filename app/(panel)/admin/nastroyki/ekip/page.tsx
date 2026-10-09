@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import '@/styles/m-admin-ops.css';
 import { AdminSearch } from '../../_ops/AdminSearch';
-import { Suspense } from 'react';
 import { ROLE_PERMISSIONS, type TeamPermission } from '@/lib/domain/actor';
 import { listTeam, ROLE_LABEL } from '@/lib/domain/team';
 import { matches, teamMatches } from '@/lib/domain/views-admin-ops';
@@ -51,7 +50,7 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
         </div>
       </div>
 
-      <Suspense><AdminSearch inPage /></Suspense>
+      <AdminSearch inPage />
       <section className="dcard">
         <div className="dcard-head">
           <h2 className="dcard-title">Хора с достъп</h2>

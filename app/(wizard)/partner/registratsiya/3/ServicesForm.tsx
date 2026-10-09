@@ -172,15 +172,17 @@ function Row({ p, onEdit, onRemove, busy }: { p: Pkg; onEdit: () => void; onRemo
 
 export function ServicesForm(props: Props) {
   const { categories, defaultCategoryId, cityName, maxPackages, fallbackThumb } = props;
+  // A partner with on-request services offers them (onboarding/services.html shows both cards selected).
   const [fixed, setFixed] = useState(props.offersFixedPackages);
-  const [onRequest, setOnRequest] = useState(props.offersOnRequest);
-  const blank = (kind: Kind): Pkg => ({
-    key: newKey(), isNew: true, id: '', kind, name: '', categoryId: defaultCategoryId ?? '', description: '', priceCents: null, durationLabel: '',
+  const [onRequest, setOnRequest] = useState(props.offersOnRequest || props.services.some(s => s.kind === 'on_request'));
+  const blank = (kind: Kind, key = newKey()): Pkg => ({
+    key, isNew: true, id: '', kind, name: '', categoryId: defaultCategoryId ?? '', description: '', priceCents: null, durationLabel: '',
     extraHourEnabled: false, extraHourPriceCents: null, travelFeeEnabled: false, inclusions: [], thumbUrl: fallbackThumb, status: 'draft', complete: false,
   });
   const [pkgs, setPkgs] = useState<Pkg[]>(() => {
     const list: Pkg[] = props.services.map(s => ({ ...s, key: s.id, isNew: false }));
-    if (!list.some(s => s.kind === 'package_fixed')) list.unshift(blank('package_fixed'));
+    // A fixed key: this first editor is rendered on the server too, and a random one would not hydrate.
+    if (!list.some(s => s.kind === 'package_fixed')) list.unshift(blank('package_fixed', 'nfirst'));
     return list;
   });
   // Open editors (the rest are rows with ‹Редактирай›) and folded ones (‹Свий›).
@@ -210,6 +212,7 @@ export function ServicesForm(props: Props) {
   };
   const add = (kind: Kind) => {
     const p = blank(kind);
+    if (kind === 'on_request') setOnRequest(true); else setFixed(true);
     setPkgs(ps => {
       if (kind === 'on_request') return [...ps, p];
       const lastFixed = ps.map(x => x.kind).lastIndexOf('package_fixed');

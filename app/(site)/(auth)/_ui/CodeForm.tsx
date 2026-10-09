@@ -46,7 +46,7 @@ export function CodeForm({ verify, resend, fields, waitMs, spamHint = true, erro
 
   return (
     <>
-      <form onSubmit={onSubmit}>
+      <form method="post" onSubmit={onSubmit}>
         {Object.entries(fields).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
         <input type="hidden" name="code" value={digits.join('')} />
         <div className={`ver-code${error ? ' is-error' : ''}`} aria-label="Код за потвърждение" role="group">

@@ -1,9 +1,9 @@
 // Admin panel chrome + guard (SCREENS §1, §0 guard "admin"; permissions SPEC §1.2).
 import { redirect } from 'next/navigation';
+import '@/styles/m-admin-search.css';
 import { requireRole } from '@/lib/session';
 import { actorFromUser, can } from '@/lib/domain/actor';
 import { adminBell, adminRailCounts, TEAM_ROLE_LABEL } from '@/lib/domain/views-panel';
-import { Suspense } from 'react';
 import { PanelShell, type RailGroup } from '@/components/panel/PanelShell';
 import { AdminSearch } from './_ops/AdminSearch';
 import '@/styles/m-admin-search.css';
@@ -32,7 +32,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <PanelShell area="admin" groups={groups} titles={{ '/admin/tarsene': 'Търсене', '/admin/moderatsiya': 'Модерация на обяви', '/admin/nastroyki': 'Настройки на платформата', '/admin/nastroyki/ekip': 'Екип и достъп' }}
       userName={user.name} userRole={TEAM_ROLE_LABEL[actor.teamRole] ?? ''}
       menu={can(actor, 'manage_team_settings') ? [{ label: 'Настройки', href: '/admin/nastroyki' }] : []}
-      bell={await adminBell(actor)} topbarExtra={<Suspense><AdminSearch /></Suspense>}>
+      bell={await adminBell(actor)} topbarExtra={<AdminSearch />}>
       {children}
     </PanelShell>
   );

@@ -1,6 +1,8 @@
 'use client';
 // A form that keeps what was typed when the server answers with errors. React resets a
 // <form action={…}> after every submission; submitting through onSubmit keeps the fields.
+// Such a form carries method="post": submitted before hydration, the browser's default GET would
+// put the fields (a password, an email) in the address bar and the server logs.
 import { startTransition, useActionState, type FormEvent } from 'react';
 import type { FormState } from './messages';
 

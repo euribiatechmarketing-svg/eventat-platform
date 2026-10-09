@@ -1,5 +1,4 @@
 // Partner panel chrome + guard (SCREENS §1, §0 guard "partner"). Onboarding lives in app/(wizard).
-import { Suspense } from 'react';
 import { randomUUID } from 'node:crypto';
 import { redirect } from 'next/navigation';
 import { requireRole } from '@/lib/session';
@@ -46,7 +45,7 @@ export default async function PartnerLayout({ children }: { children: React.Reac
         { label: 'Настройки', href: '/partner/nastroyki' },
         { label: 'Виж профила като клиент', href: `/partnyori/${p.slug}` },
       ]}
-      topbarExtra={<><Suspense fallback={null}><TopbarSearch /></Suspense><TopbarLang /></>}
+      topbarExtra={<><TopbarSearch /><TopbarLang /></>}
       bell={await bellItems(user.id)}>
       {children}
       <FlashAgain message={flash?.message ?? null} kind={flash?.kind} nonce={randomUUID()} />

@@ -54,7 +54,7 @@ export function RegisterForm({ as, next, social }: { as: AuthRole; next: string 
             </button>
           </div>
 
-          <form onSubmit={onSubmit} noValidate>
+          <form method="post" onSubmit={onSubmit} noValidate>
             <input type="hidden" name="role" value={role} />
             <input type="hidden" name="next" value={next ?? ''} />
             {role === 'client' ? (
