@@ -12,6 +12,9 @@ export const metadata = { title: 'Ревюта' };
 
 const TAB_PARAM: Record<ReviewsTab, string | null> = { all: null, unanswered: 'bez-otgovor', five: '5-zvezdi' };
 
+/** ‹Петя и Николай› → ‹ПН› (the couple, not the conjunction). */
+const avatar = (name: string) => initials(name.split(/\s+/).filter(w => w !== 'и' && w !== '&').join(' '));
+
 export default async function ReviewsPage({ searchParams }: { searchParams: Promise<{ tab?: string; stranitsa?: string }> }) {
   const sp = await searchParams;
   const actor = await partnerActor('/partner/revyuta');
@@ -77,7 +80,7 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
         {v.items.map(r => (
           <div key={r.id} className="rev" data-review={r.id}>
             <div className="rev-head">
-              <span className="avatar">{initials(r.author)}</span>
+              <span className="avatar">{avatar(r.author)}</span>
               <div><div className="rev-name">{r.author}</div><div className="rev-meta">{r.meta}</div></div>
               <Stars n={r.rating} />
             </div>

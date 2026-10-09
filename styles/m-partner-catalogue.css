@@ -206,6 +206,9 @@
 @container (max-width: 700px) {
   .sn-kinds, .se-kinds { grid-template-columns: minmax(0, 1fr); }
   .sn-addons, .se-addons { grid-template-columns: minmax(0, 1fr); }
+  /* ‹IBAN› gets its own row so ‹Име по банков документ› is never cut */
+  .pa-fields { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .pa-fields > .fld:first-child { grid-column: 1 / -1; }
 }
 .pc-page .fld-i:focus { border-color: var(--primary-500); box-shadow: var(--shadow-focus); }
 .pc-page .fld-i::placeholder { color: var(--neutral-400); }
@@ -348,10 +351,15 @@
   .pc-page .gal { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pc-page .dcard { padding: 18px 16px; }
   .pc-page .panel { padding: 18px; }
+  .pc-page .page-head { flex-direction: column; align-items: stretch; }
+  .pc-page .page-head-right { width: 100%; }
   .pc-page .page-head-right .btn { flex: 1 1 auto; }
   .pc-page .sn-foot, .pc-page .se-foot { flex-wrap: wrap; }
   .pc-page .sn-foot .btn, .pc-page .se-foot .btn { flex: 1 1 auto; }
   .se-live { padding: 14px 16px; }
+  /* thumb and name share the first row, the status pill sits under the name */
+  .se-live-id { flex: 1 1 calc(100% - 70px); }
+  .se-live > .badge { margin-left: 70px; }
   .se-live-name, .se-live-kind { white-space: normal; }
   .se-live-stats { flex-wrap: wrap; row-gap: 12px; }
   .se-live-i { padding: 0 14px; text-align: left; }
@@ -381,6 +389,8 @@
   .pc-earn .tbl td:nth-child(4) { grid-area: status; justify-self: end; }
   .pc-page .set-row { flex-wrap: wrap; }
   .pc-page .set-row .set-t { min-width: 200px; }
+  /* rows with a button: the button always goes under its text (switches stay on the right) */
+  .pc-page .set-row:has(> .btn) { flex-direction: column; align-items: flex-start; gap: 10px; }
   .pa-up { flex-wrap: wrap; }
   .pa-up > div { flex: 1 1 180px; min-width: 0; }
   .pa-up .btn { margin-left: 56px; }

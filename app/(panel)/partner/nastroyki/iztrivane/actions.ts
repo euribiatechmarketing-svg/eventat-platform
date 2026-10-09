@@ -5,14 +5,14 @@ import { redirect } from 'next/navigation';
 import { db } from '@/db';
 import { auth } from '@/lib/auth';
 import * as partners from '@/lib/domain/partners';
+import { deletionTokenIsOwn } from '@/lib/domain/views-partner-catalogue';
 import { setFlash } from '@/lib/flash';
-import { requireRole } from '@/lib/session';
-import { refusal } from '../../_catalogue/server';
+import { partnerActor, refusal } from '../../_catalogue/server';
 
 export async function confirmDeletionAction(_prev: { error?: string }, formData: FormData): Promise<{ error?: string }> {
-  await requireRole('partner', '/partner/nastroyki');
+  const actor = await partnerActor('/partner/nastroyki');
   const token = String(formData.get('token') ?? '');
-  if (!token || token.length > 200) return { error: 'Линкът е невалиден или е изтекъл.' };
+  if (!token || token.length > 200 || !(await deletionTokenIsOwn(actor, token))) return { error: 'Линкът е невалиден или е изтекъл.' };
   try {
     await db.transaction(tx => partners.confirmDeletion({ token }, tx));
   } catch (e) { return { error: refusal(e) }; }

@@ -5,9 +5,10 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/db';
 import * as s from '@/db/schema';
 import { setTestNow } from '@/lib/clock';
+import { requestDeletion } from '@/lib/domain/partners';
 import { submitChange } from '@/lib/domain/services';
 import {
-  ago, earningsPage, earningsReportCsv, euros, ibanMask, requestEarningsReport, serviceEditor, servicesPage, setLocale, settingsPage,
+  ago, deletionTokenIsOwn, earningsPage, earningsReportCsv, euros, ibanMask, requestEarningsReport, serviceEditor, servicesPage, setLocale, settingsPage,
 } from '@/lib/domain/views-partner-catalogue';
 import { categoryId, createBookingRow, createClient, eventTypeId } from '../helpers/factories';
 import { NOW, emails, expectLedgerClean, failure, listedPartner, plain } from '../helpers/catalogue';
@@ -96,5 +97,16 @@ describe('/partner/nastroyki', () => {
     await setLocale(pr.actor, { locale: 'bg' });
     const [u] = await db.select({ locale: s.user.locale }).from(s.user).where(eq(s.user.id, pr.user.id));
     expect(u.locale).toBe('bg');
+  });
+});
+
+describe('/partner/nastroyki/iztrivane', () => {
+  it('accepts the deletion link only from the partner who asked for it', async () => {
+    const pr = await listedPartner();
+    const other = await listedPartner();
+    const { token } = await requestDeletion(pr.actor);
+    expect(await deletionTokenIsOwn(pr.actor, token)).toBe(true);
+    expect(await deletionTokenIsOwn(other.actor, token)).toBe(false);
+    expect(await deletionTokenIsOwn(pr.actor, 'wrong')).toBe(false);
   });
 });

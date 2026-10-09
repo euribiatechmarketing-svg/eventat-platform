@@ -117,7 +117,8 @@ def main():
         print('guards')
         ctx = b.new_context(viewport={'width': 1440, 'height': 900}, locale='bg-BG', timezone_id='Europe/Sofia')
         page = ctx.new_page()
-        for route in ['/partner/uslugi', '/partner/profil', '/partner/prihodi', '/partner/nastroyki']:
+        for route in ['/partner/uslugi', '/partner/uslugi/nova', '/partner/profil', '/partner/revyuta', '/partner/prihodi',
+                      '/partner/smetka', '/partner/nastroyki', '/partner/nastroyki/iztrivane?token=x']:
             page.goto(BASE + route)
             ok(path(page).startswith('/vhod'), f'guest {route} → sign-in ({path(page)})')
         sign_in(ctx, 'maria.dimitrova@gmail.com')
@@ -435,6 +436,17 @@ def main():
         page.click('button:has-text("Изтрий")')
         toast(page, 'Изпратихме имейл за потвърждение на изтриването')
         url = emails('vendor-delete-confirm', start)[0]['vars']['url']
+        # a forwarded link does not work for another signed-in partner
+        other_ctx = b.new_context(viewport={'width': 1440, 'height': 900}, locale='bg-BG', timezone_id='Europe/Sofia')
+        sign_in(other_ctx, 'gradina-i-masa@example.invalid')
+        op = other_ctx.new_page()
+        op.goto(BASE + url)
+        op.click('button:has-text("Потвърди изтриването")')
+        expect(op.locator('.form-alert')).to_have_text('Линкът е невалиден или е изтекъл.')
+        ok(one("select status from partner where slug = 'folklorna-trapeza'")['status'] == 'approved'
+           and one("select status from partner where slug = 'gradina-i-masa'")['status'] == 'approved',
+           "another partner's deletion link is refused (nobody deleted)")
+        other_ctx.close()
         page.goto(BASE + '/partner/nastroyki/iztrivane?token=wrong')
         page.click('button:has-text("Потвърди изтриването")')
         expect(page.locator('.form-alert')).to_have_text('Линкът е невалиден или е изтекъл.')
@@ -446,6 +458,53 @@ def main():
         ok(st and st['status'] == 'deleted', 'DB: partner deleted and anonymised')
         page.goto(BASE + '/partner/nastroyki')
         ok(path(page).startswith('/vhod'), 'signed out after deletion')
+        ctx.close()
+
+        # ── parity and navigation details ──
+        print('details')
+        ctx = b.new_context(viewport={'width': 1440, 'height': 900}, locale='bg-BG', timezone_id='Europe/Sofia')
+        sign_in(ctx, PARTNER)
+        page = ctx.new_page()
+        page.goto(BASE + '/partner/revyuta')
+        expect(page.locator('.rev:has-text("Петя и Николай") .avatar')).to_have_text('ПН')
+        ok(True, 'review avatar of «Петя и Николай» is ПН (as the prototype)')
+        page.click('.tab-bar-item:has-text("5 звезди")')
+        page.wait_for_url(re.compile(r'tab=5-zvezdi'))
+        expect(page.locator('.rev')).to_have_count(2)
+        ok(True, 'tab 5 звезди lists the two 5-star reviews')
+        page.goto(BASE + '/partner/smetka')
+        wd = page.locator('input[name="holderName"]').bounding_box()['width']
+        ok(wd >= 200, f'Титуляр is wide enough for its placeholder at 1440 ({wd:.0f}px)')
+        page.click('a.crumb:has-text("Назад към приходите")')
+        page.wait_for_url('**/partner/prihodi')
+        page.click('a.link-more:has-text("Резервации")')
+        page.wait_for_url('**/partner/rezervacii')
+        ok(True, 'Назад към приходите and Резервации navigate')
+        page.goto(BASE + '/partner/uslugi/nova')
+        page.select_option('select[aria-label="Единица"]', 'per_guest')
+        expect(page.locator('.fld-l:has-text("Минимум гости")')).to_be_visible()
+        page.fill('input[name="price"]', '28')
+        expect(page.locator('.svc-card .svc-meta-v').first).to_have_text('28 € на гост')
+        ok(True, 'price per guest asks for the minimum and shows ‹на гост› in the preview')
+        page.click('.pol-opt:has-text("По запитване")')
+        expect(page.locator('.svc-card .svc-meta-l').first).to_have_text('По оферта')
+        ok(page.locator('input[name="price"]').count() == 0, 'on request: no price field, the card shows ‹По оферта›')
+        page.click('a.crumb:has-text("Назад към услугите")')
+        page.wait_for_url(re.compile(r'/partner/uslugi$'))
+        ok(True, 'Назад към услугите navigates')
+        ctx.close()
+
+        ctx = b.new_context(viewport={'width': 390, 'height': 844}, locale='bg-BG', timezone_id='Europe/Sofia', is_mobile=True, has_touch=True)
+        sign_in(ctx, PARTNER)
+        page = ctx.new_page()
+        page.goto(BASE + '/partner/uslugi/' + vecher)
+        th, nm = page.locator('.se-live-thumb').bounding_box(), page.locator('.se-live-name').bounding_box()
+        ok(abs(th['y'] - nm['y']) < th['height'], '390 px: the service thumb and its name share a row')
+        page.goto(BASE + '/partner/nastroyki')
+        for label in ['Деактивирай', 'Изтрий']:
+            row = page.locator(f'.danger-zone .set-row:has(button:has-text("{label}"))')
+            t, btn = row.locator('.set-t').bounding_box(), row.locator('button').bounding_box()
+            ok(btn['y'] >= t['y'] + t['height'] - 1, f'390 px: ‹{label}› sits under its text')
         ctx.close()
 
         # ── 390 px: every route fits ──

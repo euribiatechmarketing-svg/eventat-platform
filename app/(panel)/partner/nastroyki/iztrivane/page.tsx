@@ -9,7 +9,7 @@ export const metadata = { title: 'Изтриване на акаунта' };
 
 export default async function ConfirmDeletionPage({ searchParams }: { searchParams: Promise<{ token?: string }> }) {
   const { token = '' } = await searchParams;
-  const actor = await partnerActor('/partner/nastroyki');
+  const actor = await partnerActor(`/partner/nastroyki/iztrivane${token ? `?token=${encodeURIComponent(token)}` : ''}`);
   const d = await settingsPage(actor);
   return (
     <div className="pc-page">

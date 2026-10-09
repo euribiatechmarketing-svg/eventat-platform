@@ -6,7 +6,7 @@ import 'server-only';
 import { and, asc, count, desc, eq, inArray, ne } from 'drizzle-orm';
 import { db, type Queryable, type Tx } from '@/db';
 import {
-  account, booking, category, city, clientEvent, eventType, media, partner, partnerEventType, partnerPhoto, partnerTag,
+  account, accountDeletionRequest, booking, category, city, clientEvent, eventType, media, partner, partnerEventType, partnerPhoto, partnerTag,
   payoutLine, reportJob, request, service, serviceRevision, user,
   type PayoutLineStatus, type ServiceStatus,
 } from '@/db/schema';
@@ -14,7 +14,7 @@ import { now } from '@/lib/clock';
 import { date, dateNumeric, money, monthName, sofiaDate, type DateStr } from '@/lib/format';
 import { isSystem, type AnyActor } from './actor';
 import { audit } from './audit';
-import { DomainError, NotFoundError, displayPhone, mail, mediaUrl, partnerOf, partnerRecipient, withTx } from './catalogue-kit';
+import { DomainError, NotFoundError, displayPhone, hashToken, mail, mediaUrl, partnerOf, partnerRecipient, withTx } from './catalogue-kit';
 import { getPreferences } from './clients';
 import { deletionBlockers, fromPrice, nameChangeWindow, POLICY_FREE_DAYS } from './partners';
 import { overview as payoutOverview } from './payout-accounts';
@@ -420,6 +420,17 @@ export async function setLocale(actor: AnyActor, a: { locale: 'bg' | 'en' }, tx?
     await t.update(user).set({ locale: a.locale, updatedAt: await now() }).where(eq(user.id, actor.userId));
     await audit(t, { actor, action: 'user.locale_changed', entity: 'user', entityId: actor.userId, data: { locale: a.locale } });
   });
+}
+
+/**
+ * ‹Потвърди изтриването›: whether the email link's token belongs to the signed-in user — a partner
+ * signed in on a shared device must not confirm someone else's deletion with a forwarded link.
+ */
+export async function deletionTokenIsOwn(actor: AnyActor, token: string, q: Queryable = db): Promise<boolean> {
+  if (isSystem(actor) || !token) return false;
+  const [r] = await q.select({ userId: accountDeletionRequest.userId }).from(accountDeletionRequest)
+    .where(eq(accountDeletionRequest.tokenHash, hashToken(token)));
+  return !!r && r.userId === actor.userId;
 }
 
 // ── shared bits for the actions ──────────────────────────────────────────
