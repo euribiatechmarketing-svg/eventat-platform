@@ -36,6 +36,8 @@ const P: Record<string, React.ReactNode> = {
   phone: <><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z" /></>,
   info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></>,
   alert: <><path d="M12 3l9.5 17h-19L12 3z" /><path d="M12 10v4M12 17h.01" /></>,
+  store: <><path d="M3 21V8l9-5 9 5v13" /><path d="M9 21v-6h6v6" /></>,
+  filter: <><path d="M4 6h16M7 12h10M10 18h4" /></>,
 };
 
 export type IconName = keyof typeof P;
