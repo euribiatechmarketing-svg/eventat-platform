@@ -10,9 +10,12 @@ and typing (`next build && next start` is much faster than `next dev` for the lo
   1. a new client registers (/registratsiya), types the 6-digit code from the email (/potvarzhdenie), lands signed in;
   2. searches /tarsene (DJ, София, a free date in 2026), opens Студио Мелодия, picks a package and sends the request
      (event type, date, guests, venue, note, an inspiration photo; the phone comes from the profile);
-  3. the partner sees it in the bell and on /partner/zayavki, opens it and approves it;
-  4. the client sees ‹Одобрени · чакат плащане› with a live countdown, pays through the test checkout, lands on the
-     confirmation, sees the booking and the invoice;
+  3. the partner sees it in the bell and on /partner/zayavki, opens it and approves it with a double click (one booking);
+     a second tab left on the request is refused ‹Откажи›;
+  4. the client sees ‹Одобрени · чакат плащане› with a live countdown; on a 390 px phone taps ‹Плати 640 €› twice (one
+     charge), pays on the desktop through the same test checkout with a double click, lands on the confirmation; a tab
+     left on /plashtane, the phone's open checkout and the back button all lead to the booking without a second
+     payment; sees the booking and the invoice;
   5. every email and bell item of the cycle, on both sides; the partner sees the phone only after payment;
   6. the admin moves the demo clock past the event: completion, review invite, payout line ready, T17 prepares the
      batch, the admin releases it, the partner sees the payout and gets vendor-payout-sent; the client reviews, the
@@ -387,18 +390,38 @@ def run(people, S, EVENT, event_day, inspiration):
     people.check()
     step('partner: inbox row → request page: note, venue, the inspiration photo opens, ‹Получавате› 576 €, no phone, no commission')
 
-    p.click('button:has-text("Одобри заявката")')
+    # A second tab on the same request, left open: it still offers ‹Одобри заявката› and ‹Откажи›.
+    p2 = partner.new_page()
+    p2.goto('/partner/zayavki/' + quote(nomer))
+    expect(p2.locator('button:has-text("Одобри заявката")')).to_be_visible()
+    p.locator('button:has-text("Одобри заявката")').dblclick()  # a double click approves once
     expect(p.locator('.page-head .badge')).to_have_text('Одобрена · чака плащане', timeout=15_000)
     expect(p.locator('.countdown-time')).to_have_text(re.compile(r'^(23:5\d|24:00)$'))
+    p.wait_for_load_state('networkidle')
+    expect(p.locator('.ui-toast--error.is-on')).to_have_count(0)
     bk = one('select * from booking where number = $1', nomer)
     assert bk['status'] == 'awaiting_payment' and bk['amount_cents'] == 64000 and bk['commission_bp'] is None, bk
     assert one('select status from request where number = $1', nomer)['status'] == 'approved'
+    assert one("select count(*)::int n from audit_log where action = 'request.approved' and data->>'number' = $1", nomer)['n'] == 1, 'approved twice'
     body = sp(p.inner_text('body'))
     assert '765 4321' not in body, 'client phone shown while awaiting payment'
     S['booking_id'] = bk['id']
     shot(p, '09-partner-approved-1440', full=True)
+    phone_shot(people, partner, '/partner/zayavki/' + quote(nomer), '09-partner-approved-390')
     people.check()
-    step('partner: ‹Одобри заявката› → booking awaiting_payment with the 24 h countdown; still no phone')
+    step('partner: ‹Одобри заявката› double-clicked → one booking, awaiting_payment with the 24 h countdown, no error; still no phone')
+
+    # The stale tab: ‹Откажи› on a request approved meanwhile is refused and the tab shows the approval.
+    p2.click('.panel-actions button:has-text("Откажи")')
+    p2.locator('form.panel-actions button[type=submit]').click()
+    toast(p2, 'Действието вече не е възможно')
+    expect(p2.locator('.page-head .badge')).to_have_text('Одобрена · чака плащане')
+    assert one('select status from request where number = $1', nomer)['status'] == 'approved'
+    assert one('select status from booking where id = $1', S['booking_id'])['status'] == 'awaiting_payment'
+    assert not mails('client-request-declined', CLIENT_EMAIL), 'declined after approval'
+    p2.close()
+    people.check()
+    step('partner, second tab left open: ‹Откажи› → ‹Действието вече не е възможно›, the tab shows ‹Одобрена · чака плащане›; nothing declined')
 
     assert len(mails('client-request-approved', CLIENT_EMAIL)) == 1
     assert len(mails('vendor-request-approved', PARTNER)) == 1
@@ -430,6 +453,25 @@ def run(people, S, EVENT, event_day, inspiration):
     c.keyboard.press('Escape')
     step(f'client: ‹Одобрени · чакат плащане› with a live countdown ({badge} → {badge2}); the bell says it was approved')
 
+    # The riskiest moment as people really go through it: a second tab left on the payment page, and the
+    # same client on a 390 px phone, who taps ‹Плати 640 €› twice.
+    c2 = client.new_page()
+    c2.goto('/plashtane/' + quote(nomer))
+    expect(c2.locator('button:has-text("Плати 640 €")')).to_be_visible()
+    phone = people.ctx(390, 844, storage=client.storage_state())
+    ph = phone.new_page()
+    ph.goto('/plashtane/' + quote(nomer), wait_until='networkidle')
+    assert ph.evaluate('document.documentElement.scrollWidth') <= 390, 'payment page scrolls sideways at 390 px'
+    ph.locator('button:has-text("Плати 640 €")').dblclick()
+    ph.wait_for_url(re.compile(r'/plashtane/test/[0-9a-f-]{36}$'))
+    ph.wait_for_load_state('networkidle')
+    assert ph.evaluate('document.documentElement.scrollWidth') <= 390, 'test checkout scrolls sideways at 390 px'
+    shot(ph, '12-test-checkout-390', full=True)
+    ch = sql('select id, status from charge where booking_id = $1', S['booking_id'])
+    assert [x['status'] for x in ch] == ['pending'] and ph.url.endswith(ch[0]['id']), ch
+    people.check()
+    step('client on a 390 px phone: ‹Плати 640 €› tapped twice → one pending charge and its test checkout, no sideways scroll; a second tab stays on /plashtane')
+
     pay.locator('a:has-text("Плати")').click()
     wait_path(c, r'/plashtane/' + re.escape(nomer) + '$')
     expect(c.locator('input[name=method][value=card]')).to_be_checked()
@@ -438,8 +480,9 @@ def run(people, S, EVENT, event_day, inspiration):
     phone_shot(people, client, '/plashtane/' + quote(nomer), '11-client-payment-390')
     c.click('button:has-text("Плати 640 €")')
     c.wait_for_url(re.compile(r'/plashtane/test/[0-9a-f-]{36}$'))
+    assert c.url.endswith(ch[0]['id']), 'the open checkout is reused (C1), not a second charge'
     shot(c, '12-test-checkout-1440')
-    c.click('button:has-text("Плати")')
+    c.locator('button:has-text("Плати")').first.dblclick()  # a double click pays once
     c.wait_for_url(re.compile(r'/potvardena$'))
     expect(c.locator('.done-t')).to_have_text('Резервацията е потвърдена')
     expect(c.locator('.done-d')).to_contain_text(CLIENT_EMAIL)
@@ -449,10 +492,37 @@ def run(people, S, EVENT, event_day, inspiration):
     phone_shot(people, client, path_of(c), '13-confirmed-390')
     bk = one('select * from booking where number = $1', nomer)
     assert bk['status'] == 'confirmed' and bk['paid_at'] and bk['commission_bp'] == 1000, bk
-    ch = sql('select * from charge where booking_id = $1', bk['id'])
-    assert [x['status'] for x in ch] == ['succeeded'] and ch[0]['amount_cents'] == 64000, ch
+    def paid_once():
+        ch = sql('select * from charge where booking_id = $1', bk['id'])
+        assert [x['status'] for x in ch] == ['succeeded'] and ch[0]['amount_cents'] == 64000 and not ch[0]['is_duplicate'], ch
+        assert one("select count(*)::int n from ledger_transaction where kind = 'charge' and booking_id = $1", bk['id'])['n'] == 1, 'L1 posted twice'
+    paid_once()
     people.check()
-    step('client: ‹Плати› → /plashtane → test checkout ‹Плати› → ‹Резервацията е потвърдена›; booking confirmed at 10%')
+    step('client: ‹Плати› → /plashtane (the same open checkout) → test checkout ‹Плати› double-clicked → ‹Резервацията е потвърдена›; one charge, booking confirmed at 10%')
+
+    # The tab left on /plashtane: ‹Плати 640 €› on a booking already paid opens the booking, charges nothing.
+    c2.click('button:has-text("Плати 640 €")')
+    wait_path(c2, r'/akaunt/rezervacii/' + re.escape(nomer) + '$')
+    expect(c2.locator('.h-right .badge')).to_have_text('Потвърдена')
+    expect(c2.locator('.form-alert')).to_have_count(0)
+    c2.close()
+    # The phone's test checkout, still open: ‹Плати› again → the confirmation, no second payment.
+    ph.locator('button:has-text("Плати")').first.click()
+    ph.wait_for_url(re.compile(r'/potvardena$'))
+    expect(ph.locator('.done-t')).to_have_text('Резервацията е потвърдена')
+    assert ph.evaluate('document.documentElement.scrollWidth') <= 390, 'confirmation scrolls sideways at 390 px'
+    phone.close()
+    # The back button after paying: the checkout and the payment page behind the confirmation now open
+    # the booking, never a ‹Плати› again.
+    for _ in range(2):
+        c.go_back()
+        wait_path(c, r'/akaunt/rezervacii/' + re.escape(nomer) + '$')
+        expect(c.locator('.h-right .badge')).to_have_text('Потвърдена')
+        expect(c.locator('button:has-text("Плати")')).to_have_count(0)
+    paid_once()
+    c.goto('/plashtane/' + quote(nomer) + '/potvardena')
+    people.check()
+    step('stale tab ‹Плати 640 €› → the booking; the phone\'s open checkout ‹Плати› → the confirmation; back ×2 → the booking; still one charge, one L1')
 
     c.click('a:has-text("Виж резервацията")')
     wait_path(c, r'/akaunt/rezervacii/' + re.escape(nomer) + '$')
@@ -567,7 +637,7 @@ def run(people, S, EVENT, event_day, inspiration):
     assert ledger('client_funds', bk['id']) == 0, ledger('client_funds', bk['id'])
     assert ledger('commission_revenue', bk['id']) == 6400 and ledger('partner_payable', bk['id']) == 57600
     cri = mails('client-review-invite', CLIENT_EMAIL)
-    assert len(cri) == 1 and sp(cri[0]['subject']) == 'Как мина рожденият ден ви? Оценете Студио Мелодия', [m['subject'] for m in cri]
+    assert len(cri) == 1 and sp(cri[0]['subject']) == 'Как мина рожденият ви ден? Оценете Студио Мелодия', [m['subject'] for m in cri]
     rb = [n for n in bells(S['client_id']) if n['kind'] == 'client-review-invite']
     assert len(rb) == 1 and nomer in (rb[0]['href'] or ''), rb
     jobs = sql("select kind, status, last_error from job where status = 'failed' or (last_error is not null and status = 'pending')")
@@ -582,7 +652,7 @@ def run(people, S, EVENT, event_day, inspiration):
     assert len([n for n in bells(S['client_id']) if n['kind'] == 'client-event-reminder']) == 2
     assert sp(ver[0]['subject']) == f'След 7 дни: рожденият ден на {CLIENT_NAME}, {bg_date(event_day)}', ver[0]['subject']
     assert [n for n in bells(partner_user) if n['kind'] == 'vendor-event-reminder' and n['title'] == f'Рожденият ден на {CLIENT_NAME} е след седмица'], 'vendor-event-reminder bell'
-    assert all(sp(m['html']).count('Рожденият ден ви е на ' + bg_date(event_day)) == 1 for m in cer), 'client-event-reminder text'
+    assert all(sp(m['html']).count('Рожденият ви ден е на ' + bg_date(event_day)) == 1 for m in cer), 'client-event-reminder text'
     step('reminders on the way: client-event-reminder ×2 (7 days, 1 day), vendor-event-reminder with the phone; bell items')
 
     c.goto('/akaunt/rezervacii')

@@ -35,6 +35,16 @@ export function subjectForm(definite: string): string {
   return lead + [full, ...tail].join('');
 }
 
+/**
+ * The phrase with a short possessive (‹ви›, ‹си›), which follows the word that carries the article:
+ * ‹сватбата ви›, ‹рождения ви ден›, ‹рожденият ви ден›, ‹фирменото ви събитие›. Never ‹рождения ден ви›.
+ */
+export function withClitic(definite: string, clitic: string): string {
+  const lead = definite.match(/^\s*/)?.[0] ?? '';
+  const [w, ...tail] = definite.slice(lead.length).split(/(\s+)/);
+  return lead + [w, ' ', clitic, ...tail].join('');
+}
+
 /** The word that agrees with the phrase: agree('рождения ден', 'потвърден', 'потвърдена', 'потвърдено') → 'потвърден'. */
 export function agree(definite: string, m: string, f: string, n: string): string {
   const g = definiteGender(definite);

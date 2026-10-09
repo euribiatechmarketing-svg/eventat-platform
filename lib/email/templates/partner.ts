@@ -15,7 +15,7 @@
 //   partner.new-review       → vendor/settings.html › Известия › „Ново ревю“ (Известие при получена оценка.)
 //                              vendor-new-review
 import type { EmailTemplate } from '../types';
-import { agree, subjectForm } from '../grammar';
+import { agree, subjectForm, withClitic } from '../grammar';
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const low = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
@@ -272,7 +272,7 @@ export const vendorNewRequest: EmailTemplate<NewRequestVars> = {
     trigger: 'Нова заявка',
     heading: `Нова заявка от ${v.clientName}`,
     paragraphs: [
-      `${v.clientName} иска Пакет „${v.packageName}“ за ${v.eventTypeDefinite} си на ${v.eventDate}. Датата е свободна в календара ви.${v.attached ? ` ${first(v.clientName)} е добавила ${v.attached}.` : ''}`,
+      `${v.clientName} иска Пакет „${v.packageName}“ за ${withClitic(v.eventTypeDefinite, 'си')} на ${v.eventDate}. Датата е свободна в календара ви.${v.attached ? ` ${first(v.clientName)} е добавила ${v.attached}.` : ''}`,
       'Одобрението запазва датата за 24 часа, докато клиентът плати. Отговорете до 24 часа, за да запазите рейтинга си за отзивчивост.',
     ],
     details: [
