@@ -38,12 +38,17 @@ export const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL ?? process.env.APP_URL,
   secret: process.env.BETTER_AUTH_SECRET,
   telemetry: { enabled: false },
-  // Better Auth's own limits (on in production). AUTH_RATE_LIMIT=off only for local end-to-end runs,
-  // which sign in dozens of times a minute from one address.
-  rateLimit: { enabled: process.env.AUTH_RATE_LIMIT === 'off' ? false : process.env.NODE_ENV === 'production' },
+  // Better Auth's own limits for its HTTP routes (/api/auth/*; on in production), counted in the
+  // database so every serverless instance shares them. They never see the sign-in, reset and code
+  // forms: those are server actions calling auth.api directly, throttled by lib/domain/throttle.ts.
+  // AUTH_RATE_LIMIT=off (both) only for local end-to-end runs, which sign in dozens of times a minute.
+  rateLimit: { enabled: process.env.AUTH_RATE_LIMIT === 'off' ? false : process.env.NODE_ENV === 'production', storage: 'database' },
   database: drizzleAdapter(db, {
     provider: 'pg',
-    schema: { user: schema.user, session: schema.session, account: schema.account, verification: schema.verification, twoFactor: schema.twoFactor },
+    schema: {
+      user: schema.user, session: schema.session, account: schema.account, verification: schema.verification, twoFactor: schema.twoFactor,
+      rateLimit: schema.rateLimit,
+    },
   }),
   user: {
     additionalFields: {

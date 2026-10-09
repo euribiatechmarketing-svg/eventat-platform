@@ -10,14 +10,15 @@ import { DomainError } from '@/lib/domain/catalogue-kit';
 import { parseSearchParams, recordQuery, suggest } from '@/lib/domain/search';
 import { saveSearch, watchDate, watchDates } from '@/lib/domain/saved';
 import { setFlash } from '@/lib/flash';
+import { sameSitePath } from '@/lib/safe-path';
 import { currentUser, requireRole } from '@/lib/session';
 
 const ISO = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const UUID = z.string().uuid();
 
-/** Only same-site paths are followed after an action. */
+/** Only same-site paths are followed after an action (lib/safe-path: resolved as the browser does). */
 function safeBack(v: unknown, fallback = '/tarsene'): string {
-  return typeof v === 'string' && /^\/(?!\/)/.test(v) && v.length < 2000 ? v : fallback;
+  return sameSitePath(v, 1999) ?? fallback;
 }
 
 /** The first bar cell's panel (SPEC §13.7). Anyone may ask; a client also sees their recent searches. */

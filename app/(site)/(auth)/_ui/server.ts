@@ -4,7 +4,7 @@ import { isIP } from 'node:net';
 import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { currentUser } from '@/lib/session';
-import { homeFor } from '@/lib/domain/views-auth-account';
+import { SIGNUP_COOKIE, homeFor, signupProof } from '@/lib/domain/views-auth-account';
 
 /** The caller's IP for the consent rows (null when unknown). */
 export async function clientIp(): Promise<string | null> {
@@ -42,4 +42,16 @@ export async function clearAuthCookies() {
   for (const name of ['session_token', 'session_data', 'dont_remember', 'two_factor']) {
     for (const prefix of ['better-auth.', '__Secure-better-auth.']) if (jar.get(prefix + name)) jar.delete(prefix + name);
   }
+}
+
+/** This browser started the sign-up of `email` (SIGNUP_COOKIE): ‹Сменете имейла› may then end its code. */
+export async function rememberSignup(email: string) {
+  (await cookies()).set(SIGNUP_COOKIE, signupProof(email), {
+    httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/', maxAge: 24 * 3600,
+  });
+}
+
+/** The SIGNUP_COOKIE of this browser (or null). */
+export async function signupCookie(): Promise<string | null> {
+  return (await cookies()).get(SIGNUP_COOKIE)?.value ?? null;
 }

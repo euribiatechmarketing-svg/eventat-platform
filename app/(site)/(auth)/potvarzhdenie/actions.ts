@@ -2,7 +2,7 @@
 // /potvarzhdenie (client/verify.html): ‹Потвърди› → accounts.verifyEmail() → client-welcome (toast
 // ‹Профилът е създаден›, → next or /tarsene) / vendor-welcome (toast ‹Имейлът е потвърден›, →
 // /partner/registratsiya/1); ‹Поискайте нов› → accounts.resendCode() (toast ‹Изпратихме нов код›);
-// ‹Сменете имейла› → the code stops working → /registratsiya.
+// ‹Сменете имейла› → the code stops working (only in the browser that started the sign-up) → /registratsiya.
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
@@ -10,8 +10,9 @@ import { auth } from '@/lib/auth';
 import { setFlash } from '@/lib/flash';
 import { verifyEmail } from '@/lib/domain/clients';
 import { invalidateEmailCode, recordSignIn, resendWaitMs, safeNext, verificationView } from '@/lib/domain/views-auth-account';
+import { hit, hitAll } from '@/lib/domain/throttle';
 import { ERR, carry, type FormState } from '../_ui/messages';
-import { authErrorCode } from '../_ui/server';
+import { authErrorCode, clientIp, signupCookie } from '../_ui/server';
 
 const emailOf = (fd: FormData) => z.string().trim().toLowerCase().pipe(z.email()).safeParse(String(fd.get('email') ?? ''));
 
@@ -22,6 +23,7 @@ export async function verifyCodeAction(_prev: FormState, fd: FormData): Promise<
   if (!code.success) return { error: ERR.code };
   const { account } = await verificationView(email.data);
   if (!account || account.emailVerified) redirect('/vhod');
+  if (!(await hitAll([['codeKey', email.data], ['codeIp', await clientIp()]]))) return { error: ERR.generic };
   try {
     await auth.api.verifyEmailOTP({ body: { email: email.data, otp: code.data }, headers: await headers() });
   } catch (e) {
@@ -46,18 +48,22 @@ export async function resendCodeAction(fd: FormData) {
   const v = await verificationView(email.data);
   if (!v.account || v.account.emailVerified) redirect('/vhod');
   // The 60 s cooldown runs on the same (wall) clock as Better Auth's code.
-  if (resendWaitMs(v.sentAt, Date.now()) === 0) {
+  if (resendWaitMs(v.sentAt, Date.now()) === 0 && await hit('codeSend', email.data)) {
     await auth.api.sendVerificationOTP({ body: { email: email.data, type: 'email-verification' } });
     await setFlash('Изпратихме нов код');
   }
   redirect(`/potvarzhdenie${carry(as, next, { email: email.data })}`);
 }
 
-/** ‹Сменете имейла›: the code sent to this address stops working; back to sign-up. */
+/**
+ * ‹Сменете имейла›: back to sign-up. The code sent to this address stops working only when this
+ * browser started the sign-up (its httpOnly cookie); the action needs no session, so without that
+ * proof anyone could delete anyone's code.
+ */
 export async function changeEmailAction(fd: FormData) {
   const email = emailOf(fd);
   const as = fd.get('as') === 'partner' ? 'partner' : 'client';
   const next = safeNext(String(fd.get('next') ?? ''));
-  if (email.success) await invalidateEmailCode(email.data);
+  if (email.success) await invalidateEmailCode(email.data, await signupCookie());
   redirect(`/registratsiya${carry(as, next)}`);
 }
