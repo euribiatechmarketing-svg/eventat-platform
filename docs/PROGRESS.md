@@ -30,11 +30,17 @@ Living log of the platform build. Newest state at the top of each section.
   stale checkouts can't confirm old prices; private files in a separate bucket; upload quotas; CSV formula escaping;
   open-redirect hole; DB-backed auth throttling; image proxy). After the merge: 569 unit tests, 13/13 e2e suites pass.
 
+- **Auth/session review** (9 Oct): 9 findings, 8 confirmed; the serious one (Better Auth's unused email-code sign-in
+  and reset routes were open — guessable codes) closed with an allow-list of auth routes; immediate session revocation;
+  email-change limits; social sign-in only with a provider-confirmed email (Facebook hidden — decision 31).
+- **Accessibility** (9 Oct): axe + keyboard audit of every route; keyboard menus/comboboxes/dialogs, labels, errors,
+  focus ring, aria-current, landmarks. Only colour contrast remains (decision 157). Audits: `tools/a11y*.py`.
+  After both merges: 586 unit tests, 13/13 e2e suites pass on the production build.
+
 ## In progress
-- **Auth/session review** (the part that was interrupted) — workflow `wf_84207f12-bf3`, fixes on `fix/auth-sec`.
+- Nothing running.
 
 ## Next
-1. Merge `fix/auth-sec`; rerun `tools/e2e-all.sh`.
 2. Staging on Vercel (Euribiatech team, Pro): needs a Neon Postgres database created by a person; then env vars, cron, seed.
 3. Answers to `docs/review-list.md` → apply.
 4. Known intermittent issue: a rare React hydration warning (#418) seen twice in the production build during e2e
