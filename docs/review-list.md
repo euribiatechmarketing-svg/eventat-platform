@@ -600,3 +600,7 @@ The automated audit (WCAG 2.2 AA) now finds only colour contrast, all coming fro
 - Field and control borders #e7e7ec / #ddd6e3 on white: 1.2–1.4:1 (WCAG asks 3:1 for the edge of a control).
 - Options: A — darken `neutral-400` to about #8a8299 and `neutral-500` to about #6f6a82 for text, and borders to about #b9b1c4 (closest change that passes; needs a visual check); B — keep the approved palette for now (the platform is likely exempt as a microenterprise under the accessibility law, Art. 46(3), but AA is the right target).
 - The full measured list per element is in the audit reports; `tools/a11y.py`, `tools/a11y-panel.py`, `tools/a11y-admin.py` re-run it.
+
+**158. ‹Покажи още› on long lists (speed check, 9 Oct)** — `/tarsene`, `/kategorii/[slug]`, `/partner/zayavki`, `/admin/rezervacii`, `/admin/klienti`
+- Now: at launch-year volume these lists were slow and heavy (the client list took 3 s). They now show 24 cards (search, category), 50 rows (partner requests, clients) or 100 rows (admin bookings) and a ‹Покажи още› link, the same link the partner profile already uses for reviews. Counts and totals still cover everything. With the demo data the link never appears.
+- The prototype has no paging pattern. Options: A — keep ‹Покажи още›; B — numbered pages; C — something else.

@@ -37,6 +37,11 @@ Living log of the platform build. Newest state at the top of each section.
   focus ring, aria-current, landmarks. Only colour contrast remains (decision 157). Audits: `tools/a11y*.py`.
   After both merges: 586 unit tests, 13/13 e2e suites pass on the production build.
 
+- **Production migration** (9 Oct): `db/migrations/0000_init.sql`, verified identical to the pushed schema.
+- **Speed** (9 Oct): launch-year volume (`npm run db:perf-data`: 1 500 partners, 20 000 clients, 12 000 bookings…);
+  every measured page < 300 ms on the production build (worst `/admin/klienti`: 3 s → 106 ms); 5 indexes; long lists
+  capped with ‹Покажи още› (decision 158).
+
 ## In progress
 - Nothing running.
 
