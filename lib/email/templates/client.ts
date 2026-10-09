@@ -18,6 +18,7 @@
 //   client.date-watch       → client/saved.html › „Чакам да се освободи“ (следене на дата); no row in settings.html
 //                             client-date-freed
 import type { EmailTemplate } from '../types';
+import { subjectForm, withClitic } from '../grammar';
 
 type Rows = [string, string][];
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -521,7 +522,7 @@ export const clientEventReminder: EmailTemplate<EventReminderVars> = {
     trigger: 'Напомняне преди събитието',
     heading: `${remain(v.daysLeft, 'ден', 'дни')} до събитието ви`,
     paragraphs: [
-      `${cap(v.eventTypeDefinite)} ви е на ${v.eventDate} ${inAt(v.location)}. Ето кои изпълнители са резервирани и в колко часа започват.`,
+      `${cap(withClitic(subjectForm(v.eventTypeDefinite), 'ви'))} е на ${v.eventDate} ${inAt(v.location)}. Ето кои изпълнители са резервирани и в колко часа започват.`,
       'Изпълнителите обикновено се свързват с вас до седмица преди събитието, за да уточните програмата. Ако някой още не ви е писал, пишете му от резервацията.',
     ],
     details: [
@@ -679,12 +680,12 @@ type ReviewInviteVars = {
 export const clientReviewInvite: EmailTemplate<ReviewInviteVars> = {
   key: 'client-review-invite', audience: 'client', optional: true, preference: 'client.review-invite',
   render: v => ({
-    subject: `Как мина ${v.eventTypeDefinite} ви? Оценете ${v.partnerName}`,
+    subject: `Как мина ${withClitic(subjectForm(v.eventTypeDefinite), 'ви')}? Оценете ${v.partnerName}`,
     preheader: 'Ревюто ви помага на следващите клиенти да избират.',
     trigger: 'Покана за ревю',
     heading: `Оценете ${v.partnerName}`,
     paragraphs: [
-      `Вчера ${v.partnerName} беше част от ${v.eventTypeDefinite} ви. Оценката ви помага на следващите клиенти да избират.`,
+      `Вчера ${v.partnerName} беше част от ${withClitic(v.eventTypeDefinite, 'ви')}. Оценката ви помага на следващите клиенти да избират.`,
       'Ревюто се публикува само от клиенти с платена резервация — затова оценките в EventAT са реални. Изпълнителят не може да трие ревюта, може само да отговори публично.',
     ],
     details: [
@@ -901,7 +902,7 @@ export const clientReviewReply: EmailTemplate<ReviewReplyVars> = {
     trigger: 'Отговор на ревю',
     heading: 'Изпълнителят отговори на ревюто ви',
     paragraphs: [
-      `${v.partnerName} публикува отговор под ревюто, което оставихте за ${v.eventTypeDefinite} си.`,
+      `${v.partnerName} публикува отговор под ревюто, което оставихте за ${withClitic(v.eventTypeDefinite, 'си')}.`,
       'Отговорът се вижда публично в профила на изпълнителя, под вашето ревю. Изпълнителят не може да трие ревюта — може само да отговори.',
     ],
     details: [
