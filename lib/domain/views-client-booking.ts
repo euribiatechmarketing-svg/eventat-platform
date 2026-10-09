@@ -12,7 +12,7 @@ import { now } from '@/lib/clock';
 import { date as fmtDate, daysBetween, money, moneyShort, sofiaDate, sofiaParts, time, type DateStr } from '@/lib/format';
 import { fileUrl } from '@/lib/storage';
 import type { AnyActor } from './actor';
-import { HOLDING_STATUSES, LifecycleError, assertClientActor, checkPartnerDate, phoneDisplay } from './bookings';
+import { HOLDING_STATUSES, LifecycleError, assertClientActor, checkPartnerDate, paymentWindowHours, phoneDisplay } from './bookings';
 import { isBusy } from './availability';
 import { clientCancelEligibility, policiesFor, policyStrings, quoteBooking } from './cancellation';
 import { DECLINE_REASON_LABEL } from './requests';
@@ -292,7 +292,8 @@ export async function clientRequestPage(actor: AnyActor, number: string, q: Quer
     cityName: x.cityName,
     similarHref: similarHref({ ...r, categorySlug: svc?.categorySlug ?? null, citySlug: ct?.slug ?? null }),
     canWatch,
-    responseHours: s['request.response_hours'], payHours: s['payment.window_hours'],
+    // This booking's own window (‹Удължи срока› adds to it), not the setting.
+    responseHours: s['request.response_hours'], payHours: b ? paymentWindowHours(b) : s['payment.window_hours'],
   };
 }
 

@@ -3,22 +3,22 @@
 // emails need, email + bell (SPEC §4 bell rule), team recipients (SPEC §11.5),
 // job helpers, money rounding (SPEC §0) and the provider of a charge (D5).
 // Only the aftercare modules import this file.
-import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Queryable, type Tx } from '@/db';
 import {
-  availabilityBlock, availabilityOpenDate, booking, category, charge, city, clientEvent, dateWatch, eventType, job, partner,
+  booking, category, charge, city, clientEvent, eventType, job, partner,
   partnerMember, refund, teamMember, user, type CancellationPolicy, type DisputeReason, type CancellationReason,
 } from '@/db/schema';
-import { now } from '@/lib/clock';
 import { sendEmail } from '@/lib/email/send';
 import { TEMPLATES } from '@/lib/email/templates';
-import { addDays, date as fmtDate, sofiaDate, type DateStr } from '@/lib/format';
+import { date as fmtDate } from '@/lib/format';
 import { notify } from '@/lib/notify';
 import { MAX_JOB_ATTEMPTS, scheduleJob } from '@/lib/jobs';
 import { simulatedProvider } from '@/lib/payments/simulated';
 import { stripeProvider } from '@/lib/payments/stripe';
 import type { PaymentProvider, ProviderId } from '@/lib/payments/types';
 import { teamRolesWith, type TeamPermission } from './actor';
+import { notifyDateFreed } from './saved';
 
 // ── Errors ────────────────────────────────────────────────────────────────
 
@@ -338,61 +338,10 @@ export function paymentMethodText(c: { method: string; cardBrand: string | null;
 // ── Dates freed (SPEC §4.14 Notify, §12.6) ────────────────────────────────
 
 /**
- * Is the partner's date requestable again (SPEC §12.6)? Private stand-in for the
- * catalogue module's availability check, used only to decide whether the
- * date watches fire after a cancellation.
- */
-export async function dateIsFree(q: Queryable, partnerId: string, d: DateStr, today: DateStr): Promise<boolean> {
-  const [p] = await q.select().from(partner).where(eq(partner.id, partnerId));
-  if (!p) return false;
-  if (d < addDays(today, p.leadTimeDays)) return false;
-  const horizon = new Date(`${today}T00:00:00Z`);
-  horizon.setUTCMonth(horizon.getUTCMonth() + p.horizonMonths);
-  if (d > horizon.toISOString().slice(0, 10)) return false;
-  const iso = ((new Date(`${d}T00:00:00Z`).getUTCDay() + 6) % 7) + 1;
-  if (!p.workingDays.includes(iso)) return false;
-  const [blk] = await q.select({ id: availabilityBlock.id }).from(availabilityBlock)
-    .where(and(eq(availabilityBlock.partnerId, partnerId), lte(availabilityBlock.startDate, d), gte(availabilityBlock.endDate, d))).limit(1);
-  if (blk) return false;
-  if (p.onlySelectedDates) {
-    const [open] = await q.select({ d: availabilityOpenDate.date }).from(availabilityOpenDate)
-      .where(and(eq(availabilityOpenDate.partnerId, partnerId), eq(availabilityOpenDate.date, d))).limit(1);
-    if (!open) return false;
-  }
-  const capacity = p.bookingsPerDayMode === 'one' ? 1 : p.bookingsPerDayMode === 'limit' ? p.maxBookingsPerDate : Infinity;
-  const [n] = await q.select({ n: sql<number>`count(*)::int`.mapWith(Number) }).from(booking)
-    .where(and(eq(booking.partnerId, partnerId), eq(booking.eventDate, d), inArray(booking.status, ['awaiting_payment', 'confirmed', 'cancellation_requested'])));
-  return (n?.n ?? 0) < capacity;
-}
-
-/**
  * The partner's date stopped being busy: every `watching` watch → `notified`,
  * `client-date-freed` at once (D21). No-op while the date is still busy.
+ * One implementation for every path (saved.notifyDateFreed).
  */
 export async function fireDateWatches(tx: Tx, c: BookingCtx): Promise<number> {
-  const d = c.booking.eventDate;
-  const today = sofiaDate(await now());
-  if (!(await dateIsFree(tx, c.partner.id, d, today))) return 0;
-  const watches = await tx.select().from(dateWatch)
-    .where(and(eq(dateWatch.partnerId, c.partner.id), eq(dateWatch.date, d), eq(dateWatch.status, 'watching'))).for('update');
-  const at = await now();
-  for (const w of watches) {
-    await tx.update(dateWatch).set({ status: 'notified', notifiedAt: at }).where(eq(dateWatch.id, w.id));
-    const [u] = await tx.select({ id: user.id, email: user.email }).from(user).where(eq(user.id, w.clientId));
-    let evName = c.eventType.name;
-    if (w.clientEventId) {
-      const [ev] = await tx.select({ name: eventType.name }).from(clientEvent).innerJoin(eventType, eq(eventType.id, clientEvent.eventTypeId))
-        .where(eq(clientEvent.id, w.clientEventId));
-      if (ev) evName = ev.name;
-    }
-    await mail(tx, {
-      key: 'client-date-freed', to: u.email, toUserId: u.id, dedupeKey: `datewatch:${w.id}:freed`,
-      href: `/partnyori/${c.partner.slug}?data=${d}`,
-      vars: {
-        partnerSlug: c.partner.slug, partnerName: c.partner.businessName, partnerCategory: c.categoryName ?? '',
-        eventType: evName, eventDate: fmtDate(d), watchingSince: fmtDate(sofiaDate(w.createdAt)),
-      },
-    });
-  }
-  return watches.length;
+  return notifyDateFreed(c.partner.id, c.booking.eventDate, tx);
 }

@@ -410,8 +410,8 @@ Until you answer, the platform does what the item describes under "Now". Bulgari
 - Needed: a sentence for other reasons.
 
 **101. The team cancels; partial refunds** — `/admin/imeyli/client-vendor-cancelled`, `/admin/imeyli/vendor-cancel-completed`, `/admin/imeyli/client-refund-sent`
-- Now: when the team cancels a booking itself, client and partner get the emails written for a partner's cancellation (‹{партньор} анулира резервацията ви за {дата}›, ‹Резервацията за {дата} е анулирана по ваше искане›). The refund email always says ‹…затова се връща цялата сума без удръжки›, even when only part is refunded.
-- Needed: wording for a team cancellation and for a partial refund.
+- Now: when the team cancels a booking itself, client and partner get the emails written for a partner's cancellation (‹{партньор} анулира резервацията ви за {дата}›, ‹Резервацията за {дата} е анулирана по ваше искане›). When a cancellation is not in the free period (part or none of the money comes back) the emails leave out the sentences written for a full refund — ‹Анулирането е в безплатния срок и сумата се възстановява изцяло.› (`client-cancel-confirmed`), ‹…Сумата се връща изцяло на клиента и по тази резервация няма изплащане.› (`vendor-client-cancelled`), ‹…затова се връща цялата сума без удръжки.› (`client-refund-sent`) — and give only the amounts (‹Връща се›, ‹Задържа се›, ‹Получавате›). With nothing to refund, `client-cancel-confirmed` promises nothing to the card, and for ‹Строга› its ‹Политика› line gives the policy (‹Строга — депозитът не се връща; остатъкът се възстановява до 14 дни преди събитието›) instead of a free-cancel date.
+- Needed: wording for a team cancellation and for a partial or no refund.
 
 **102. ‹Излязохте от всички устройства› with an unknown city** — `/admin/imeyli/client-signout-all`
 - Now: a session with no known city is listed as ‹София›; if no session is found at all, the device reads ‹Браузър›.

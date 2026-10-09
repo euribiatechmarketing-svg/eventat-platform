@@ -12,7 +12,7 @@
 //   K11 cancelByTeam()                   confirmed → cancelled (team; refund chosen by the team)
 //   K12 cancelForNonPayment()            confirmed → cancelled (system, deposit mode T10)
 //   §5.4 releaseRetained()               job `booking.release_retained` at event_date + 1: L3 of the retained amount
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, ne } from 'drizzle-orm';
 import { db, type Queryable, type Tx } from '@/db';
 import {
   booking, cancellation, charge, dispute, partnerCancellationRequest,
@@ -24,7 +24,7 @@ import { ForbiddenError, SYSTEM, assertCan, type Actor, type AnyActor } from './
 import { audit } from './audit';
 import { DEFAULT_CANCELLATION_POLICIES, getSetting, type CancellationPolicies } from './settings';
 import { adjustLinesForCancellation, releaseBookingFunds } from './payouts';
-import { LIFECYCLE_JOBS, jobKey } from './bookings';
+import { HOLDING_STATUSES, LIFECYCLE_JOBS, jobKey } from './bookings';
 import { scheduleJob } from '@/lib/jobs';
 import { createRefunds, type RefundRow } from './refunds';
 import {
@@ -330,6 +330,17 @@ export async function quoteFor(tx: Tx, ctx: BookingCtx, initiatedBy: Initiator):
   return quote({ ...ctx.booking, paidCents: await refundablePaidCents(tx, ctx.booking.id) }, await now(), initiatedBy, await policiesFor(ctx.booking, tx));
 }
 
+/** A cancellation the policy refunds in full: the free period, nothing kept (the emails' prototype wording, SPEC §5.5). */
+export const inFreePeriodOf = (q: Pick<CancellationQuote, 'tier' | 'refundCents' | 'paidCents'>) => q.tier === 'none' && q.refundCents === q.paidCents;
+
+/** The client keeps other bookings on that date (‹Другите ви резервации за … остават непроменени.›, SPEC §5.4). */
+async function hasOtherBookingsSameDay(tx: Tx, b: BookingCtx['booking']): Promise<boolean> {
+  const [o] = await tx.select({ id: booking.id }).from(booking).where(and(
+    eq(booking.clientId, b.clientId), eq(booking.eventDate, b.eventDate), ne(booking.id, b.id), inArray(booking.status, [...HOLDING_STATUSES]),
+  )).limit(1);
+  return !!o;
+}
+
 /** The date shown after „безплатно до“: the free-cancel date, or for Строга the date until which the remainder comes back. */
 function freeUntilText(ctx: BookingCtx, policies: CancellationPolicies): string {
   const b = ctx.booking;
@@ -361,15 +372,20 @@ export async function cancelByClient(actor: Actor, input: { bookingId: string; r
     const t = ctxText(ctx);
     const policies = await policiesFor(b, tx);
     const paying = await payingCharge(tx, b.id);
+    // The emails' running text states a full refund only when the policy gave everything back (SPEC §5.5).
+    const inFreePeriod = inFreePeriodOf(q);
+    const free = freeCancelUntil(b.eventDate, b.cancellationPolicy, policies);
     await mailClient(tx, ctx, 'client-cancel-confirmed', {
       bookingNo: t.bookingNo, partnerName: t.partnerName, packageName: t.packageName, eventType: t.eventType, eventDate: t.eventDate,
-      policyName: POLICY_NAME[b.cancellationPolicy], freeCancelUntil: freeUntilText(ctx, policies),
+      policyName: POLICY_NAME[b.cancellationPolicy], freeCancelUntil: free ? fmtDate(free) : '',
+      policyDescription: policyStrings(b.cancellationPolicy, b.eventDate, policies).description,
       paid: money(q.paidCents), refund: money(q.refundCents), kept: money(q.retainedCents), cardLast4: paying?.cardLast4 ?? '',
+      inFreePeriod, refunded: q.refundCents > 0, otherBookingsSameDay: await hasOtherBookingsSameDay(tx, b),
     }, `booking:${b.id}:cancel-confirmed`, routes.clientBookings());
     await mailPartner(tx, ctx, 'vendor-client-cancelled', {
       bookingNo: t.bookingNo, clientName: t.clientName, eventType: t.eventType, hosts: t.hosts, eventDate: t.eventDate, packageName: t.packageName,
       policyDefinite: POLICY_DEFINITE[b.cancellationPolicy], freeCancelUntil: freeUntilText(ctx, policies),
-      reason: reasonText ?? CANCELLATION_REASON_LABEL[input.reason], partnerAmount: money(q.partnerAmountCents),
+      reason: reasonText ?? CANCELLATION_REASON_LABEL[input.reason], partnerAmount: money(q.partnerAmountCents), inFreePeriod,
     }, `booking:${b.id}:client-cancelled`, routes.partnerCalendar());
     return res;
   });
@@ -417,6 +433,7 @@ async function vendorCancelledEmails(tx: Tx, ctx: BookingCtx, q: CancellationQuo
   await mailClient(tx, ctx, 'client-vendor-cancelled', {
     bookingNo: t.bookingNo, partnerName: t.partnerName, packageName: t.packageName, eventType: t.eventType, eventDate: t.eventDate,
     refund: money(q.refundCents), cardLast4: paying?.cardLast4 ?? '', paymentMethod: paymentMethodText(paying),
+    otherBookingsSameDay: await hasOtherBookingsSameDay(tx, ctx.booking),
   }, `${dedupe}:client`, routes.similar(ctx));
   await mailPartner(tx, ctx, 'vendor-cancel-completed', {
     bookingNo: t.bookingNo, clientName: t.clientName, eventType: t.eventType, hosts: t.hosts, eventDate: t.eventDate,

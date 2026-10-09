@@ -55,7 +55,7 @@ export default async function RequestPage({ params }: { params: Promise<{ nomer:
     case 'pay':
       badge = { tone: 'pink', text: 'Одобрена · чака плащане' };
       title = `${p.name} одобри заявката ви`;
-      text = <>Датата <b style={{ color: 'var(--primary-900)' }}>{date(r.eventDate)}</b> е запазена за вас. За да потвърдите резервацията, платете в рамките на {v.payHours} часа — след това датата се освобождава автоматично.</>;
+      text = <>Датата <b style={{ color: 'var(--primary-900)' }}>{date(r.eventDate)}</b> е запазена за вас. За да потвърдите резервацията, платете в рамките на {v.payHours} {v.payHours === 1 ? 'час' : 'часа'} — след това датата се освобождава автоматично.</>;
       actions = <>{payable && <Link className="btn btn--primary" href={`/plashtane/${n}`}>Плати {moneyShort(b!.dueNowCents)}</Link>}{write}</>;
       clockTo = b!.paymentDueAt;
       break;
@@ -116,7 +116,7 @@ export default async function RequestPage({ params }: { params: Promise<{ nomer:
     case 'payexp':
       badge = { tone: 'danger', text: 'Изтекъл срок за плащане' };
       title = 'Срокът за плащане изтече';
-      text = <>Не получихме плащане по заявката ви към {p.name} в рамките на {v.payHours} часа. Датата {date(r.eventDate)} е освободена автоматично и не дължите нищо.</>;
+      text = <>Не получихме плащане по заявката ви към {p.name} в рамките на {v.payHours} {v.payHours === 1 ? 'час' : 'часа'}. Датата {date(r.eventDate)} е освободена автоматично и не дължите нищо.</>;
       actions = <Link className="btn btn--primary" href={`/partnyori/${p.slug}`}>Изпрати нова заявка</Link>;
       break;
     case 'unapproved':
