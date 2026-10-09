@@ -8,7 +8,7 @@ import { PageChrome } from '../../../_money/chrome';
 import { LINE_LABEL, ITEM_BADGE, batchPage } from '@/lib/domain/views-admin-money';
 import { date, money, plural } from '@/lib/format';
 import { adminActor, bookingPath } from '../../../_money/server';
-import { RowLink } from '../../../_money/ui';
+import { CellLink, RowLink } from '../../../_money/ui';
 
 export const metadata: Metadata = { title: 'Партида' };
 
@@ -63,7 +63,7 @@ export default async function AdminBatch({ params, searchParams }: { params: P; 
                     const badge = ITEM_BADGE[l.held ? 'held' : l.status] ?? null;
                     return (
                       <RowLink key={l.number} href={bookingPath(l.number)}>
-                        <td className="c-main"><div className="tbl-event">{l.number}</div></td>
+                        <td className="c-main"><div className="tbl-event"><CellLink href={bookingPath(l.number)}>{l.number}</CellLink></div></td>
                         <td className="c-date">{date(l.eventDate)}</td>
                         <td className="num c-gross">{money(l.baseCents)}</td>
                         <td className="num muted c-com">{money(l.commissionCents)}</td>

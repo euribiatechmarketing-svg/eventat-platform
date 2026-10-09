@@ -52,7 +52,7 @@ export default async function ModerationPage({ searchParams }: { searchParams: P
         </div>
         <div className="page-head-right">
           <span className="seg">
-            {FILTERS.map(f => <Link key={f.key} href={href({ filter: f.key === 'vsichki' ? '' : f.key })} className={`ops-seg${filter === f.key ? ' is-on' : ''}`} scroll={false}>{f.label}</Link>)}
+            {FILTERS.map(f => <Link key={f.key} href={href({ filter: f.key === 'vsichki' ? '' : f.key })} className={`ops-seg${filter === f.key ? ' is-on' : ''}`} scroll={false} aria-current={filter === f.key ? 'page' : undefined}>{f.label}</Link>)}
           </span>
         </div>
       </div>

@@ -1,11 +1,12 @@
 'use client';
 // Client pieces of the admin-ops screens: URL-driven filter menus, dialogs that run a server
 // action, table rows that open a record, notes saved on blur, mail links with a toast.
-import { useEffect, useRef, useState, useTransition, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, useTransition, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Icon, type IconName } from '@/components/ui/Icon';
 import { toast } from '@/components/ui/client';
+import { usePopup } from '@/components/ui/popup';
 
 export type ActionResult = { error?: string } | void | undefined;
 export type FormAction = (fd: FormData) => Promise<ActionResult>;
@@ -16,24 +17,19 @@ export function FilterMenu({ label, icon, options, className = 'filter-btn', ali
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent | KeyboardEvent) => {
-      if (e instanceof KeyboardEvent ? e.key === 'Escape' : !ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', close);
-    document.addEventListener('keydown', close);
-    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', close); };
-  }, [open]);
+  const btn = useRef<HTMLButtonElement>(null);
+  const id = useId();
+  const onArrow = usePopup({ open, setOpen, wrap: ref, trigger: btn, items: true });
   return (
     <span ref={ref} className={`ui-anchor ops-menu${open ? ' is-open' : ''}`}>
-      <button type="button" className={className} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(o => !o)}>
+      <button ref={btn} type="button" className={className} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined}
+        onClick={() => setOpen(o => !o)} onKeyDown={onArrow}>
         {icon && <Icon name={icon} />}{label}<Icon name="chevronDown" className="ops-caret" />
       </button>
       {open && (
-        <div className={`ui-menu ui-menu--down ops-menu-list${align === 'left' ? ' ops-menu-list--left' : ''}`} role="menu">
+        <div id={id} className={`ui-menu ui-menu--down ops-menu-list${align === 'left' ? ' ops-menu-list--left' : ''}`} role="menu" aria-label={label}>
           {options.map(o => (
-            <Link key={o.href + o.label} href={o.href} role="menuitem" className={o.on ? 'is-on' : ''} onClick={() => setOpen(false)} scroll={false}>{o.label}</Link>
+            <Link key={o.href + o.label} href={o.href} role="menuitemradio" aria-checked={!!o.on} tabIndex={-1} className={o.on ? 'is-on' : ''} onClick={() => setOpen(false)} scroll={false}>{o.label}</Link>
           ))}
         </div>
       )}
@@ -50,22 +46,43 @@ export function ActionDialog({ trigger, triggerClass = 'btn btn--outline btn--sm
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const id = useId();
   useEffect(() => {
     if (!open) return;
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
-    document.addEventListener('keydown', esc);
-    const first = formRef.current?.querySelector<HTMLElement>('input:not([type=hidden]), textarea, select');
+    const trigger = triggerRef.current;
+    // Focus goes to the first field, or to ‹Затвори› when the dialog only confirms; Tab stays inside.
+    const focusables = () => [...(boxRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([type=hidden]):not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])') ?? [])];
+    const first = formRef.current?.querySelector<HTMLElement>('input:not([type=hidden]), textarea, select') ?? boxRef.current?.querySelector<HTMLElement>('.ops-x');
     first?.focus();
-    return () => document.removeEventListener('keydown', esc);
+    const keys = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setOpen(false); return; }
+      if (e.key !== 'Tab') return;
+      const xs = focusables();
+      const i = xs.indexOf(document.activeElement as HTMLElement);
+      if (i < 0 || (e.shiftKey && i === 0) || (!e.shiftKey && i === xs.length - 1)) { e.preventDefault(); (e.shiftKey ? xs[xs.length - 1] : xs[0])?.focus(); }
+    };
+    document.addEventListener('keydown', keys);
+    return () => {
+      document.removeEventListener('keydown', keys);
+      // back to the button that opened it (unless the action moved focus elsewhere, e.g. the page changed)
+      if (trigger?.isConnected && (!document.activeElement || document.activeElement === document.body || boxRef.current?.contains(document.activeElement))) trigger.focus();
+    };
   }, [open]);
+  // A refused action: the message is announced (role=alert) and describes the dialog's fields.
+  useEffect(() => {
+    const fields = formRef.current?.querySelectorAll<HTMLElement>('input:not([type=hidden]), textarea, select') ?? [];
+    fields.forEach(f => { if (error) f.setAttribute('aria-describedby', `${id}-err`); else f.removeAttribute('aria-describedby'); });
+  }, [error, id, open]);
   return (
     <>
-      <button type="button" className={triggerClass} style={triggerStyle} onClick={() => { setError(null); setOpen(true); if (onOpenToast) toast(onOpenToast); }}>{trigger}</button>
+      <button ref={triggerRef} type="button" className={triggerClass} style={triggerStyle} aria-haspopup="dialog" onClick={() => { setError(null); setOpen(true); if (onOpenToast) toast(onOpenToast); }}>{trigger}</button>
       {open && (
         <div className="modal-overlay ops-overlay" onMouseDown={e => { if (e.target === e.currentTarget) setOpen(false); }}>
-          <div className={`modal ops-modal${wide ? ' ops-modal--wide' : ''}`} role="dialog" aria-modal="true" aria-labelledby="ops-dialog-title">
+          <div ref={boxRef} className={`modal ops-modal${wide ? ' ops-modal--wide' : ''}`} role="dialog" aria-modal="true" aria-labelledby={`${id}-title`}>
             <div className="modal-header">
-              <h2 className="ops-modal-title" id="ops-dialog-title">{title}</h2>
+              <h2 className="ops-modal-title" id={`${id}-title`}>{title}</h2>
               <button type="button" className="ops-x" aria-label="Затвори" onClick={() => setOpen(false)}><Icon name="close" /></button>
             </div>
             <form ref={formRef} action={fd => start(async () => {
@@ -76,7 +93,7 @@ export function ActionDialog({ trigger, triggerClass = 'btn btn--outline btn--sm
             })}>
               {hidden && Object.entries(hidden).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
               {children}
-              {error && <div className="form-error ops-form-error" role="alert">{error}</div>}
+              {error && <div className="form-error ops-form-error" role="alert" id={`${id}-err`}>{error}</div>}
               <div className="modal-footer ops-modal-footer">
                 <button type="submit" className={submitClass} disabled={pending}>{submitLabel}</button>
               </div>
@@ -95,6 +112,11 @@ export function ActionForm({ action, children, className, id, resetOnSuccess = f
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const ref = useRef<HTMLFormElement>(null);
+  const errId = useId();
+  useEffect(() => {
+    ref.current?.querySelectorAll<HTMLElement>('input:not([type=hidden]), textarea, select')
+      .forEach(f => { if (error) f.setAttribute('aria-describedby', errId); else f.removeAttribute('aria-describedby'); });
+  }, [error, errId]);
   return (
     <form ref={ref} id={id} className={`${className ?? ''}${pending ? ' is-pending' : ''}`} aria-busy={pending}
       action={fd => start(async () => {
@@ -104,7 +126,7 @@ export function ActionForm({ action, children, className, id, resetOnSuccess = f
         else if (resetOnSuccess) ref.current?.reset();
       })}>
       {children}
-      {error && <div className="form-error" role="alert">{error}</div>}
+      {error && <div className="form-error" role="alert" id={errId}>{error}</div>}
     </form>
   );
 }
@@ -126,6 +148,7 @@ export function NoteOnBlur({ action, label, hint, name = 'body', hidden }: {
   const ref = useRef<HTMLFormElement>(null);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const errId = useId();
   const save = () => {
     const f = ref.current;
     if (!f) return;
@@ -142,10 +165,10 @@ export function NoteOnBlur({ action, label, hint, name = 'body', hidden }: {
       {hidden && Object.entries(hidden).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
       <label className="fld">
         <span className="fld-l">{label}</span>
-        <textarea className="fld-i fld-i--area" name={name} rows={4} maxLength={2000} onBlur={save} disabled={pending} />
+        <textarea className="fld-i fld-i--area" name={name} rows={4} maxLength={2000} onBlur={save} disabled={pending} aria-describedby={error ? errId : undefined} />
       </label>
       {hint}
-      {error && <div className="form-error" role="alert">{error}</div>}
+      {error && <div className="form-error" role="alert" id={errId}>{error}</div>}
     </form>
   );
 }

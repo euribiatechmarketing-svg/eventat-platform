@@ -95,7 +95,7 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
       <div className="toolbar">
         <nav className="tab-bar">
           {TABS.map(t => (
-            <Link key={t.key} href={href({ tab: t.key === 'chakat' ? '' : t.key })} className={`tab-bar-item${tab === t.key ? ' is-active' : ''}`} scroll={false}>
+            <Link key={t.key} href={href({ tab: t.key === 'chakat' ? '' : t.key })} className={`tab-bar-item${tab === t.key ? ' is-active' : ''}`} scroll={false} aria-current={tab === t.key ? 'page' : undefined}>
               {t.label} <span className="tab-count">{count[t.key]}</span>
             </Link>
           ))}

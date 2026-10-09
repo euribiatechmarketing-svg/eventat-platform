@@ -110,7 +110,7 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
         </div>
         <div className="page-head-right">
           <span className="seg">
-            {PERIODS.map(p => <Link key={p} href={qs({ period: p === 'month' ? '' : p })} className={`ops-seg${kind === p ? ' is-on' : ''}`} scroll={false}>{PERIOD_LABEL[p]}</Link>)}
+            {PERIODS.map(p => <Link key={p} href={qs({ period: p === 'month' ? '' : p })} className={`ops-seg${kind === p ? ' is-on' : ''}`} scroll={false} aria-current={kind === p ? 'page' : undefined}>{PERIOD_LABEL[p]}</Link>)}
           </span>
           <ActionForm action={requestDashboardExportAction} className="ops-inline">
             <input type="hidden" name="period" value={kind} />
@@ -164,10 +164,11 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
                 <h2 className="dcard-title">Оборот по месеци</h2>
                 <span style={{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--neutral-600)' }}>{m.months.at(-1)?.start.slice(0, 4)}</span>
               </div>
-              <div className="bars" style={{ height: 96 }}>
+              <div className="bars" style={{ height: 96 }} role="img"
+                aria-label={`Оборот по месеци: ${m.months.map(x => `${monthName(Number(x.start.slice(5, 7)))} ${x.start.slice(0, 4)} ${money(x.gmv)}`).join(', ')}`}>
                 {m.months.map((x, i) => <i key={x.start} title={money(x.gmv)} style={{ height: `${Math.max(2, Math.round((100 * x.gmv) / maxBar))}%` }} className={i === m.months.length - 1 ? 'is-now' : undefined} />)}
               </div>
-              <div className="bars-x">
+              <div className="bars-x" aria-hidden="true">
                 {m.months.map(x => <span key={x.start}>{monthName(Number(x.start.slice(5, 7))).slice(0, 3)}</span>)}
               </div>
               {m.seasonShare != null && (

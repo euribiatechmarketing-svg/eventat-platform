@@ -124,7 +124,7 @@ export default async function AdminPayouts() {
                       </>
                     );
                     return h.reportable ? (
-                      <RowAction key={h.id} formId={`report-${h.id}`}>{cells}</RowAction>
+                      <RowAction key={h.id} formId={`report-${h.id}`} label={`Отчет за партида · ${h.label}`}>{cells}</RowAction>
                     ) : <tr key={h.id}>{cells}</tr>;
                   })}
                 </tbody>

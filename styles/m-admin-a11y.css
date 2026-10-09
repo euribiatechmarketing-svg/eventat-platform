@@ -1,0 +1,19 @@
+/* =====================================================================
+   Admin panel — accessibility layer (WCAG 2.2 AA). Focus indicators and
+   link resets only: nothing here changes how a screen looks at rest.
+   The ring is the platform's (platform.css :focus-visible), in the brand
+   purple; it measures 4.5:1 on white and 3.8:1 on the dark rail.
+   ===================================================================== */
+
+/* Buttons: the prototype's focus halo (3px of 20% purple) is 1.3:1 on white and cannot be seen. */
+.btn:focus-visible { outline: 2px solid var(--primary-500); outline-offset: 2px; }
+
+/* The dispute decision's radios are visually hidden: ring the option that holds the focused one. */
+.res-opt:has(> input:focus-visible) { outline: 2px solid var(--primary-500); outline-offset: 2px; }
+
+/* The email preview frame: PreviewFrame marks it while a keyboard focus is inside. Drawn inside the frame
+   because the card clips (overflow: hidden). */
+.em-frame.is-focused { outline: 2px solid var(--primary-500); outline-offset: -2px; }
+
+/* A register row's own link (keyboard and screen readers) reads as the cell's text. */
+.am-cell-link { color: inherit; text-decoration: none; }

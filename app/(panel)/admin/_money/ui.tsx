@@ -2,11 +2,12 @@
 // Client pieces of the admin money screens: filter dropdowns, clickable rows,
 // submit buttons with a pending state, dialogs, the case decision form, the
 // note field that saves on blur.
-import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useFormStatus } from 'react-dom';
 import { toast } from '@/components/ui/client';
+import { usePopup } from '@/components/ui/popup';
 import { money, parseMoney } from '@/lib/format';
 
 type FormAction = (fd: FormData) => void | Promise<void>;
@@ -17,28 +18,23 @@ export function FilterMenu({ label, icon, options, align = 'right' }: {
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent | KeyboardEvent) => {
-      if (e instanceof KeyboardEvent ? e.key === 'Escape' : !ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', close);
-    document.addEventListener('keydown', close);
-    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', close); };
-  }, [open]);
+  const btn = useRef<HTMLButtonElement>(null);
+  const id = useId();
+  const onArrow = usePopup({ open, setOpen, wrap: ref, trigger: btn, items: true });
   return (
     <span className="ui-anchor am-filter" ref={ref}>
-      <button type="button" className="filter-btn" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(o => !o)}>
+      <button ref={btn} type="button" className="filter-btn" aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined}
+        onClick={() => setOpen(o => !o)} onKeyDown={onArrow}>
         {icon === 'calendar'
-          ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
-          : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6h16M7 12h10M10 18h4" /></svg>}
+          ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
+          : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" /></svg>}
         {label}
-        <svg className="am-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M6 9l6 6 6-6" /></svg>
+        <svg className="am-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
       </button>
       {open && (
-        <div className={`ui-menu ui-menu--down am-menu${align === 'left' ? ' am-menu--left' : ''}`} role="menu">
+        <div id={id} className={`ui-menu ui-menu--down am-menu${align === 'left' ? ' am-menu--left' : ''}`} role="menu" aria-label={label}>
           {options.map(o => (
-            <Link key={o.href + o.label} href={o.href} role="menuitemradio" aria-checked={o.active} className={o.active ? 'is-on' : undefined} onClick={() => setOpen(false)} scroll={false}>{o.label}</Link>
+            <Link key={o.href + o.label} href={o.href} role="menuitemradio" aria-checked={o.active} tabIndex={-1} className={o.active ? 'is-on' : undefined} onClick={() => setOpen(false)} scroll={false}>{o.label}</Link>
           ))}
         </div>
       )}
@@ -46,24 +42,30 @@ export function FilterMenu({ label, icon, options, align = 'right' }: {
   );
 }
 
-/* ---------- a table row that opens its record ---------- */
+/* ---------- a table row that opens its record: a click anywhere; keyboard and screen readers use the
+   real link in its first cell (<CellLink>), so the row itself is not a second tab stop ---------- */
 export function RowLink({ href, children, className }: { href: string; children: ReactNode; className?: string }) {
   const router = useRouter();
   return (
-    <tr className={`am-row${className ? ` ${className}` : ''}`} tabIndex={0}
-      onClick={e => { if (!(e.target as HTMLElement).closest('a, button, form')) router.push(href); }}
-      onKeyDown={e => { if (e.key === 'Enter' && e.target === e.currentTarget) router.push(href); }}>
+    <tr className={`am-row${className ? ` ${className}` : ''}`}
+      onClick={e => { if (!(e.target as HTMLElement).closest('a, button, form')) router.push(href); }}>
       {children}
     </tr>
   );
 }
 
+/** The row's link, drawn as the cell's text. */
+export function CellLink({ href, children }: { href: string; children: ReactNode }) {
+  return <Link className="am-cell-link" href={href}>{children}</Link>;
+}
+
 /* ---------- a table row that runs a form when clicked (history row → report) ---------- */
-export function RowAction({ formId, children }: { formId: string; children: ReactNode }) {
+export function RowAction({ formId, label, children }: { formId: string; label: string; children: ReactNode }) {
+  const run = () => (document.getElementById(formId) as HTMLFormElement | null)?.requestSubmit();
   return (
-    <tr className="am-row" tabIndex={0}
-      onClick={e => { if (!(e.target as HTMLElement).closest('a, button')) (document.getElementById(formId) as HTMLFormElement | null)?.requestSubmit(); }}
-      onKeyDown={e => { if (e.key === 'Enter' && e.target === e.currentTarget) (document.getElementById(formId) as HTMLFormElement | null)?.requestSubmit(); }}>
+    <tr className="am-row" tabIndex={0} aria-label={label}
+      onClick={e => { if (!(e.target as HTMLElement).closest('a, button')) run(); }}
+      onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); run(); } }}>
       {children}
     </tr>
   );
@@ -155,7 +157,7 @@ function PartialRefund({ paidCents }: { paidCents: number }) {
   return (
     <div className="am-compose">
       <label className="split am-refund"><span>Връща се</span>
-        <span className="rate-f"><input ref={ref} className="rate-in am-refund-in" name="refund" inputMode="decimal" autoComplete="off" value={v} onChange={e => setV(e.target.value)} aria-label="Връща се" aria-invalid={!ok} /><span className="rate-u">€</span></span>
+        <span className="rate-f"><input ref={ref} className="rate-in am-refund-in" name="refund" inputMode="decimal" autoComplete="off" value={v} onChange={e => setV(e.target.value)} aria-label="Връща се" aria-invalid={v.trim() !== '' && !ok} /><span className="rate-u">€</span></span>
       </label>
       <div className="split is-fee"><span>Задържа се</span><b>{ok ? money(paidCents - (cents ?? 0)) : '—'}</b></div>
     </div>
@@ -192,6 +194,32 @@ export function NoteField({ action, hidden }: { action: FormAction; hidden: Reco
       </label>
     </form>
   );
+}
+
+/* ---------- the email preview: its links take the focus inside the frame, which the page cannot style
+   (the frame never matches :focus), so the frame is marked while a keyboard focus is inside it ---------- */
+export function PreviewFrame({ src, title, className }: { src: string; title: string; className: string }) {
+  const ref = useRef<HTMLIFrameElement>(null);
+  useEffect(() => {
+    const f = ref.current;
+    if (!f) return;
+    let win: Window | null = null;
+    // Synchronous, so the ring is there as soon as the focus is; a mouse click inside shows none.
+    const sync = () => {
+      const d = f.contentDocument, at = d?.activeElement;
+      f.classList.toggle('is-focused', document.activeElement === f && !!d?.hasFocus() && !!at && at !== d.body && at.matches(':focus-visible'));
+    };
+    const attach = () => {
+      win?.removeEventListener('focusin', sync); win?.removeEventListener('blur', sync);
+      win = f.contentWindow;  // a new page in the frame (another email) is a new window
+      win?.addEventListener('focusin', sync); win?.addEventListener('blur', sync);
+      sync();
+    };
+    attach();
+    f.addEventListener('load', attach);
+    return () => { f.removeEventListener('load', attach); win?.removeEventListener('focusin', sync); win?.removeEventListener('blur', sync); };
+  }, []);
+  return <iframe ref={ref} className={className} src={src} title={title} />;
 }
 
 /* ---------- open a print view in a new tab (‹Свали PDF›) ---------- */

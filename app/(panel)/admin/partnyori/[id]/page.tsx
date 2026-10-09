@@ -109,7 +109,7 @@ export default async function PartnerApplicationPage({ params }: { params: Promi
             </div>
             {d.photos.length ? (
               <div className="vrev-gal">
-                {shown.map(u => <span key={u} className="vrev-gi" style={{ backgroundImage: `url('${u}')` }}></span>)}
+                {shown.map((u, i) => <span key={u} className="vrev-gi" style={{ backgroundImage: `url('${u}')` }} role="img" aria-label={`Снимка ${i + 1} от ${d.photos.length}`}></span>)}
                 {d.photos.length > 8 && (
                   <span className="vrev-gmore"><span className="vrev-gmore-v">+{d.photos.length - 7}</span><span className="vrev-gmore-l">още</span></span>
                 )}

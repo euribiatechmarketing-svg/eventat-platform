@@ -9,6 +9,7 @@ import {
 import { CATALOGUE } from '@/lib/email/templates';
 import { dateTime, plural } from '@/lib/format';
 import { adminActor } from '../_money/server';
+import { PreviewFrame } from '../_money/ui';
 
 type SP = Record<string, string | string[] | undefined>;
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? undefined;
@@ -58,7 +59,7 @@ export async function EmailsView({ selectedKey, sp }: { selectedKey: string | nu
         <div className="page-head-right">
           <span className="seg">
             {AUDIENCE_FILTERS.map(f => (
-              <Link key={f.label} className={cat.audience === f.key ? 'is-on' : undefined} scroll={false}
+              <Link key={f.label} className={cat.audience === f.key ? 'is-on' : undefined} scroll={false} aria-current={cat.audience === f.key ? 'page' : undefined}
                 href={selectedKey ? keyHref(selectedKey, { audience: f.key, msg: null }) : `/admin/imeyli${params({ audience: f.key })}`}>{f.label}</Link>
             ))}
           </span>
@@ -68,10 +69,10 @@ export async function EmailsView({ selectedKey, sp }: { selectedKey: string | nu
         <section className="dcard em-list">
           <div className="am-mail-head">
             <nav className="tab-bar am-mail-tabs">
-              <Link className={`tab-bar-item${view === 'templates' ? ' is-active' : ''}`} scroll={false}
+              <Link className={`tab-bar-item${view === 'templates' ? ' is-active' : ''}`} scroll={false} aria-current={view === 'templates' ? 'page' : undefined}
                 href={selectedKey ? keyHref(selectedKey, { izgled: null, msg: null, q: null }) : `/admin/imeyli${params({ izgled: null, q: null })}`}>Шаблони <span className="tab-count">{cat.count}</span></Link>
               {outbox && (
-                <Link className={`tab-bar-item${view === 'sent' ? ' is-active' : ''}`} scroll={false}
+                <Link className={`tab-bar-item${view === 'sent' ? ' is-active' : ''}`} scroll={false} aria-current={view === 'sent' ? 'page' : undefined}
                   href={`/admin/imeyli${params({ izgled: 'izprateni', q: null })}`}>Изпратени <span className="tab-count">{out.total}</span></Link>
               )}
             </nav>
@@ -86,9 +87,9 @@ export async function EmailsView({ selectedKey, sp }: { selectedKey: string | nu
           {view === 'templates' ? (
             cat.groups.length ? cat.groups.map(g => (
               <div key={g.audience}>
-                <div className="em-g">{g.title}</div>
+                <div className="em-g" role="heading" aria-level={2}>{g.title}</div>
                 {g.rows.map(m => (
-                  <Link key={m.key} className={`em-row${m.key === key ? ' is-sel' : ''}`} href={keyHref(m.key, { msg: null })} scroll={false}>
+                  <Link key={m.key} className={`em-row${m.key === key ? ' is-sel' : ''}`} href={keyHref(m.key, { msg: null })} scroll={false} aria-current={m.key === key ? 'true' : undefined}>
                     <span className="em-t">{m.trigger}</span>
                     <span className="em-end">
                       {m.optional ? <span className="em-kind">По избор</span> : <span className="em-kind is-req">{LOCK}Задължителен</span>}
@@ -104,7 +105,7 @@ export async function EmailsView({ selectedKey, sp }: { selectedKey: string | nu
             out.rows.length ? (
               <div>
                 {out.rows.map(m => (
-                  <Link key={m.id} className={`em-row${message?.id === m.id ? ' is-sel' : ''}`} href={keyHref(m.key, { izgled: 'izprateni', msg: m.id })} scroll={false}>
+                  <Link key={m.id} className={`em-row${message?.id === m.id ? ' is-sel' : ''}`} href={keyHref(m.key, { izgled: 'izprateni', msg: m.id })} scroll={false} aria-current={message?.id === m.id ? 'true' : undefined}>
                     <span className="em-t">{m.trigger}</span>
                     <span className="em-end"><span className={`badge ${m.badge.cls}`}>{m.badge.label}</span></span>
                     <span className="em-s">{m.subject}</span>
@@ -119,7 +120,7 @@ export async function EmailsView({ selectedKey, sp }: { selectedKey: string | nu
         <aside>
           <section className="dcard em-prev">
             <div className="em-prev-h"><h2 className="dcard-title" style={{ fontSize: 17 }}>{entry.trigger}</h2></div>
-            <iframe className="em-frame" src={previewSrc} title="Преглед на имейла" />
+            <PreviewFrame className="em-frame" src={previewSrc} title="Преглед на имейла" />
             <div className="em-meta">
               <div className="kv-item"><div className="kv-label">Получател</div><div className="kv-value">{message ? message.to : AUDIENCE_WHO[entry.audience]}</div></div>
               <div className="kv-item"><div className="kv-label">Кога</div><div className="kv-value">{message ? message.when : entry.when}</div></div>

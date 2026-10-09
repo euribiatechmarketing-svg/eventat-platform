@@ -83,7 +83,7 @@ export function CheckRow({ c, partnerId, editable, back, openHref }: { c: CheckV
           <input type="hidden" name="back" value={back} />
           <button type="submit" className="chk-box ops-chk-btn" role="checkbox" aria-checked={ok} aria-label={c.label}>{box}</button>
         </ActionForm>
-      ) : <span className="chk-box">{box}</span>}
+      ) : <span className="chk-box" role="checkbox" aria-checked={ok} aria-readonly="true" aria-label={c.label}>{box}</span>}
       <span><span className="chk-n">{c.label}</span>{c.detail && <span className="chk-d">{c.detail}</span>}</span>
       {!ok && editable && team && (
         <span className="chk-a">

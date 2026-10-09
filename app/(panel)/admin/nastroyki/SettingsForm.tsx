@@ -2,7 +2,7 @@
 // The editable part of /admin/nastroyki: one form (‹Запази промените› / ‹Откажи›) across the cards.
 // Controls sit in their cards and join the form through the `form` attribute, so the category dialog
 // and the demo clock keep their own forms.
-import { useState, useTransition, type ReactNode } from 'react';
+import { useEffect, useRef, useState, useTransition, type ReactNode } from 'react';
 import { toast } from '@/components/ui/client';
 import type { FormAction } from '../_ops/ui';
 
@@ -78,13 +78,16 @@ export function RateInput({ name, initial, label }: { name: string; initial: str
 export function PoliciesCard({ s, hiddenRows }: { s: Pick<SettingsState, 'paymentHours' | 'responseHours' | 'policies'>; hiddenRows: Set<string> }) {
   const [edit, setEdit] = useState(false);
   const [pol, setPol] = useState(s.policies);
+  const first = useRef<HTMLDivElement>(null);
+  // ‹Редактирай› goes away when pressed: focus moves to the first field it opened instead of being lost.
+  useEffect(() => { if (edit) first.current?.querySelector<HTMLInputElement>('input.rate-in')?.focus(); }, [edit]);
   const row = (key: string) => (hiddenRows.has(key) ? ' ops-hidden-row' : '');
   const hoursField = (name: string, value: number, label: string) => edit
     ? <span className="rate-f"><input className="rate-in" form={SETTINGS_FORM} name={name} type="number" min={1} max={1440} defaultValue={value} aria-label={label} required /><span className="ops-rate-u">часа</span></span>
     : <span className="set-v">{value} часа</span>;
   return (
     <>
-      <div className={`set-row${row('payment')}`}>
+      <div className={`set-row${row('payment')}`} ref={first}>
         <div className="set-t">
           <div className="set-n">Срок за плащане след одобрение</div>
           <div className="set-d">След изтичане датата се освобождава автоматично</div>
