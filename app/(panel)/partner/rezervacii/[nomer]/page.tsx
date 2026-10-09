@@ -42,6 +42,9 @@ export default async function BookingPage({ params }: { params: Promise<{ nomer:
   const partnerCents = b.status === 'cancelled' ? (x.cancelledPartnerCents ?? 0) : (x.line?.amountCents ?? b.money.partnerAmountCents);
   const messages = b.conversationId ? `/partner/saobshteniya/${b.conversationId}` : '/partner/saobshteniya';
   const canCancel = b.status === 'confirmed' && b.daysToEvent >= 0;
+  // ‹Сигнал до екипа›: the booking's case once there is one (one per booking, SPEC X2), else the form while a case can be opened.
+  const reportHref = b.hasDispute ? `/partner/poddrazhka/${encodeURIComponent(n)}`
+    : ['confirmed', 'cancellation_requested', 'completed'].includes(b.status) ? `/partner/poddrazhka/nov?rezervaciya=${encodeURIComponent(b.number)}` : null;
   const dur = x.duration ? x.duration.charAt(0).toLowerCase() + x.duration.slice(1) : null;
 
   const tl: Tl[] = [{ done: true, icon: I.check, title: 'Заявката е одобрена', time: dateTime(b.approvedAt) }];
@@ -158,7 +161,7 @@ export default async function BookingPage({ params }: { params: Promise<{ nomer:
             <div className="panel-actions">
               <Link className="btn btn--primary btn--block" href={messages}>Пиши на клиента</Link>
               <Link className="btn btn--outline btn--block" href={`/partner/kalendar?mesec=${b.eventDate.slice(0, 7)}`}>Виж в календара</Link>
-              <Link className="btn btn--outline btn--block" href={`/partner/poddrazhka/nov?rezervaciya=${encodeURIComponent(b.number)}`}>Сигнал до екипа</Link>
+              {reportHref && <Link className="btn btn--outline btn--block" href={reportHref}>Сигнал до екипа</Link>}
               {canCancel && <CancelBooking number={b.number} action={requestCancellationAction} />}
             </div>
             {canCancel && <p className="panel-note">Ако анулирате, изпращаме искането до екипа — той се свързва с клиента и освобождава датата.</p>}

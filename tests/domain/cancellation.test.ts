@@ -163,7 +163,9 @@ describe('K7 client cancels', () => {
     expect(await bookingBalances(db, b.id)).toMatchObject({ client_funds: 0, commission_revenue: 4_350, partner_payable: 39_150 });
     expect((await partnerBalances(db, partner.partner.id)).partner_payable).toBe(39_150);
     const [ready] = await db.select().from(payoutLine).where(eq(payoutLine.bookingId, b.id));
-    expect(ready).toMatchObject({ status: 'ready', amountCents: 39_150, batchDate: '2026-06-15' });
+    // Released into the 15 June batch T17 already prepared: this partner has no confirmed payout account, so the
+    // batch holds it (SPEC §8.3, Y4) until one is confirmed.
+    expect(ready).toMatchObject({ status: 'held', holdReason: 'account_check', amountCents: 39_150, batchDate: '2026-06-15' });
     expect(await releaseRetained({ bookingId: b.id })).toBe(0); // idempotent
     await expectLedgerHealthy();
   });

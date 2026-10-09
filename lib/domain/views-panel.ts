@@ -2,7 +2,8 @@ import 'server-only';
 // Read models for the partner and admin panel chrome (rail counters, user card, admin bell).
 import { and, asc, count, eq, inArray, sum } from 'drizzle-orm';
 import { db } from '@/db';
-import { partner, partnerMember, category, media, serviceRevision, dispute, payoutBatch } from '@/db/schema';
+import { partner, partnerMember, category, media, serviceRevision, dispute } from '@/db/schema';
+import { nextBatchPreview } from './payouts';
 import { panelCounts } from './partners';
 import { mediaUrl } from './catalogue-kit';
 import type { Actor } from './actor';
@@ -53,9 +54,11 @@ export async function adminBell(actor: Actor): Promise<BellItem[]> {
   const [open] = await db.select({ n: count(), held: sum(dispute.heldCents) }).from(dispute).where(inArray(dispute.status, ['collecting', 'awaiting_decision']));
   if (open.n > 0 && can(actor, 'resolve_disputes'))
     items.push({ id: 'disputes', title: `${plural(open.n, 'отворен спор', 'отворени спора')}`, body: `${moneyShort(Number(open.held ?? 0))} задържани`, href: '/admin/sporove', unread: true });
-  const [batch] = await db.select().from(payoutBatch).where(inArray(payoutBatch.status, ['scheduled', 'ready'])).orderBy(asc(payoutBatch.batchDate)).limit(1);
-  if (batch && can(actor, 'view_finance'))
-    items.push({ id: 'batch', title: `Партида ${date(batch.batchDate)}`, body: `${plural(batch.partnerCount ?? 0, 'изпълнител', 'изпълнители')} · ${moneyShort(batch.netCents ?? 0)}`, href: '/admin/plashtaniya', unread: false });
+  // The batch ‹Следваща партида› on /admin/plashtaniya offers (SPEC §8.1), not the oldest row left unreleased.
+  if (can(actor, 'view_finance')) {
+    const nb = await nextBatchPreview();
+    items.push({ id: 'batch', title: `Партида ${date(nb.batchDate)}`, body: `${plural(nb.partners, 'изпълнител', 'изпълнители')} · ${moneyShort(nb.netCents)}`, href: '/admin/plashtaniya', unread: false });
+  }
   return items;
 }
 

@@ -20,7 +20,7 @@ import { date as fmtDate, money, sofiaDate } from '@/lib/format';
 import { assertCan, isSystem, SYSTEM, type Actor, type AnyActor } from './actor';
 import { audit } from './audit';
 import { accountBalance, postTransaction } from './ledger';
-import { clawBackReleased } from './payouts';
+import { clawBackReleased, resyncPreparedBatch } from './payouts';
 import {
   AftercareError, POLICY_DEFINITE, RECEIVED, chargedBackSql, ctxText, errorText, isFinalAttempt, loadBookingCtx, mailClient, paymentMethodText,
   providerFor, routes, schedule, uncoveredFailedSql, withTx, type BookingRow,
@@ -173,6 +173,8 @@ export async function applyRefundSucceeded(tx: Tx, refundId: string): Promise<bo
   await issueCreditNote(tx, r, b);
   await audit(tx, { actor: SYSTEM, action: 'refund.succeeded', entity: 'refund', entityId: r.id, data: { bookingId: b.id, amountCents: r.amountCents } });
   await sendRefundEmail(tx, r);
+  // A pending refund kept the booking out of a prepared batch; settled, the batch shows what is paid.
+  await resyncPreparedBatch(tx, b.id);
   return true;
 }
 
@@ -182,6 +184,7 @@ export async function applyRefundFailed(tx: Tx, refundId: string, reason: string
   if (!r || r.status !== 'pending') return false;
   await tx.update(refund).set({ status: 'failed', failureReason: reason }).where(eq(refund.id, r.id));
   await audit(tx, { actor: SYSTEM, action: 'refund.failed', entity: 'refund', entityId: r.id, data: { bookingId: r.bookingId, amountCents: r.amountCents, reason } });
+  await resyncPreparedBatch(tx, r.bookingId);
   return true;
 }
 
@@ -205,6 +208,8 @@ async function sendRefundEmail(tx: Tx, r: RefundRow): Promise<void> {
     paid: money(paid.s), paidOn: ctx.booking.paidAt ? fmtDate(sofiaDate(ctx.booking.paidAt)) : '',
     refund: money(total), cardLast4: c.cardLast4 ?? '', paymentMethod: paymentMethodText(c),
     policyDefinite: POLICY_DEFINITE[ctx.booking.cancellationPolicy],
+    // A dispute decision (partial refund, duplicate charge, cancel with full refund) is no in-period cancellation.
+    ...(r.disputeId ? { decision: true, cancelled: ctx.booking.status === 'cancelled' } : {}),
   }, `refund-sent:${r.bookingId}:${groupKey}`, routes.clientBookings());
 }
 

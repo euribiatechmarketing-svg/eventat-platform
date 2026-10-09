@@ -140,7 +140,9 @@ describe('L2 after the money was released (SPEC §7.4/§7.5)', () => {
     await db.transaction(tx => createRefunds(tx, { bookingId: b.id, amountCents: 30_000, reason: 'dispute_decision', actor: SYSTEM }));
     await runJobs();
     let line = (await db.select().from(payoutLine).where(eq(payoutLine.bookingId, b.id)))[0];
-    expect(line).toMatchObject({ baseCents: 115_000, commissionCents: 11_500, amountCents: 103_500, status: 'ready' });
+    // The 1 September batch was prepared (T17) while the refund was pending; once it settles the batch is drawn
+    // again and this partner, without a confirmed payout account, is held there (SPEC §8.3, Y4).
+    expect(line).toMatchObject({ baseCents: 115_000, commissionCents: 11_500, amountCents: 103_500, status: 'held', holdReason: 'account_check' });
     expect(await bookingBalances(db, b.id)).toMatchObject({ partner_payable: 103_500, commission_revenue: 11_500, client_funds: 0 });
 
     // Paid out (L4), then another refund: the partner now owes it.
@@ -165,7 +167,8 @@ describe('§7.4 early release (T18), then a refund', () => {
     const early = await db.transaction(tx => releaseBookingFunds({ bookingId: b.id, baseCents: ch.amountCents, early: { chargeId: ch.id } }, tx));
     expect(early).toMatchObject({ releasedCents: 145_000, commissionCents: 14_500 });
     const lines = await db.select().from(payoutLine).where(eq(payoutLine.bookingId, b.id));
-    expect(lines.find(l => l.chargeId === ch.id)).toMatchObject({ status: 'released_early', amountCents: 130_500, batchDate: '2025-09-01' });
+    // Due in the 1 September batch T17 already prepared; the partner has no confirmed payout account, so it is held there (SPEC §8.3).
+    expect(lines.find(l => l.chargeId === ch.id)).toMatchObject({ status: 'held', holdReason: 'account_check', amountCents: 130_500, batchDate: '2025-09-01' });
     expect((await partnerBalances(db, partner.partner.id)).partner_payable).toBe(130_500);
 
     await cancelByClient(client.actor, { bookingId: b.id, reason: 'event_cancelled' });

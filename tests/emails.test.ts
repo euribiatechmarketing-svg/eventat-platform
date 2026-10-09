@@ -65,6 +65,19 @@ describe('email registry', () => {
     }
   });
 
+  it('opens the case itself from the dispute emails to a client or partner (SCREENS email CTAs)', () => {
+    const toCase: Record<string, string> = {
+      'client-dispute-opened': '/akaunt/poddrazhka/', 'client-dispute-info-request': '/akaunt/poddrazhka/',
+      'client-ticket-vendor-opened': '/akaunt/poddrazhka/', 'client-ticket-reminder': '/akaunt/poddrazhka/',
+      'vendor-ticket-client-opened': '/partner/poddrazhka/', 'vendor-ticket-reminder': '/partner/poddrazhka/',
+      'vendor-ticket-info-request': '/partner/poddrazhka/',
+    };
+    for (const [key, route] of Object.entries(toCase)) {
+      const sample = SAMPLES[key] as { bookingNo: string };
+      expect(TEMPLATES[key].render(sample).cta?.href, key).toBe(route + sample.bookingNo);
+    }
+  });
+
   it('renders every email to HTML and text without undefined or null', () => {
     for (const key of keys) {
       const t = TEMPLATES[key];

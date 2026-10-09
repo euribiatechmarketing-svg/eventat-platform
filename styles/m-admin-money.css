@@ -91,6 +91,10 @@ textarea.fld-i:focus, input.fld-i:focus, select.fld-i:focus { outline: none; bor
 .am-dialog-acts .btn { flex: 1 1 auto; }
 .am-refund { align-items: center; }
 .am-refund .rate-in { width: 120px; }
+/* what the team completes on the chosen decision option (‹Задължи … да …›, ‹Връща се›) */
+.am-compose { margin: -2px 0 2px; padding: 4px 14px 2px 42px; }
+.am-compose .fld-i { width: 100%; }
+.am-compose .split { padding: 8px 0; }
 
 @media (max-width: 1500px) {
   .bkg-parties { grid-template-columns: minmax(0, 1fr); gap: 14px; }

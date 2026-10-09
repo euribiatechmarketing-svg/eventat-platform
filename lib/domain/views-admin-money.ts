@@ -539,14 +539,23 @@ function excerpt(s: string | null): string | null {
 
 export type CaseParty = {
   initials: string; name: string; role: string; vendor: boolean; filer: boolean; plural: boolean;
-  statements: { body: string; meta: string; docs: string[]; pics: string[] }[];
+  /** pics: photos that open (href; thumb for the tile). docs: other files, or a document only named in the case (href null). */
+  statements: { body: string; meta: string; docs: { name: string; href: string | null }[]; pics: { href: string; thumb: string; name: string }[] }[];
   wait: [string, string] | null;
 };
 
-export type CaseOption = { id: string | null; kind: DisputeDecisionKind; label: string; description: string | null };
+/**
+ * compose: what the team completes on the page before deciding — `obligation`, the rest of ‹Задължи … да …›
+ * (enforce_terms); `refund`, the amount given back (partial_refund).
+ */
+export type CaseOption = { id: string | null; kind: DisputeDecisionKind; label: string; description: string | null; compose?: 'obligation' | 'refund' };
 
-/** Options for a case the team opened without composing any (§4.11 kinds). */
-function defaultOptions(b: { status: BookingStatus }, paid: number, clientName: string): CaseOption[] {
+/**
+ * Options for a case nobody composed options for (any new case, §4.11 kinds). A paid booking can be held to
+ * its terms (‹Задължи {страна} да …›, the side asked for a position) or part of the money given back
+ * (‹Частично възстановяване — {сума}›), as on the prototype's cases, besides cancelling or closing.
+ */
+function defaultOptions(b: { status: BookingStatus }, paid: number, clientName: string, obliged: string): CaseOption[] {
   if (b.status === 'awaiting_payment' && paid === 0) {
     return [
       { id: null, kind: 'cancel_unpaid', label: 'Анулирай заявката без такси', description: 'Нищо не е платено — датата се освобождава и за двете страни.' },
@@ -554,11 +563,16 @@ function defaultOptions(b: { status: BookingStatus }, paid: number, clientName: 
     ];
   }
   return [
+    { id: null, kind: 'enforce_terms', label: `Задължи ${obliged} да …`, description: null, compose: 'obligation' },
+    { id: null, kind: 'partial_refund', label: 'Частично възстановяване', description: null, compose: 'refund' },
     { id: null, kind: 'cancel_full_refund', label: 'Анулирай с пълно възстановяване', description: `${moneyShort(paid)} към ${clientName}.` },
     { id: null, kind: 'no_refund', label: 'Затвори без промяна', description: null },
     { id: null, kind: 'close', label: 'Затвори сигнала', description: null },
   ];
 }
+
+/** ‹Задължи Мария Димитрова да …› + what the team typed → the decision title. */
+export const obligationTitle = (label: string, what: string) => `${label.replace(/\s*…$/, '')} ${what.trim()}`;
 
 /** /admin/sporove/[nomer]: summary, both statements with evidence, the agreed terms, history, money, the decision. */
 export async function disputeCase(actor: Actor, number: string) {
@@ -572,9 +586,15 @@ export async function disputeCase(actor: Actor, number: string) {
   const [cp] = await db.select({ type: clientProfile.clientType }).from(clientProfile).where(eq(clientProfile.userId, b.clientId));
   const [cat] = await db.select({ name: category.name }).from(partner).leftJoin(category, eq(category.id, partner.primaryCategoryId)).where(eq(partner.id, b.partnerId));
   const msgs = await db.select().from(disputeMessage).where(eq(disputeMessage.disputeId, d.id)).orderBy(asc(disputeMessage.createdAt));
-  const atts = await db.select({ messageId: disputeAttachment.messageId, label: disputeAttachment.label, key: media.storageKey, mime: media.mime, name: media.originalName })
+  const atts = await db.select({ messageId: disputeAttachment.messageId, label: disputeAttachment.label, mediaId: media.id, key: media.storageKey, mime: media.mime, name: media.originalName, size: media.sizeBytes })
     .from(disputeAttachment).innerJoin(media, eq(media.id, disputeAttachment.mediaId)).where(eq(disputeAttachment.disputeId, d.id));
   const paid = await paidCents(db, b.id);
+  // Evidence with a file behind it opens (uploads through /api/files, the demo photos as static files); a document
+  // the seeded case only names (no bytes) stays text. Uploads keep their file name as the label, so the label
+  // alone does not tell a named document from a photo.
+  const hasFile = (a: (typeof atts)[number]) => a.size > 0 || a.key.startsWith('/');
+  const isPic = (a: (typeof atts)[number]) => a.mime.startsWith('image/') && hasFile(a);
+  const fileHref = (a: (typeof atts)[number]) => (a.key.startsWith('/') ? a.key : `/api/files/${a.mediaId}`);
   const clientPl = isPlural(r.clientName);
   const partnerName = r.partnerName;
   const sideName = (party: string) => (party === 'client' ? r.clientName : party === 'partner' ? partnerName : 'EventAT');
@@ -592,8 +612,8 @@ export async function disputeCase(actor: Actor, number: string) {
       const files = atts.filter(a => a.messageId === m.id);
       return {
         body: tie(m.body), meta: [stamp(m.createdAt, today), m.context].filter(Boolean).join(' · '),
-        pics: files.filter(f => f.mime.startsWith('image/') && !f.label).map(f => f.key),
-        docs: files.filter(f => f.mime === 'application/pdf' || f.label).map(f => f.label ?? f.name ?? 'Файл'),
+        pics: files.filter(isPic).map(f => ({ href: fileHref(f), thumb: f.key.startsWith('/photos/') ? f.key.replace('/photos/', '/photos/thumbs/') : fileHref(f), name: f.label ?? f.name ?? 'Снимка' })),
+        docs: files.filter(f => !isPic(f)).map(f => ({ name: f.label ?? f.name ?? 'Файл', href: hasFile(f) ? fileHref(f) : null })),
       };
     });
     let wait: [string, string] | null = null;
@@ -646,7 +666,7 @@ export async function disputeCase(actor: Actor, number: string) {
     if (m.kind === 'statement' && m.createdAt.getTime() === d.openedAt.getTime() && m.party === d.openedBy) continue;
     const who = sideName(m.party);
     const files = atts.filter(a => a.messageId === m.id).length;
-    const pics = atts.filter(a => a.messageId === m.id && a.mime.startsWith('image/') && !a.label).length;
+    const pics = atts.filter(a => a.messageId === m.id && isPic(a)).length;
     if (m.kind === 'statement') events.push({ at: m.createdAt, item: { state: 'done', title: `${who} ${isPlural(who) ? 'отговориха' : 'отговори'}`, time: `${stamp(m.createdAt, today)}${files ? ` · прилага ${pics === files ? plural(files, 'снимка', 'снимки') : plural(files, 'файл', 'файла')}` : ''}` } });
     else if (m.kind === 'question') events.push({ at: m.createdAt, item: { state: 'done', title: 'Поискахме още информация', time: `${stamp(m.createdAt, today)} · ${m.recipients === 'client' ? r.clientName : m.recipients === 'partner' ? partnerName : 'до двете страни'}` } });
     else if (m.kind === 'reminder') events.push({ at: m.createdAt, item: { state: 'done', title: `Писахме на ${m.recipients === 'client' ? r.clientName : partnerName}`, time: stamp(m.createdAt, today) } });
@@ -692,7 +712,7 @@ export async function disputeCase(actor: Actor, number: string) {
     decision = { title: d.decisionTitle ?? '', detail: d.decisionDetail, motive: d.motive ?? '', by: [admin?.name, d.decidedAt ? `${fmtDate(sofiaDate(d.decidedAt))}, ${time(d.decidedAt)}` : null].filter(Boolean).join(' · ') };
   }
   const opts = await db.select().from(disputeOption).where(eq(disputeOption.disputeId, d.id)).orderBy(asc(disputeOption.position));
-  const options: CaseOption[] = opts.length ? opts.map(o => ({ id: o.id, kind: o.kind, label: o.label, description: o.description })) : defaultOptions(b, paid, r.clientName);
+  const options: CaseOption[] = opts.length ? opts.map(o => ({ id: o.id, kind: o.kind, label: o.label, description: o.description })) : defaultOptions(b, paid, r.clientName, sideName(d.positionFrom === 'client' ? 'client' : 'partner'));
 
   const canExtend = open && b.status === 'awaiting_payment' && b.paymentDueAt > at && can(actor, 'extend_payment_deadline', { disputeOpen: true });
   let warn: { text: string; extend: boolean } | null = null;

@@ -475,7 +475,8 @@ def main():
         step('case 2026-0621-ТЛ: ‹Удължи срока с 24 часа›, ‹Виж редакцията →›, ‹Върни одобрената цена›')
 
         page.goto(case_url(base, '2026-0614-МЗ'))
-        expect(page.locator('.res-opt')).to_have_count(3)
+        # §4.11 defaults for a paid booking: ‹Задължи … да …›, ‹Частично възстановяване›, cancel, ‹Затвори без промяна›, close
+        expect(page.locator('.res-opt')).to_have_count(5)
         page.click('.res-opt:has-text("Затвори сигнала")')
         page.fill('textarea[name="motive"]', 'Програмата е уточнена с квартета.')
         page.click('button:has-text("Приложи решението")')

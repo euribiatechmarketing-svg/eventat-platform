@@ -6,6 +6,7 @@ import { adminBell, adminRailCounts, TEAM_ROLE_LABEL } from '@/lib/domain/views-
 import { Suspense } from 'react';
 import { PanelShell, type RailGroup } from '@/components/panel/PanelShell';
 import { AdminSearch } from './_ops/AdminSearch';
+import '@/styles/m-admin-shell.css';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const user = await requireRole('admin', '/admin');

@@ -209,9 +209,15 @@ describe('X8 decisions', () => {
     expect(cd.vars).toMatchObject({ heldAmount: money(101_500), heldUntil: date('2025-09-06'), motive: 'услугата беше 3 часа вместо 4.' });
     const [vd] = await emails('vendor-ticket-decision', partner.user.id);
     expect(vd.vars).toMatchObject({ refunded: money(43_500), partnerAmount: money(91_350), decidedBy: adminUser.name, payoutLine: 'Изплащането по резервацията продължава по обичайния график — на 1-во или 15-то число.' });
+    // The partner's email leads with the decision, not with the client's own statement.
+    expect(vd.vars).toMatchObject({ account: `Върни разликата — ${moneyShort(43_500)}` });
     await runJobs();
     expect(await bookingBalances(db, b.id)).toMatchObject({ client_funds: 0, partner_payable: 91_350, commission_revenue: 10_150, provider_held: 91_350 });
-    expect(await emails('client-refund-sent', client.user.id)).toHaveLength(1);
+    const sent = await emails('client-refund-sent', client.user.id);
+    expect(sent).toHaveLength(1);
+    // The booking stands: the refund email does not call it cancelled or speak of a free cancellation period.
+    expect(sent[0].text).toContain(`Върнахме ${money(43_500)} по резервацията при`);
+    expect(sent[0].text).not.toMatch(/анулира|безплатния срок/);
     expect(await failure(decide(admin, { disputeId: d.id, kind: 'no_refund', motive: 'x' }))).toContain('dispute_closed');
     expect(await db.transaction(tx => releaseBookingFunds({ bookingId: b.id }, tx))).toMatchObject({ releasedCents: 0 });
     await expectLedgerHealthy();
@@ -232,6 +238,9 @@ describe('X8 decisions', () => {
     await runJobs();
     expect(await bookingBalances(db, b.id)).toMatchObject({ client_funds: 0, provider_held: 0 });
     expect((await lineOf(b.id)).status).toBe('cancelled');
+    const [sent] = await emails('client-refund-sent', client.user.id);
+    expect(sent.text).toContain('по анулираната резервация при');
+    expect(sent.text).not.toContain('безплатния срок');
     await expectLedgerHealthy();
   });
 

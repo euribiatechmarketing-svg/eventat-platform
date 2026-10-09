@@ -241,6 +241,8 @@ export async function releaseBookingFunds(
     }
   }
   await ensureBatchScheduled(line.batchDate, tx);
+  // A batch T17 already prepared shows the line now (its events end the night before the batch, Y5).
+  await resyncPreparedBatch(tx, b.id);
   await audit(tx, {
     actor: SYSTEM, action: a.early ? 'booking.funds_released_early' : 'booking.funds_released', entity: 'booking', entityId: b.id,
     data: { number: b.number, baseCents: B, commissionCents: C, partnerCents: B - C, lineId: line.id, batchDate: line.batchDate },
@@ -321,7 +323,39 @@ export async function syncBookingHold(tx: Tx, bookingId: string): Promise<boolea
     await unholdBookingLines(tx, bookingId);
     await releaseIfDue(tx, bookingId);
   }
+  await resyncPreparedBatch(tx, bookingId);
   return hold;
+}
+
+/**
+ * A batch prepared by T17 but not released yet follows what happened to one of its bookings since: a hold
+ * that ended (a dispute decided or withdrawn, a chargeback closed) or began, or a refund that settled,
+ * changes which lines are payable and for how much. Its items and totals are drawn from the lines again,
+ * as ‹Пусни партидата› does (Y4: cleared lines join with the decided amount), so the payments page and the
+ * release dialog show what will be paid. Only the first prepared batch the booking's lines belong to.
+ */
+export async function resyncPreparedBatch(tx: Tx, bookingId: string): Promise<void> {
+  const lines = await tx.select({ batchDate: payoutLine.batchDate, itemId: payoutLine.payoutItemId }).from(payoutLine)
+    .where(and(eq(payoutLine.bookingId, bookingId), inArray(payoutLine.status, ['awaiting_event', 'ready', 'held', 'released_early'])));
+  if (!lines.length) return;
+  const itemIds = lines.map(l => l.itemId).filter((x): x is string => !!x);
+  const inItems = itemIds.length ? await tx.select({ batchId: payoutItem.batchId }).from(payoutItem).where(inArray(payoutItem.id, itemIds)) : [];
+  const from = lines.map(l => l.batchDate).sort()[0];
+  const [batch] = await tx.select().from(payoutBatch)
+    .where(and(eq(payoutBatch.status, 'ready'), inItems.length ? or(gte(payoutBatch.batchDate, from), inArray(payoutBatch.id, inItems.map(i => i.batchId))) : gte(payoutBatch.batchDate, from)))
+    .orderBy(asc(payoutBatch.batchDate)).limit(1).for('update');
+  if (batch) await restateBatch(tx, batch);
+}
+
+/** Y3 grouping of a prepared batch: items from the due lines, each payable item at what the ledger owes, totals. */
+async function restateBatch(tx: Tx, batch: BatchRow) {
+  const synced = await syncBatch(tx, batch);
+  for (const s of synced.ready) {
+    const { amount } = await payoutAmount(tx, s.item.partnerId, s.lines.reduce((x, l) => x + l.amountCents, 0));
+    await tx.update(payoutItem).set({ amountCents: amount }).where(eq(payoutItem.id, s.item.id));
+  }
+  await recomputeTotals(tx, batch.id);
+  return synced;
 }
 
 /** Σ amounts of the partner's items handed to the provider and not confirmed yet. */
@@ -567,15 +601,8 @@ export async function prepareBatch(batchDate: DateStr, tx?: Tx): Promise<{ batch
     if (batch.status !== 'scheduled') return { batchId: batch.id, prepared: false };
     // A batch created without a rail (e.g. seeded as `scheduled`) takes the current one now.
     if (!batch.railLabel) await tx.update(payoutBatch).set({ railLabel: await railLabelFor(tx) }).where(eq(payoutBatch.id, batch.id));
-    const synced = await syncBatch(tx, batch);
-    const net: number[] = [];
-    for (const s of synced.ready) {
-      const { amount } = await payoutAmount(tx, s.item.partnerId, s.lines.reduce((x, l) => x + l.amountCents, 0));
-      await tx.update(payoutItem).set({ amountCents: amount }).where(eq(payoutItem.id, s.item.id));
-      net.push(amount);
-    }
+    const synced = await restateBatch(tx, batch);
     await tx.update(payoutBatch).set({ status: 'ready', preparedAt: await now() }).where(eq(payoutBatch.id, batch.id));
-    await recomputeTotals(tx, batch.id);
     const [b] = await tx.select().from(payoutBatch).where(eq(payoutBatch.id, batch.id));
     const top = [...synced.disputeHeld].sort((x, y) => y.amount - x.amount)[0];
     let heldVar: { partnerName: string; amount: string } | undefined;

@@ -34,8 +34,10 @@ export default async function BookingPage({ params }: { params: Promise<{ nomer:
   const policy = policyStrings(b.policy.policy, b.eventDate);
   const live = b.status === 'confirmed' || b.status === 'cancellation_requested';
   const href = `/akaunt/rezervacii/${n}`;
-  // ‹Сигнал до екипа› only where a case can be opened (SPEC X1, D70): up to 30 days after the event, none open yet.
-  const canReport = (live || b.status === 'completed') && b.daysToEvent >= -30 && !b.disputeOpen;
+  // ‹Сигнал до екипа› opens the booking's case once there is one (one case per booking, SPEC X1); otherwise the
+  // form, only where a case can be opened (D70: up to 30 days after the event).
+  const reportHref = b.hasDispute ? `/akaunt/poddrazhka/${n}`
+    : (live || b.status === 'completed') && b.daysToEvent >= -30 ? `/akaunt/poddrazhka/nov?rezervaciya=${n}` : null;
 
   return (
     <div className="hold hold--narrow">
@@ -68,7 +70,7 @@ export default async function BookingPage({ params }: { params: Promise<{ nomer:
         </form>
         {b.invoices.length > 0 && <Link className="btn btn--outline" href={`${href}/faktura`}>Свали фактура</Link>}
         {b.canCancel && <Link className="btn btn--ghost" href={`${href}/anulirane`}>Анулиране</Link>}
-        {canReport && <Link className="btn btn--ghost" href={`/akaunt/poddrazhka/nov?rezervaciya=${n}`}>Сигнал до екипа</Link>}
+        {reportHref && <Link className="btn btn--ghost" href={reportHref}>Сигнал до екипа</Link>}
         <Link className="btn btn--outline" href="/tarsene">Търси друга услуга</Link>
       </div>
     </div>

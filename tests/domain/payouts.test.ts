@@ -190,6 +190,37 @@ describe('holds (SPEC §8.3, Y4)', () => {
     await expectLedgerHealthy();
   });
 
+  it('a prepared batch follows a dispute decided before its release: the held line joins at the decided amount', async () => {
+    setTestNow(t('2026-05-04'));
+    const { actor: admin } = await createAdmin('admin');
+    const p = await payablePartner();
+    const bk = await paidBooking({ partner: p, eventDate: '2026-05-13' });
+    const d = await openByClient(bk.client.actor, { bookingId: bk.booking.id, reason: 'not_as_described', description: 'x' });
+    setTestNow(sofiaInstant('2026-05-14', 0, 0));
+    expect((await release(bk.booking.id)).held).toBe(true); // T13 waits for the decision
+    const { batchId } = await prepareBatch('2026-05-15');
+    expect(await itemFor(batchId, p.partner.id)).toMatchObject({ status: 'held', holdReason: 'dispute', disputeId: d.id, amountCents: 130_500 });
+    const before = await batchOn('2026-05-15'); // other tests' held lines may sit in this batch too
+
+    setTestNow(t('2026-05-14', 15));
+    await decide(admin, { disputeId: d.id, kind: 'partial_refund', refundCents: 45_000, motive: 'x' });
+    // The refund is still at the provider: the line waits (L2 may claw back).
+    expect(await itemFor(batchId, p.partner.id)).toMatchObject({ status: 'held', disputeId: null });
+    await runJobs(); // refund.submit → F2
+    expect(await itemFor(batchId, p.partner.id)).toMatchObject({ status: 'ready', holdReason: null, amountCents: 90_000 });
+    expect(await batchOn('2026-05-15')).toMatchObject({
+      partnerCount: before.partnerCount + 1, grossCents: before.grossCents + 100_000, commissionCents: before.commissionCents + 10_000,
+      netCents: before.netCents + 90_000, heldCents: before.heldCents - 130_500,
+    });
+
+    setTestNow(t('2026-05-15', 9));
+    expect(await releaseBatch(admin, { batchId })).toMatchObject({ status: 'released' });
+    await runJobs();
+    expect(await itemFor(batchId, p.partner.id)).toMatchObject({ status: 'paid', amountCents: 90_000 });
+    expect((await emails('vendor-payout-sent', p.user.id)).map(m => (m.vars as { amount: string }).amount)).toEqual([money(90_000)]);
+    await expectLedgerHealthy();
+  });
+
   it('two-person release (D40): a second, different admin confirms', async () => {
     setTestNow(t('2025-10-10'));
     const { actor: a1 } = await createAdmin('admin');
@@ -291,6 +322,9 @@ describe('Y8 failures and L6 netting', () => {
     expect(await batchOn('2026-02-01')).toMatchObject({ status: 'ready', partnerCount: 0 });
     setTestNow(sofiaInstant('2026-02-01', 0, 0));
     await release(bk.booking.id); // T13
+    // The prepared batch shows it at once: the payments page and the release dialog name what will be paid.
+    expect(await batchOn('2026-02-01')).toMatchObject({ status: 'ready', partnerCount: 1, netCents: 130_500 });
+    expect(await itemFor((await batchOn('2026-02-01')).id, p.partner.id)).toMatchObject({ status: 'ready', amountCents: 130_500 });
     setTestNow(t('2026-02-01', 9));
     expect(await releaseBatch(admin, { batchId: (await batchOn('2026-02-01')).id })).toMatchObject({ sentItems: 1 });
     await runJobs();
