@@ -1,6 +1,6 @@
 // Client profile, invoice data, consents and account-level requests (DATA-MODEL §2.2).
 import { sql } from 'drizzle-orm';
-import { pgTable, text, boolean, uuid, varchar, inet, check, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, text, boolean, uuid, varchar, inet, integer, check, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { user } from './auth';
 import { acquisitionSource, clientType, consentDocument, deletionStatus, invoiceRecipient } from './enums';
 import { city } from './reference';
@@ -51,12 +51,13 @@ export const accountDeletionRequest = pgTable('account_deletion_request', {
   confirmedAt: tz('confirmed_at'),
 }, t => [uniqueIndex('account_deletion_request_open_key').on(t.userId).where(sql`status = 'requested'`)]);
 
-/** D55: a code goes to the new address before the email switches. */
+/** D55: a code goes to the new address before the email switches. `attempts`: tries used (D49: 5 per code). */
 export const emailChangeRequest = pgTable('email_change_request', {
   id: id(),
   userId: text('user_id').notNull().references(() => user.id),
   newEmail: text('new_email').notNull(),
   codeHash: text('code_hash').notNull(),
+  attempts: integer('attempts').notNull().default(0),
   expiresAt: tz('expires_at').notNull(),
   confirmedAt: tz('confirmed_at'),
   createdAt: createdAt(),

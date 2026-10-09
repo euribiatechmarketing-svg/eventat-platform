@@ -163,7 +163,7 @@ Check: `recipient_type = 'company'` ⇒ company_name, eik, mol not null.
 
 **`account_deletion_request`** — id · user_id FK · token_hash text U · status deletion_status default 'requested' · requested_at default now() · expires_at (requested_at + 24 h) · confirmed_at null. Partial U(user_id) where status = 'requested'.
 
-**`email_change_request`** (D55) — id · user_id FK · new_email text · code_hash · expires_at · confirmed_at null · created_at.
+**`email_change_request`** (D55) — id · user_id FK · new_email text · code_hash · attempts int default 0 (tries used; D49: 5 per code, counted under a row lock) · expires_at · confirmed_at null · created_at. A new request ends the user's previous open one.
 
 ### 2.3 Reference data — `reference.ts`
 

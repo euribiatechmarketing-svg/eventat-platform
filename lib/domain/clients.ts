@@ -5,12 +5,12 @@
 //   ∅ ─A1─▶ unverified ─A3─▶ active ─A9─▶ deletion_requested ─A10─▶ deleted
 //                                │                   └─A11 (T24)─▶ active
 //                                └─A12─▶ blocked (no unblock in v1, D39)
-import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, like, ne, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db, type Queryable, type Tx } from '@/db';
 import {
   account, accountDeletionRequest, booking, clientInvoiceProfile, clientProfile, consent, conversation, dateWatch, dispute,
-  emailChangeRequest, notificationPreference, partner, partnerMember, savedSearch, searchHistory, session, twoFactor, user,
+  emailChangeRequest, notificationPreference, partner, partnerMember, savedSearch, searchHistory, session, twoFactor, user, verification,
   type AcquisitionSource, type ClientType, type NotificationChannel,
 } from '@/db/schema';
 import { now } from '@/lib/clock';
@@ -64,10 +64,7 @@ export async function verifyEmail(a: { userId: string }, tx?: Tx) {
     if (!u.emailVerified) await t.update(user).set({ emailVerified: true, updatedAt: at }).where(eq(user.id, u.id));
     if (u.role === 'client') {
       await t.insert(clientProfile).values({ userId: u.id, createdAt: at, updatedAt: at }).onConflictDoNothing();
-      await mail(t, {
-        key: 'client-welcome', to: u.email, toUserId: u.id, dedupeKey: `welcome:${u.id}`,
-        vars: { clientName: u.name, email: u.email, ...(u.phone ? { phone: displayPhone(u.phone) } : {}), registeredOn: fmtDate(u.createdAt) },
-      });
+      await welcomeClient(t, u);
     } else if (u.role === 'partner') {
       const [p] = await t.select({ p: partner }).from(partnerMember).innerJoin(partner, eq(partner.id, partnerMember.partnerId)).where(eq(partnerMember.userId, u.id));
       if (!p) throw new NotFoundError('partner');
@@ -80,16 +77,57 @@ export async function verifyEmail(a: { userId: string }, tx?: Tx) {
   });
 }
 
+/** `client-welcome` (once per user). */
+async function welcomeClient(t: Tx, u: typeof user.$inferSelect) {
+  await mail(t, {
+    key: 'client-welcome', to: u.email, toUserId: u.id, dedupeKey: `welcome:${u.id}`,
+    vars: { clientName: u.name, email: u.email, ...(u.phone ? { phone: displayPhone(u.phone) } : {}), registeredOn: fmtDate(u.createdAt) },
+  });
+}
+
+/**
+ * A4: the first Google / Facebook sign-in of a client → `client_profile` and `client-welcome` (toast
+ * ‹Профилът е създаден›). Only for an address already confirmed (Better Auth admits a social
+ * identity only when the provider vouches for it); this never confirms one. True the first time.
+ */
+export async function welcomeSocialClient(a: { userId: string }, tx?: Tx): Promise<boolean> {
+  return withTx(tx, async t => {
+    const [u] = await t.select().from(user).where(eq(user.id, a.userId)).for('update');
+    if (!u || u.role !== 'client' || !u.emailVerified || u.banned || u.deletedAt) return false;
+    const at = await now();
+    // A1 sign-ups get their profile at registration, so a missing one means a first social sign-in.
+    const [created] = await t.insert(clientProfile).values({ userId: u.id, createdAt: at, updatedAt: at }).onConflictDoNothing().returning({ userId: clientProfile.userId });
+    if (!created) return false;
+    await welcomeClient(t, u);
+    await audit(t, { actor: { userId: u.id, role: 'client' }, action: 'client.registered', entity: 'user', entityId: u.id, data: { via: 'social' } });
+    return true;
+  });
+}
+
 // ── A6 – A8 security ─────────────────────────────────────────────────────
 
-/** A6: a new password was saved through the reset link — `password_changed_at`; every other session revoked; `client-password-changed`. */
+/**
+ * End a user's sign-ins: every session (but `keepSessionId`) and every device trusted to skip the
+ * SMS step (Better Auth's `trust-device-*` verification rows hold the user id).
+ */
+async function revokeSignIns(t: Tx, userId: string, keepSessionId?: string | null) {
+  const revoked = await t.delete(session)
+    .where(keepSessionId ? and(eq(session.userId, userId), ne(session.id, keepSessionId)) : eq(session.userId, userId)).returning();
+  await t.delete(verification).where(and(like(verification.identifier, 'trust-device-%'), eq(verification.value, userId)));
+  return revoked;
+}
+
+/**
+ * A6: a new password was saved through the reset link — `password_changed_at`; every other session
+ * and every trusted device revoked (the SMS step applies again everywhere); `client-password-changed`.
+ */
 export async function afterPasswordChanged(a: { userId: string; keepSessionId?: string | null }, tx?: Tx) {
   return withTx(tx, async t => {
     const [u] = await t.select().from(user).where(eq(user.id, a.userId));
     if (!u) throw new NotFoundError('user');
     const at = await now();
     await t.update(user).set({ passwordChangedAt: at, updatedAt: at }).where(eq(user.id, u.id));
-    await t.delete(session).where(a.keepSessionId ? and(eq(session.userId, u.id), ne(session.id, a.keepSessionId)) : eq(session.userId, u.id));
+    await revokeSignIns(t, u.id, a.keepSessionId);
     await audit(t, { actor: { userId: u.id, role: u.role }, action: 'user.password_changed', entity: 'user', entityId: u.id });
     if (u.role === 'client') {
       await mail(t, { key: 'client-password-changed', to: u.email, toUserId: u.id, dedupeKey: `pwchanged:${u.id}:${at.toISOString()}`, vars: { email: u.email, changedOn: fmtDate(at) } });
@@ -125,12 +163,12 @@ export function deviceFromUserAgent(ua: string | null | undefined): string {
   return 'Браузър';
 }
 
-/** A8 ‹Излез навсякъде›: every session revoked; `client-signout-all` lists them; redirect `/`. */
+/** A8 ‹Излез навсякъде›: every session and trusted device revoked; `client-signout-all` lists the sessions; redirect `/`. */
 export async function signOutEverywhere(actor: AnyActor, tx?: Tx) {
   assertClient(actor);
   return withTx(tx, async t => {
     const [u] = await t.select().from(user).where(eq(user.id, actor.userId));
-    const rows = await t.delete(session).where(eq(session.userId, u.id)).returning();
+    const rows = await revokeSignIns(t, u.id);
     const at = await now();
     await audit(t, { actor, action: 'user.signed_out_everywhere', entity: 'user', entityId: u.id, data: { sessions: rows.length } });
     const sessions = rows.map(r => ({ device: r.deviceLabel ?? deviceFromUserAgent(r.userAgent), city: r.city ?? u.lastLoginCity ?? 'София' }));
@@ -393,10 +431,14 @@ export async function setPreferences(actor: AnyActor, prefs: { key: string; chan
 
 // ── D55 email change ─────────────────────────────────────────────────────
 
+/** D49: tries per email-change code; then a new code is needed. */
+export const EMAIL_CHANGE_ATTEMPTS = 5;
+
 /**
  * D55: a code goes to the new address before the email switches. The template
  * (`client-email-change-code`) is a proposed key without approved copy, so nothing is sent
- * yet: the request is recorded and the code returned to the caller.
+ * yet: the request is recorded and the code returned to the caller. Only the newest request is
+ * open: a new one ends the previous code.
  */
 export async function requestEmailChange(actor: AnyActor, a: { newEmail: string }, tx?: Tx): Promise<{ requestId: string; code: string; expiresAt: Date }> {
   assertClient(actor);
@@ -406,6 +448,8 @@ export async function requestEmailChange(actor: AnyActor, a: { newEmail: string 
     const [taken] = await t.select({ id: user.id }).from(user).where(sql`lower(${user.email}) = ${email}`);
     if (taken) throw new DomainError('email_taken');
     const at = await now();
+    await t.update(emailChangeRequest).set({ expiresAt: at })
+      .where(and(eq(emailChangeRequest.userId, actor.userId), isNull(emailChangeRequest.confirmedAt), sql`${emailChangeRequest.expiresAt} > ${at.toISOString()}::timestamptz`));
     const { code, hash } = newCode();
     const expiresAt = new Date(at.getTime() + 10 * 60_000);
     const [req] = await t.insert(emailChangeRequest).values({ userId: actor.userId, newEmail: email, codeHash: hash, expiresAt, createdAt: at }).returning();
@@ -414,18 +458,31 @@ export async function requestEmailChange(actor: AnyActor, a: { newEmail: string 
   });
 }
 
-/** D55 confirm: the latest open request with this code switches the email. */
-export async function confirmEmailChange(actor: AnyActor, a: { code: string }, tx?: Tx) {
+/**
+ * D55 confirm: the latest open request with this code switches the email, and the account's other
+ * sessions and trusted devices end (`keepSessionId` is the browser confirming). D49: each try uses
+ * one of the code's EMAIL_CHANGE_ATTEMPTS, counted on the request row under a row lock, so parallel
+ * tries cannot exceed it; a wrong try is counted even though the call fails. Called without `tx`
+ * (the count must commit when the code is wrong).
+ */
+export async function confirmEmailChange(actor: AnyActor, a: { code: string; keepSessionId?: string | null }, tx?: Tx) {
   assertClient(actor);
-  return withTx(tx, async t => {
+  const failed = await withTx(tx, async (t): Promise<string | null> => {
     const [req] = await t.select().from(emailChangeRequest)
-      .where(and(eq(emailChangeRequest.userId, actor.userId), isNull(emailChangeRequest.confirmedAt))).orderBy(desc(emailChangeRequest.createdAt)).limit(1);
+      .where(and(eq(emailChangeRequest.userId, actor.userId), isNull(emailChangeRequest.confirmedAt))).orderBy(desc(emailChangeRequest.createdAt)).limit(1)
+      .for('update');
     const at = await now();
-    if (!req || req.expiresAt <= at || req.codeHash !== hashToken((a.code ?? '').trim())) throw new DomainError('invalid_code');
+    if (!req || req.expiresAt <= at) return 'invalid_code';
+    if (req.attempts >= EMAIL_CHANGE_ATTEMPTS) return 'too_many_attempts';
+    await t.update(emailChangeRequest).set({ attempts: sql`${emailChangeRequest.attempts} + 1` }).where(eq(emailChangeRequest.id, req.id));
+    if (req.codeHash !== hashToken((a.code ?? '').trim())) return 'invalid_code';
     const [taken] = await t.select({ id: user.id }).from(user).where(sql`lower(${user.email}) = ${req.newEmail}`);
-    if (taken) throw new DomainError('email_taken');
+    if (taken) return 'email_taken';
     await t.update(user).set({ email: req.newEmail, emailVerified: true, updatedAt: at }).where(eq(user.id, actor.userId));
     await t.update(emailChangeRequest).set({ confirmedAt: at }).where(eq(emailChangeRequest.id, req.id));
-    await audit(t, { actor, action: 'user.email_changed', entity: 'user', entityId: actor.userId, data: { to: req.newEmail } });
+    const revoked = await revokeSignIns(t, actor.userId, a.keepSessionId);
+    await audit(t, { actor, action: 'user.email_changed', entity: 'user', entityId: actor.userId, data: { to: req.newEmail, sessionsRevoked: revoked.length } });
+    return null;
   });
+  if (failed) throw new DomainError(failed);
 }

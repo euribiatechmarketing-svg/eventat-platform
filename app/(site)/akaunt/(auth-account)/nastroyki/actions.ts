@@ -23,11 +23,6 @@ async function client() {
   return actorFromUser(u);
 }
 
-/** The session cookie caches the user for a few minutes; read it fresh so the header shows the new name at once. */
-async function refreshSession() {
-  try { await auth.api.getSession({ headers: await headers(), query: { disableCookieCache: true } }); } catch { /* signed out meanwhile */ }
-}
-
 const settingsSchema = z.object({
   name: z.string().trim().min(1).max(120),
   phone: z.string().trim().min(1).refine(v => !!normalizePhone(v)),
@@ -66,7 +61,6 @@ export async function saveSettingsAction(_prev: FormState, fd: FormData): Promis
     }
     throw e;
   }
-  await refreshSession();
   revalidatePath('/', 'layout');
   if (emailChange) redirect(`${PATH}/imeyl`);
   await setFlash('Промените са запазени');
@@ -86,7 +80,6 @@ export async function changePhotoAction(_prev: FormState, fd: FormData): Promise
     if (e instanceof Error && /^[А-Я]/.test(e.message)) return { error: e.message, at: Date.now() }; // lib/storage's own messages
     throw e;
   }
-  await refreshSession();
   revalidatePath('/', 'layout');
   await setFlash('Снимката е обновена');
   redirect(PATH);

@@ -141,7 +141,7 @@ Sidebar steps 1–6 with meta (SPEC §12.1); footer ‹Стъпка N от 6› 
 
 | Route | Purpose |
 |---|---|
-| `/api/auth/[...all]` | Better Auth (email+password, email OTP, social, 2FA) |
+| `/api/auth/[...all]` | Better Auth. Over HTTP only the Google / Facebook callback, the reset-password link, Better Auth's error page and email sign-in (tools, e2e) answer; every other route is 404. The screens call `auth.api` from server actions |
 | `/api/cron/tick` | Vercel Cron every minute, bearer `CRON_SECRET`: `runDueJobs()`, `deliverQueued()`, SMS outbox |
 | `/api/webhooks/stripe` | provider events → `payments.applyProviderEvent()` (idempotent by event id) |
 | `/api/files/[id]` | private media (attachments, evidence, invoices, reports, bank proofs) after an authorisation check |

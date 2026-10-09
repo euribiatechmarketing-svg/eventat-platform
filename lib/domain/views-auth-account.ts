@@ -6,10 +6,10 @@ import 'server-only';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Queryable, type Tx } from '@/db';
 import {
-  accountDeletionRequest, auditLog, booking, category, city, clientEvent, clientInvoiceProfile, clientProfile, emailChangeRequest, eventType, media,
+  accountDeletionRequest, booking, category, city, clientEvent, clientInvoiceProfile, clientProfile, emailChangeRequest, eventType, media,
   partner, partnerMember, request, session, user, verification,
 } from '@/db/schema';
 import { now } from '@/lib/clock';
@@ -17,14 +17,14 @@ import { sendEmail } from '@/lib/email/send';
 import { resolvedPathname, sameSitePath } from '@/lib/safe-path';
 import { date, daysBetween, monthName, sofiaDate, sofiaParts, time, weekdayName, type DateStr } from '@/lib/format';
 import type { Actor } from './actor';
-import { audit } from './audit';
 import { DomainError, NotFoundError, assertClient, displayPhone, hashToken, mediaUrl, withTx } from './catalogue-kit';
 import {
-  confirmEmailChange, deviceFromUserAgent, getPreferences, requestEmailChange, setMarketing, setPreferences, setTwoFactor, updateClient,
+  deviceFromUserAgent, getPreferences, requestEmailChange, setMarketing, setPreferences, setTwoFactor, updateClient,
 } from './clients';
 import { eventSummaries, type ClientEventSummary } from './events';
 import { listSaved } from './saved';
 import { parseSearchParams, searchHref } from './search';
+import { hit } from './throttle';
 
 // ── Time words (SPEC §0 Countdown) ───────────────────────────────────────
 
@@ -306,7 +306,8 @@ export async function saveSettings(actor: Actor, input: SettingsInput, tx?: Tx):
     if (u.twoFactorEnabled !== input.twoFactor) await setTwoFactor(actor, { enabled: input.twoFactor }, t);
     const email = input.email.trim().toLowerCase();
     if (email && email !== u.email.toLowerCase()) {
-      await requestEmailChangeCode(actor, email, t);
+      // The same new address again: the code already sent stays valid (no second email).
+      if ((await pendingEmailChange(actor, t))?.newEmail !== email) await requestEmailChangeCode(actor, email, t);
       return { emailChange: email };
     }
     return { emailChange: null };
@@ -315,11 +316,21 @@ export async function saveSettings(actor: Actor, input: SettingsInput, tx?: Tx):
 
 /**
  * D55: the code for a new address. `client-email-change-code` has no approved copy yet, so the code
- * goes out with the approved `client-verify-code` email to the new address.
+ * goes out with the approved `client-verify-code` email to the new address. Every code (‹Запази
+ * промените› with a new address, ‹Поискайте нов›) waits out the 60 s cooldown after the previous
+ * one and counts towards the hourly `codeSend` limit, so nobody can mail an address in a loop or
+ * keep drawing fresh attempts (D49).
  */
 export async function requestEmailChangeCode(actor: Actor, newEmail: string, tx?: Tx) {
+  assertClient(actor);
   return withTx(tx, async t => {
+    await t.select({ id: user.id }).from(user).where(eq(user.id, actor.userId)).for('update'); // one request at a time per user
+    const [last] = await t.select({ createdAt: emailChangeRequest.createdAt }).from(emailChangeRequest)
+      .where(eq(emailChangeRequest.userId, actor.userId)).orderBy(desc(emailChangeRequest.createdAt)).limit(1);
+    if (last && (await now()).getTime() - last.createdAt.getTime() < RESEND_COOLDOWN_MS) throw new DomainError('too_soon');
     const r = await requestEmailChange(actor, { newEmail }, t);
+    // Counted outside this transaction (default connection), so a refused request still counts.
+    if (!(await hit('codeSend', `email-change:${actor.userId}`))) throw new DomainError('too_many_requests');
     const [row] = await t.select({ email: emailChangeRequest.newEmail }).from(emailChangeRequest).where(eq(emailChangeRequest.id, r.requestId));
     await sendEmail({ key: 'client-verify-code', to: row.email, toUserId: actor.userId, vars: { code: r.code, email: row.email }, dedupeKey: `email-change:${r.requestId}` }, t);
     return r;
@@ -336,13 +347,11 @@ export async function pendingEmailChange(actor: Actor, q: Queryable = db) {
   return { id: r.id, newEmail: r.newEmail, sentAt: r.createdAt };
 }
 
-/** ‹Поискайте нов› on the email-change screen: a fresh code to the same new address (the old one stops working). */
+/** ‹Поискайте нов› on the email-change screen: a fresh code to the same new address (the old one stops working; cooldown and limit as above). */
 export async function resendEmailChangeCode(actor: Actor, tx?: Tx) {
   return withTx(tx, async t => {
     const p = await pendingEmailChange(actor, t);
     if (!p) throw new DomainError('invalid_code');
-    if ((await now()).getTime() - p.sentAt.getTime() < RESEND_COOLDOWN_MS) throw new DomainError('too_soon');
-    await t.update(emailChangeRequest).set({ expiresAt: await now() }).where(eq(emailChangeRequest.id, p.id));
     return requestEmailChangeCode(actor, p.newEmail, t);
   });
 }
@@ -355,24 +364,6 @@ export async function cancelEmailChange(actor: Actor, tx?: Tx) {
     if (!p) return;
     await t.update(emailChangeRequest).set({ expiresAt: await now() }).where(eq(emailChangeRequest.id, p.id));
   });
-}
-
-/** D55 confirm, with the D49 limit of 5 attempts per code (a sixth wrong try needs a new code). */
-export async function confirmEmailChangeLimited(actor: Actor, code: string) {
-  assertClient(actor);
-  const p = await pendingEmailChange(actor);
-  if (!p) throw new DomainError('invalid_code');
-  const [{ n }] = await db.select({ n: count() }).from(auditLog)
-    .where(and(eq(auditLog.action, 'user.email_change_failed'), eq(auditLog.entityId, p.id)));
-  if (n >= 5) throw new DomainError('too_many_attempts');
-  try {
-    await confirmEmailChange(actor, { code });
-  } catch (e) {
-    if (e instanceof DomainError && e.code === 'invalid_code') {
-      await audit(db, { actor, action: 'user.email_change_failed', entity: 'email_change_request', entityId: p.id });
-    }
-    throw e;
-  }
 }
 
 // ── Saved searches and date watches (SPEC §13.9) ─────────────────────────
