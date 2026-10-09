@@ -141,12 +141,6 @@ textarea { resize: vertical; }
 .side-user-menu > .ui-menu { left: 0; right: 0; }
 .side-user-menu .side-user { width: 100%; }
 
-/* topbar title set by a page: the short form replaces it on phones */
-.topbar-title .tt-short { display: none; }
-@media (max-width: 640px) {
-  .topbar-title .tt-long:has(+ .tt-short) { display: none; }
-  .topbar-title .tt-short { display: inline; }
-}
 
 /* page not found */
 .ui-notfound { max-width: 520px; margin: 72px auto; text-align: center; padding: 0 16px; }

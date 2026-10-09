@@ -32,8 +32,8 @@ export function BriefForm(p: BriefFormProps) {
   useEffect(() => {
     try {
       const ref = document.referrer && new URL(document.referrer);
-      // history.back() needs an entry to go back to (a new tab opened from our page has none).
-      if (ref && ref.origin === location.origin && ref.pathname !== location.pathname && history.length > 1) setBack(ref.pathname + ref.search);
+      // A plain link to that page, not history.back(): a tab opened from our page has no history to go back to.
+      if (ref && ref.origin === location.origin && ref.pathname !== location.pathname) setBack(ref.pathname + ref.search);
     } catch { /* no referrer */ }
   }, []);
   const toggle = (slug: string) => setCats(c => (c.includes(slug) ? c.filter(x => x !== slug) : [...c, slug]));
@@ -103,9 +103,7 @@ export function BriefForm(p: BriefFormProps) {
 
         <div style={{ display: 'flex', gap: 10, marginTop: 26, flexWrap: 'wrap' }}>
           <SubmitButton className="btn btn--primary" disabled={!cats.length}>Изпрати запитването</SubmitButton>
-          {back
-            ? <button type="button" className="btn btn--ghost bf-back" onClick={() => history.back()}>Назад</button>
-            : <Link className="btn btn--ghost bf-back" href="/tarsene">Назад</Link>}
+          <Link className="btn btn--ghost bf-back" href={back ?? '/tarsene'}>Назад</Link>
         </div>
       </ActionForm>
 

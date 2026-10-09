@@ -108,7 +108,7 @@ def main():
         page.goto(BASE + '/akaunt/zayavki/' + quote('2026-0614-ДК'))
         page.evaluate('n => document.querySelector("form input[name=number]").value = n', foreign)
         page.click('button:has-text("Пиши на изпълнителя")')
-        expect(page.get_by_text('This page could not be found.')).to_be_visible()
+        expect(page.get_by_text('Страницата не е намерена')).to_be_visible()
         assert h('threads', CLIENT, foreign) == 0
         ok("another client's requests, bookings, invoice file, checkout and thread answer 404")
 
@@ -378,14 +378,16 @@ def main():
         ok(f"brief: 2 categories, budget, photo → sent to {br['invited']} partner(s), T3 jobs scheduled")
 
         nb = ctx.new_page()
-        nb.goto(BASE + '/zayavka/otvorena', referer=BASE + '/akaunt/zayavki')
-        expect(nb.locator('a.bf-back')).to_have_attribute('href', '/tarsene')
+        nb.goto(BASE + '/zayavka/otvorena')
+        expect(nb.locator('a.bf-back')).to_have_attribute('href', '/tarsene')   # opened directly → the catalogue
+        nb.goto(BASE + '/zayavka/otvorena', referer=BASE + '/akaunt/sabitiya')
+        expect(nb.locator('a.bf-back')).to_have_attribute('href', '/akaunt/sabitiya')   # back to the page it came from
         nb.close()
         page.goto(BASE + '/akaunt/zayavki')
         page.goto(BASE + '/zayavka/otvorena', referer=BASE + '/akaunt/zayavki')
-        page.click('button.bf-back')
+        page.click('a.bf-back')
         page.wait_for_url(BASE + '/akaunt/zayavki')
-        ok('brief ‹Назад›: back to our previous page; a tab without history gets the catalogue link')
+        ok('brief ‹Назад›: back to the page it came from; opened directly it gets the catalogue')
 
         # ── quote request → the partner's offer → the client chooses ────
         d2 = h('free-date', 'studio-melodiya')

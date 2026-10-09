@@ -49,6 +49,8 @@ let override: Override = null;
 const listeners = new Set<() => void>();
 function setOverride(v: Override) { override = v; listeners.forEach(l => l()); }
 const subscribe = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l); }; };
+const PHONE = '(max-width: 640px)';
+const subscribePhone = (l: () => void) => { const mq = window.matchMedia(PHONE); mq.addEventListener('change', l); return () => mq.removeEventListener('change', l); };
 
 /** Sets the topbar title while the page is shown; `short` replaces it on phones. */
 export function PageTitle({ text, short }: { text: string; short?: string }) {
@@ -63,9 +65,8 @@ export function PageTitle({ text, short }: { text: string; short?: string }) {
 export function TopbarTitle({ groups, home, titles = {}, aliases }: { groups: RailGroup[]; home: string; titles?: Record<string, string>; aliases?: Record<string, string> }) {
   const path = usePathname();
   const o = useSyncExternalStore(subscribe, () => override, () => null);
-  if (o && o.path === path) {
-    return <span className="topbar-title"><span className={o.short ? 'tt-long' : undefined}>{o.text}</span>{o.short && <span className="tt-short">{o.short}</span>}</span>;
-  }
+  const phone = useSyncExternalStore(subscribePhone, () => window.matchMedia(PHONE).matches, () => false);
+  if (o && o.path === path) return <span className="topbar-title">{phone && o.short ? o.short : o.text}</span>;
   const own = Object.entries(titles).filter(([p]) => path === p || path.startsWith(p + '/')).sort((a, b) => b[0].length - a[0].length)[0];
   if (own) return <span className="topbar-title">{own[1]}</span>;
   const active = activeHref(groups, path, home, aliases);

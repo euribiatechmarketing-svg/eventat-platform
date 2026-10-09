@@ -145,7 +145,7 @@ def main():
         sign_in(ctx, base, ADMIN)
         page = ctx.new_page()
         errors = []
-        page.on('pageerror', lambda e: errors.append(str(e)))
+        page.on('pageerror', lambda e: errors.append(f'{page.url}: {e}'))
         page.on('response', lambda r: errors.append(f'{r.status} {r.url}') if r.status >= 500 else None)
 
         for r in routes:

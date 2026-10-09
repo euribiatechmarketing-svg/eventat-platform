@@ -107,7 +107,7 @@ def run():
         ctx = browser.new_context(viewport={'width': 1440, 'height': 900}, locale='bg-BG', timezone_id='Europe/Sofia')
         page = ctx.new_page()
         errors = []
-        page.on('pageerror', lambda e: errors.append(str(e)))
+        page.on('pageerror', lambda e: errors.append(f'{page.url}: {e}'))
 
         # ── guards ───────────────────────────────────────────────────────
         page.goto(BASE + R + '/1')
@@ -528,7 +528,7 @@ def run():
         # ── phone (390 px): every route, no sideways scroll, tap targets, one-line rows ──
         phone = browser.new_context(viewport={'width': 390, 'height': 844}, locale='bg-BG', timezone_id='Europe/Sofia')
         ph = phone.new_page()
-        ph.on('pageerror', lambda e: errors.append(str(e)))
+        ph.on('pageerror', lambda e: errors.append(f'{ph.url}: {e}'))
         sign_in(ph, email5)
         for n in range(1, 7):
             ph.goto(BASE + R + f'/{n}')
