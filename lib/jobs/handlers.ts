@@ -3,6 +3,7 @@
 // merges them. Kinds are SPEC §3's "Job kind" names. A handler receives the
 // payload it was scheduled with and must be idempotent.
 import { aftercareHandlers } from './handlers-aftercare';
+import { briefHandlers } from './handlers-briefs';
 import { catalogueHandlers } from './handlers-catalogue';
 import { lifecycleHandlers } from './handlers-lifecycle';
 
@@ -16,6 +17,7 @@ const groups: Record<string, Record<string, JobHandler>> = {
   lifecycle: lifecycleHandlers,
   aftercare: aftercareHandlers,
   catalogue: catalogueHandlers,
+  briefs: briefHandlers,
 };
 
 function merge(gs: Record<string, Record<string, JobHandler>>): Record<string, JobHandler> {
