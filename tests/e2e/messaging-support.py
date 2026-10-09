@@ -92,8 +92,14 @@ def flash_is(ctx, text):
     this branch, so the toast cannot be seen there yet; the one-time cookie that carries it is checked instead."""
     from urllib.parse import unquote
     c = next((c for c in ctx.cookies() if c['name'] == 'flash'), None)
-    assert c and json.loads(unquote(c['value']))['message'].replace(NBSP, ' ') == text, c
-    ctx.clear_cookies(name='flash')
+    if c:
+        assert json.loads(unquote(c['value']))['message'].replace(NBSP, ' ') == text, c
+        ctx.clear_cookies(name='flash')
+        return
+    # Now that the target page exists, its toast may already have shown and cleared the cookie.
+    shown = [pg for pg in ctx.pages if pg.locator('.ui-toast.is-on').count() and
+             pg.locator('.ui-toast.is-on').first.inner_text().replace(NBSP, ' ').strip() == text]
+    assert shown, f'neither the flash cookie nor the toast ‹{text}›
 
 def opens_file_chooser(page, selector, files):
     """A real click on `selector` must open the file picker; choose `files` in it."""
