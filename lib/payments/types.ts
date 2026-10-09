@@ -30,6 +30,8 @@ export type CheckoutArgs = {
   saveCard: boolean;
   successUrl: string;
   cancelUrl: string;
+  /** When the payment window closes; the provider's checkout should not outlive it. */
+  expiresAt?: Date | null;
 };
 
 export type OffSessionChargeArgs = {
@@ -46,10 +48,12 @@ export type OffSessionChargeArgs = {
 export type ProviderEvent =
   | { type: 'charge.succeeded'; chargeId: string; providerRef: string; customerRef?: string; paymentMethodRef?: string; cardBrand?: string; cardLast4?: string }
   | { type: 'charge.failed'; chargeId: string; providerRef?: string; reason: string }
-  | { type: 'refund.succeeded'; refundRef: string }
-  | { type: 'refund.failed'; refundRef: string; reason: string }
-  | { type: 'payout.paid'; payoutRef: string }
-  | { type: 'payout.failed'; payoutRef: string; reason: string }
+  // refundId / payoutItemId: our id from the provider object's metadata, so a result is matched even
+  // when the call that created it never returned (timeout) and its ref was not stored.
+  | { type: 'refund.succeeded'; refundRef: string; refundId?: string }
+  | { type: 'refund.failed'; refundRef: string; reason: string; refundId?: string }
+  | { type: 'payout.paid'; payoutRef: string; payoutItemId?: string }
+  | { type: 'payout.failed'; payoutRef: string; reason: string; payoutItemId?: string }
   | { type: 'account.updated'; accountRef: string; status: PartnerAccountStatus }
   | { type: 'dispute.created'; providerChargeRef: string; amountCents: number; reason: string };
 
@@ -62,12 +66,21 @@ export interface PaymentProvider {
   partnerAccountStatus(accountRef: string): Promise<PartnerAccountStatus>;
   /** Start a hosted card checkout. The result arrives as a ProviderEvent. */
   createCheckout(a: CheckoutArgs): Promise<{ redirectUrl: string; providerRef: string }>;
+  /** Close an open checkout so it can no longer be paid (its charge was expired on our side). */
+  expireCheckout(providerRef: string): Promise<void>;
   /** Charge a saved card without the client present (balance before the event). */
   chargeOffSession(a: OffSessionChargeArgs): Promise<{ providerRef: string; status: 'succeeded' | 'failed' | 'requires_action'; reason?: string }>;
   /** Refund (part of) a charge back to the original card. */
   refund(a: { refundId: string; providerChargeRef: string; amountCents: number; refundApplicationFee: boolean }): Promise<{ refundRef: string; status: 'succeeded' | 'pending' | 'failed'; reason?: string }>;
+  /**
+   * The refund made for our refund id (its metadata), if any: after a refund call that threw, the
+   * provider may still have made it. Throws when the provider cannot be asked.
+   */
+  findRefund(a: { refundId: string; providerChargeRef: string }): Promise<{ refundRef: string; status: 'succeeded' | 'pending' | 'failed'; reason?: string } | null>;
   /** Pay a partner out from the funds held for them. */
   payout(a: { payoutItemId: string; partnerAccountRef: string; amountCents: number; description: string }): Promise<{ payoutRef: string; status: 'paid' | 'pending' | 'failed'; reason?: string }>;
+  /** The payout made for our payout item (its metadata), if any — as findRefund. */
+  findPayout(a: { payoutItemId: string; partnerAccountRef: string; since: Date }): Promise<{ payoutRef: string; status: 'paid' | 'pending' | 'failed'; reason?: string } | null>;
   /** Verify and normalise a webhook request. Simulated provider returns []. */
   parseWebhook(req: Request): Promise<ProviderEvent[]>;
 }

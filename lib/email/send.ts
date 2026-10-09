@@ -2,7 +2,7 @@ import 'server-only';
 import { and, eq } from 'drizzle-orm';
 import { db, type Tx } from '@/db';
 import { emailOutbox, notificationPreference } from '@/db/schema';
-import { renderEmail } from './render';
+import { hasSecrets, liveCopy, redactVars, storedCopy } from './secrets';
 import { TEMPLATES } from './templates';
 
 export type SendArgs = {
@@ -13,8 +13,6 @@ export type SendArgs = {
   /** Same dedupeKey = sent once (timers and webhooks may fire twice). */
   dedupeKey?: string;
 };
-
-const appUrl = () => process.env.APP_URL ?? 'http://localhost:3000';
 
 /**
  * Queue an automatic email. Inside a transaction, pass `tx` so the email is
@@ -38,11 +36,13 @@ export async function sendEmail(args: SendArgs, tx?: Tx): Promise<string | null>
     if (pref[0] && !pref[0].enabled) status = 'suppressed';
   }
 
-  const content = tpl.render(args.vars);
-  const { html, text } = renderEmail(content, tpl.audience, tpl.optional, appUrl());
+  // A credential (one-time link or code) is masked in the stored copy: the team browses the outbox
+  // (Админ → Имейли), and only the recipient's inbox may hold it. `vars` keeps the real values
+  // until delivery renders the live message; a real transport then masks them too.
+  const { subject, html, text } = storedCopy(tpl, args.vars);
   const rows = await q.insert(emailOutbox).values({
     templateKey: tpl.key, toEmail: args.to, toUserId: args.toUserId ?? null, audience: tpl.audience,
-    subject: content.subject, html, text, vars: args.vars, status, dedupeKey: args.dedupeKey ?? null,
+    subject, html, text, vars: args.vars, status, dedupeKey: args.dedupeKey ?? null,
   }).onConflictDoNothing().returning({ id: emailOutbox.id });
   const id = rows[0]?.id ?? null;
   if (id && !tx && status === 'queued') await deliver(id);
@@ -56,13 +56,21 @@ export async function deliver(id: string): Promise<void> {
   const transport = process.env.EMAIL_TRANSPORT ?? 'outbox';
   const from = process.env.EMAIL_FROM ?? 'EventAT <no-reply@eventat.bg>';
   const replyTo = process.env.EMAIL_REPLY_TO ?? 'help@eventat.bg';
+  const tpl = TEMPLATES[m.templateKey];
+  const vars = (m.vars ?? {}) as Record<string, unknown>;
+  const secret = hasSecrets(tpl);
+  // The live message (credentials included) exists only on its way to the transport.
+  const live = secret ? liveCopy(tpl, vars) : { subject: m.subject, html: m.html, text: m.text };
+  // Once a real transport has the message (or gave up on it), the outbox forgets the credential.
+  // The `outbox` transport (development) records only: there the outbox is the mailbox.
+  const scrub = (done: boolean) => (secret && done && transport !== 'outbox' ? { vars: redactVars(tpl, vars) } : {});
   try {
     let providerMessageId: string | null = null;
     if (transport === 'postmark') {
       const r = await fetch('https://api.postmarkapp.com/email', {
         method: 'POST',
         headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-Postmark-Server-Token': process.env.POSTMARK_TOKEN ?? '' },
-        body: JSON.stringify({ From: from, To: m.toEmail, ReplyTo: replyTo, Subject: m.subject, HtmlBody: m.html, TextBody: m.text, MessageStream: 'outbound', Tag: m.templateKey }),
+        body: JSON.stringify({ From: from, To: m.toEmail, ReplyTo: replyTo, Subject: live.subject, HtmlBody: live.html, TextBody: live.text, MessageStream: 'outbound', Tag: m.templateKey }),
       });
       const j = await r.json() as { MessageID?: string; Message?: string; ErrorCode?: number };
       if (!r.ok || j.ErrorCode) throw new Error(j.Message ?? `Postmark ${r.status}`);
@@ -71,16 +79,16 @@ export async function deliver(id: string): Promise<void> {
       const r = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY ?? ''}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from, to: [m.toEmail], reply_to: replyTo, subject: m.subject, html: m.html, text: m.text, tags: [{ name: 'template', value: m.templateKey.replace(/[^a-zA-Z0-9_-]/g, '_') }] }),
+        body: JSON.stringify({ from, to: [m.toEmail], reply_to: replyTo, subject: live.subject, html: live.html, text: live.text, tags: [{ name: 'template', value: m.templateKey.replace(/[^a-zA-Z0-9_-]/g, '_') }] }),
       });
       const j = await r.json() as { id?: string; message?: string };
       if (!r.ok) throw new Error(j.message ?? `Resend ${r.status}`);
       providerMessageId = j.id ?? null;
     } // 'outbox': recorded only — Админ → Имейли shows it.
-    await db.update(emailOutbox).set({ status: 'sent', provider: transport, providerMessageId, sentAt: new Date(), attempts: m.attempts + 1 }).where(eq(emailOutbox.id, id));
+    await db.update(emailOutbox).set({ status: 'sent', provider: transport, providerMessageId, sentAt: new Date(), attempts: m.attempts + 1, ...scrub(true) }).where(eq(emailOutbox.id, id));
   } catch (e) {
     const attempts = m.attempts + 1;
-    await db.update(emailOutbox).set({ attempts, error: String(e), status: attempts >= 5 ? 'failed' : 'queued' }).where(eq(emailOutbox.id, id));
+    await db.update(emailOutbox).set({ attempts, error: String(e), status: attempts >= 5 ? 'failed' : 'queued', ...scrub(attempts >= 5) }).where(eq(emailOutbox.id, id));
   }
 }
 

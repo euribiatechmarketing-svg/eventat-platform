@@ -2,6 +2,7 @@
 // /vhod (client/auth.html): ‹Влез› → auth.signIn() (Better Auth; the SMS step when two-step is on)
 // → SPEC §1.3 redirect; ‹Забравена парола?› → auth.requestPasswordReset(); ‹Продължи с Google /
 // Facebook› → auth.signInSocial(). An unverified email goes to the code screen with a fresh code.
+// These actions call auth.api directly (no Better Auth HTTP limiter): lib/domain/throttle counts them.
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
@@ -9,8 +10,9 @@ import { auth } from '@/lib/auth';
 import {
   accountByEmail, recordSignIn, resendWaitMs, safeNext, signInDestination, verificationView,
 } from '@/lib/domain/views-auth-account';
+import { clearHits, hitAll } from '@/lib/domain/throttle';
 import { ERR, carry, type FormState } from '../_ui/messages';
-import { authErrorCode, socialProviders } from '../_ui/server';
+import { authErrorCode, clientIp, rememberSignup, socialProviders } from '../_ui/server';
 
 const signInSchema = z.object({
   email: z.string().trim().toLowerCase().pipe(z.email()),
@@ -44,6 +46,8 @@ export async function signInAction(_prev: FormState, fd: FormData): Promise<Form
   const { email, password, remember } = parsed.data;
   const next = safeNext(parsed.data.next);
   const h = await headers();
+  // Every attempt counts (per address and per IP) before the password is checked; a success clears the address.
+  if (!(await hitAll([['signInEmail', email], ['signInIp', await clientIp()]]))) return { error: ERR.generic, values };
   let res: { headers: Headers; response: unknown };
   try {
     res = await auth.api.signInEmail({ body: { email, password, rememberMe: remember }, headers: h, returnHeaders: true });
@@ -54,6 +58,7 @@ export async function signInAction(_prev: FormState, fd: FormData): Promise<Form
       // Right password, email never confirmed: a fresh code (after the 60 s cooldown) and the code screen.
       const v = await verificationView(email);
       if (resendWaitMs(v.sentAt, Date.now()) === 0) await auth.api.sendVerificationOTP({ body: { email, type: 'email-verification' } });
+      await rememberSignup(email);
       redirect(`/potvarzhdenie${carry(acc.role === 'partner' ? 'partner' : 'client', next, { email })}`);
     }
     if (acc?.banned && (code === 'FAILED_TO_CREATE_SESSION' || code === '')) return { error: ERR.blocked, values };
@@ -63,6 +68,7 @@ export async function signInAction(_prev: FormState, fd: FormData): Promise<Form
     if (acc?.banned || acc?.deletedAt) return { error: acc.banned ? ERR.blocked : ERR.credentials, values };
     return { error: ERR.credentials, values };
   }
+  await clearHits('signInEmail', email);
   const body = res.response as { twoFactorRedirect?: boolean; user?: { id: string } };
   if (body.twoFactorRedirect) {
     const cookie = twoFactorCookie(res.headers);
@@ -81,7 +87,8 @@ export async function forgotPasswordAction(_prev: FormState, fd: FormData): Prom
   const r = z.string().trim().toLowerCase().pipe(z.email()).safeParse(raw);
   if (!r.success) return { errors: { email: raw ? ERR.email : ERR.required }, values: { email: raw } };
   const acc = await accountByEmail(r.data);
-  if (acc && !acc.banned && !acc.deletedAt) {
+  // Over the limit, nothing is sent and the answer stays the same (A5).
+  if (acc && !acc.banned && !acc.deletedAt && await hitAll([['resetEmail', r.data], ['resetIp', await clientIp()]])) {
     await auth.api.requestPasswordReset({ body: { email: r.data, redirectTo: '/vhod/nova-parola' }, headers: await headers() });
   }
   return { ok: 'Изпратихме ви линк за нова парола', values: { email: raw }, at: Date.now() };

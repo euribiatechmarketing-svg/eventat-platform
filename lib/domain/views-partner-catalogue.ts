@@ -11,6 +11,7 @@ import {
   type PayoutLineStatus, type ServiceStatus,
 } from '@/db/schema';
 import { now } from '@/lib/clock';
+import { csvCell } from '@/lib/csv';
 import { date, dateNumeric, money, monthName, sofiaDate, type DateStr } from '@/lib/format';
 import { isSystem, type AnyActor } from './actor';
 import { audit } from './audit';
@@ -359,10 +360,7 @@ export async function earningsReportCsv(actor: AnyActor, reportId: string, q: Qu
     .innerJoin(clientEvent, eq(clientEvent.id, booking.clientEventId))
     .innerJoin(user, eq(user.id, booking.clientId))
     .where(and(eq(payoutLine.partnerId, p.id), ne(payoutLine.status, 'cancelled'))).orderBy(desc(booking.eventDate));
-  const cell = (v: string | number | null | undefined) => {
-    const s = v == null ? '' : String(v);
-    return /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
+  const cell = csvCell;
   const csvMoney = (c: number) => (c / 100).toFixed(2).replace('.', ',');
   const out = [
     ['Приходи', money(e.month.cents)].map(cell).join(';'),

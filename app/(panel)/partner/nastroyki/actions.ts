@@ -8,6 +8,7 @@ import { db } from '@/db';
 import { auth } from '@/lib/auth';
 import { setPreferences } from '@/lib/domain/clients';
 import * as partners from '@/lib/domain/partners';
+import { hit } from '@/lib/domain/throttle';
 import { setLocale } from '@/lib/domain/views-partner-catalogue';
 import { requireRole } from '@/lib/session';
 import { partnerActor, refusal } from '../_catalogue/server';
@@ -59,7 +60,7 @@ export async function changeNameAction(name: string): Promise<Result> {
 export async function requestPasswordResetAction(): Promise<Result> {
   const u = await requireRole('partner', '/partner/nastroyki');
   const base = (process.env.APP_URL ?? 'http://localhost:3000').replace(/\/$/, '');
-  await auth.api.requestPasswordReset({ body: { email: u.email, redirectTo: `${base}/vhod/nova-parola` } });
+  if (await hit('resetEmail', u.email)) await auth.api.requestPasswordReset({ body: { email: u.email, redirectTo: `${base}/vhod/nova-parola` } });
   return { ok: true, message: 'Изпратихме линк за нова парола на имейла ви' };
 }
 

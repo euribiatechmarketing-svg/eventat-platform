@@ -22,6 +22,7 @@ import { SYSTEM } from '@/lib/domain/actor';
 import { applyProviderEvent } from '@/lib/payments/apply';
 import { JOB_HANDLERS } from '@/lib/jobs/handlers';
 import { createAdmin, createClient, createPartner } from '../helpers/factories';
+import { confirmPayoutAccount } from '../helpers/aftercare';
 import {
   EVENT, H, NOW, approvedBooking, bell, bookingRow, emails, expectLedgerHealthy, failure, jobs, paidBooking, sendFor, tickAt,
 } from '../helpers/lifecycle';
@@ -234,6 +235,9 @@ describe('after payment: T11/T12 reminders, T13 completion, T14 review invite', 
     const a = await paidBooking({ c: client, partner: { businessName: 'Студио Мелодия' } });
     const b = await paidBooking({ c: client, partner: { businessName: 'Квартет „Адажио“' }, request: { startTime: '16:00' } });
     const booking = await bookingRow(a.bookingId);
+    // K13 releases through payouts.releaseBookingFunds, which also restates the batch T17 prepared the day
+    // before: a partner without a confirmed payout account would be held there (Y4 account_check).
+    await confirmPayoutAccount(a.partner.partner.id);
     expect((await bookingRow(b.bookingId)).clientEventId).toBe(booking.clientEventId);
     const ev = booking.clientEventId;
     expect((await jobs(`event:${ev}:`)).map(j => [j.dedupeKey, j.runAt])).toEqual([
@@ -346,7 +350,7 @@ describe('view models', () => {
     }
     const f = await getBookingForAdmin(accounting, a.number);
     expect(f.timeline.find(t => t.action === 'booking.confirmed')?.data).toMatchObject({ commissionBp: 500 });
-    expect(f.timeline.find(t => t.action === 'booking.funds_released')?.data).toMatchObject({ commissionCents: 7_250, partnerAmountCents: 137_750 });
+    expect(f.timeline.find(t => t.action === 'booking.funds_released')?.data).toMatchObject({ commissionCents: 7_250, partnerCents: 137_750 });
   });
 });
 

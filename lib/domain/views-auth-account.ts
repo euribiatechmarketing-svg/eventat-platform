@@ -14,6 +14,7 @@ import {
 } from '@/db/schema';
 import { now } from '@/lib/clock';
 import { sendEmail } from '@/lib/email/send';
+import { resolvedPathname, sameSitePath } from '@/lib/safe-path';
 import { date, daysBetween, monthName, sofiaDate, sofiaParts, time, weekdayName, type DateStr } from '@/lib/format';
 import type { Actor } from './actor';
 import { audit } from './audit';
@@ -89,12 +90,16 @@ export async function homeFor(u: Who, q: Queryable = db): Promise<string> {
   return '/partner';
 }
 
-/** A `next` that stays on this site (a path, never `//host` or a scheme). */
+/**
+ * A `next` that stays on this site (a path, never `//host` or a scheme), checked the way the
+ * browser resolves it: `/\t/evil.example` is `//evil.example` to a browser (lib/safe-path).
+ */
 export function safeNext(next: string | null | undefined): string | null {
-  if (!next || typeof next !== 'string') return null;
-  if (!next.startsWith('/') || next.startsWith('//') || next.startsWith('/\\') || /[\r\n]/.test(next)) return null;
-  if (next.startsWith('/api/') || next.startsWith('/vhod') || next.startsWith('/registratsiya') || next.startsWith('/potvarzhdenie')) return null;
-  return next;
+  const n = sameSitePath(next);
+  if (!n) return null;
+  const path = resolvedPathname(n);
+  if (path.startsWith('/api/') || path.startsWith('/vhod') || path.startsWith('/registratsiya') || path.startsWith('/potvarzhdenie')) return null;
+  return n;
 }
 
 /** SPEC §1.3 sign-in redirect: the client goes to `next` (else /tarsene); partners and admins to their area (a `next` inside it is kept). */
@@ -140,9 +145,32 @@ export async function verificationView(email: string, q: Queryable = db) {
   return { account: u ?? null, sentAt: v ? new Date(v.expiresAt.getTime() - CODE_TTL_MS) : null };
 }
 
-/** ‹Сменете имейла›: the code sent to this address stops working (SPEC §16 Verification). */
-export async function invalidateEmailCode(email: string, q: Queryable = db) {
+/** The httpOnly cookie that ties the code screen to the browser that started the sign-up. */
+export const SIGNUP_COOKIE = 'eventat_signup';
+
+/**
+ * Proof that this browser started the sign-up of `email` — registered it, or signed in to it with
+ * the right password before it was confirmed: HMAC(auth secret, address), kept in SIGNUP_COOKIE.
+ */
+export function signupProof(email: string): string {
+  return createHmac('sha256', process.env.BETTER_AUTH_SECRET ?? '').update(`signup:${email.trim().toLowerCase()}`).digest('base64url');
+}
+
+function isSignupProof(email: string, proof: string | null | undefined): boolean {
+  if (!proof) return false;
+  const a = Buffer.from(proof), b = Buffer.from(signupProof(email));
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/**
+ * ‹Сменете имейла›: the code sent to this address stops working (SPEC §16 Verification) — only for
+ * the browser that started this sign-up (`proof` = its SIGNUP_COOKIE). Anyone else's request
+ * changes nothing, so a stranger cannot keep deleting someone's code. Returns whether it did.
+ */
+export async function invalidateEmailCode(email: string, proof: string | null | undefined, q: Queryable = db): Promise<boolean> {
+  if (!isSignupProof(email, proof)) return false;
   await q.delete(verification).where(eq(verification.identifier, `email-verification-otp-${email.trim().toLowerCase()}`));
+  return true;
 }
 
 /** Milliseconds until another code may be requested (0 = now). */

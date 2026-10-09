@@ -10,8 +10,9 @@ import { registerClient } from '@/lib/domain/clients';
 import { register as registerPartner } from '@/lib/domain/partners';
 import { normalizePhone } from '@/lib/domain/catalogue-kit';
 import { accountByEmail, safeNext } from '@/lib/domain/views-auth-account';
+import { hit } from '@/lib/domain/throttle';
 import { ERR, carry, type FormState } from '../_ui/messages';
-import { authErrorCode, clientIp } from '../_ui/server';
+import { authErrorCode, clientIp, rememberSignup } from '../_ui/server';
 
 const base = {
   email: z.string().trim().toLowerCase().pipe(z.email()),
@@ -50,6 +51,8 @@ export async function registerAction(_prev: FormState, fd: FormData): Promise<Fo
   if (await accountByEmail(d.email)) return { errors: { email: ERR.emailTaken }, values: { ...raw, role } };
 
   const name = 'name' in d ? d.name : d.contactName;
+  const ip = await clientIp();
+  if (!(await hit('registerIp', ip))) return { error: ERR.generic, values: { ...raw, role } };
   let userId: string;
   try {
     const r = await auth.api.signUpEmail({ body: { name, email: d.email, password: d.password, phone: normalizePhone(d.phone) ?? undefined }, headers: await headers() });
@@ -60,7 +63,6 @@ export async function registerAction(_prev: FormState, fd: FormData): Promise<Fo
     if (code === 'PASSWORD_TOO_SHORT') return { errors: { password: ERR.password }, values: { ...raw, role } };
     return { error: ERR.generic, values: { ...raw, role } };
   }
-  const ip = await clientIp();
   if ('businessName' in d) {
     await registerPartner({ userId, businessName: d.businessName, contactName: d.contactName, phone: d.phone, email: d.email, ip, consent: true });
   } else {
@@ -68,5 +70,6 @@ export async function registerAction(_prev: FormState, fd: FormData): Promise<Fo
   }
   // The code goes out once the role is known, so it is the client or the partner email.
   await auth.api.sendVerificationOTP({ body: { email: d.email, type: 'email-verification' } });
+  await rememberSignup(d.email);
   redirect(`/potvarzhdenie${carry(role, next, { email: d.email })}`);
 }

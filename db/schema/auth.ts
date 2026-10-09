@@ -1,9 +1,10 @@
-// Better Auth tables (user, session, account, verification, two_factor).
+// Better Auth tables (user, session, account, verification, two_factor, rate_limit), and the app's
+// own throttle for the sign-in, reset and code server actions (auth_throttle).
 // Property names are what Better Auth's Drizzle adapter expects; column
 // names are snake_case. User ids are Better Auth's text ids — every other
 // table references them as text. Columns marked ✚ in DATA-MODEL §2.1 are
 // ours: Better Auth never writes them, so they have defaults or are nullable.
-import { pgTable, pgEnum, text, timestamp, boolean, index, integer } from 'drizzle-orm/pg-core';
+import { pgTable, pgEnum, text, timestamp, boolean, index, integer, bigint } from 'drizzle-orm/pg-core';
 import { locale } from './enums';
 
 export const userRole = pgEnum('user_role', ['client', 'partner', 'admin']);
@@ -76,3 +77,25 @@ export const twoFactor = pgTable('two_factor', {
   failedVerificationCount: integer('failed_verification_count').default(0),
   lockedUntil: timestamp('locked_until', { withTimezone: true }),
 }, t => [index('two_factor_user_idx').on(t.userId), index('two_factor_secret_idx').on(t.secret)]);
+
+/**
+ * Better Auth's rate limiter (rateLimit.storage = 'database'): one row per key, shared by every
+ * server instance, where the default in-memory store would count per serverless instance.
+ */
+export const rateLimit = pgTable('rate_limit', {
+  id: text('id').primaryKey(),
+  key: text('key').notNull().unique(),
+  count: integer('count').notNull(),
+  lastRequest: bigint('last_request', { mode: 'number' }).notNull(),
+});
+
+/**
+ * The app's throttle (lib/domain/throttle.ts). The sign-in, password-reset and code forms are server
+ * actions that call auth.api directly, which never passes Better Auth's HTTP rate limiter.
+ * One row per key (`signin:email:<address>`, `signin:ip:<ip>`, …): hits in the current window.
+ */
+export const authThrottle = pgTable('auth_throttle', {
+  key: text('key').primaryKey(),
+  hits: integer('hits').notNull(),
+  windowStart: timestamp('window_start', { withTimezone: true }).notNull(),
+}, t => [index('auth_throttle_window_idx').on(t.windowStart)]);

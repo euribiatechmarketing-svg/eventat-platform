@@ -872,7 +872,7 @@ export const vendorDeactivated: EmailTemplate<DeactivatedVars> = {
 /** url: the one-time confirmation link that actually deletes the account. */
 type DeleteConfirmVars = { partnerName: string; email: string; url: string };
 export const vendorDeleteConfirm: EmailTemplate<DeleteConfirmVars> = {
-  key: 'vendor-delete-confirm', audience: 'partner', optional: false,
+  key: 'vendor-delete-confirm', audience: 'partner', optional: false, secret: ['url'],
   render: v => ({
     subject: `Потвърдете изтриването на акаунта на ${v.partnerName}`,
     preheader: 'Изтриването е необратимо — потвърдете, че го искате.',

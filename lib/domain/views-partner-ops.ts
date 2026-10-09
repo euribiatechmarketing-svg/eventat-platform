@@ -12,13 +12,14 @@ import {
 } from '@/db/schema';
 import { policyStrings } from './cancellation';
 import { now } from '@/lib/clock';
+import { csvCell } from '@/lib/csv';
 import { addDays, date, dateNumeric, daysBetween, money, monthName, sofiaDate, type DateStr } from '@/lib/format';
 import { initials as initialsOfWords } from '@/lib/initials';
 import type { AnyActor } from './actor';
 import { audit } from './audit';
 import { addMonths, dayRange, type DayInfo } from './availability';
 import { mail } from './bookings';
-import { mediaUrl, partnerOf, withTx } from './catalogue-kit';
+import { mediaHref, mediaUrl, partnerOf, withTx } from './catalogue-kit';
 import { split } from './commission';
 import { POLICY_FREE_DAYS, POLICY_LABEL, responsiveness } from './partners';
 import { partnerEarnings } from './payouts';
@@ -339,7 +340,8 @@ export async function requestPageExtras(actor: AnyActor, a: { number: string; se
     client,
     serviceSummary: r.serviceSummary,
     serviceThumb: mediaUrl(svc?.key ?? null),
-    attachments: a.attachmentMediaIds.map(id => mediaUrl(atts.find(x => x.id === id)?.key ?? null)).filter((u): u is string => !!u),
+    // Inspiration photos are private: linked by media id (access-checked), never by storage key.
+    attachments: a.attachmentMediaIds.map(id => mediaHref(id, atts.find(x => x.id === id)?.key ?? null)).filter((u): u is string => !!u),
     policy: p.cancellationPolicy ? policyLine(p.cancellationPolicy) : null,
   };
 }
@@ -597,11 +599,7 @@ export async function requestPartnerReport(actor: AnyActor, a: { kind: 'partner_
   });
 }
 
-/** CSV cells (`;`-separated, Excel in Bulgarian locale), amounts as ‹1450,00›. */
-const csvCell = (v: string | number | null | undefined) => {
-  const t = v == null ? '' : String(v);
-  return /[;"\r\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
-};
+/** CSV cells (`;`-separated, Excel in Bulgarian locale; lib/csv neutralises formulas), amounts as ‹1450,00›. */
 const csvMoney = (c: number | null) => (c == null ? '' : (c / 100).toFixed(2).replace('.', ','));
 const csvRow = (cells: (string | number | null | undefined)[]) => cells.map(csvCell).join(';');
 

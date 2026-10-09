@@ -17,13 +17,14 @@ import type { PaymentProvider, ProviderId } from '@/lib/payments/types';
 import { SYSTEM, type AnyActor } from './actor';
 import { audit } from './audit';
 import {
-  DAY, LIFECYCLE_JOBS, LifecycleError, assertClientActor, cancelPaymentJobs, cardLabel, completionInstant, createPayoutLine, firstPayoutDay,
-  hm, hostsOf, isoWeekday, jobKey, loadBooking, locationOf, mail, packageNameOf, phoneDisplay, releasableCents, releaseToPartner,
+  DAY, LIFECYCLE_JOBS, LifecycleError, assertClientActor, cancelPaymentJobs, cardLabel, completionInstant, createPayoutLine,
+  hm, hostsOf, isoWeekday, jobKey, loadBooking, locationOf, mail, packageNameOf, phoneDisplay,
   scheduleConfirmedJobs, timeRange, withTx, type BookingWithSnapshots, type ChargeRow,
 } from './bookings';
 import { commissionCents, commissionRateFor, snapshotCommission, split } from './commission';
 import { issueClientInvoice, sendInvoiceEmail } from './invoices';
 import { postTransaction } from './ledger';
+import { releaseBookingFunds } from './payouts';
 import { closeFullDate } from './requests';
 import { getSettings, type Settings } from './settings';
 
@@ -37,6 +38,12 @@ const appUrl = () => (process.env.APP_URL ?? 'http://localhost:3000').replace(/\
 const providerTakesTransfers = (id: ProviderId) => id === 'simulated';
 const WEEKDAYS = ['неделя', 'понеделник', 'вторник', 'сряда', 'четвъртък', 'петък', 'събота'];
 const SUCCEEDED = ['succeeded', 'partially_refunded', 'refunded'] as const;
+/**
+ * A charge that may still become the booking's payment when money arrives: open, or failed (a declined
+ * card retried in the same checkout). An `expired` charge was voided on our side (T8, a new price, a
+ * cancellation): money arriving on it is a duplicate, whatever the booking's state.
+ */
+const PAYABLE_WHEN_PAID = ['pending', 'awaiting_transfer', 'failed'] as const;
 /** T10: retries after a failed balance charge. */
 export const BALANCE_RETRIES = 3;
 
@@ -59,10 +66,11 @@ function dueOf(bw: BookingWithSnapshots, at: Date): Due | null {
   return null;
 }
 
-async function feeFor(q: Queryable, bw: BookingWithSnapshots, amountCents: number, at: Date): Promise<number> {
+/** The application fee of a new charge and the rate it is computed with (stored on the charge, used again at K5). */
+async function feeFor(q: Queryable, bw: BookingWithSnapshots, amountCents: number, at: Date): Promise<{ fee: number; bp: number }> {
   const bp = bw.booking.commissionBp
     ?? (await commissionRateFor(q, { partnerId: bw.booking.partnerId, clientId: bw.booking.clientId, at })).bp;
-  return commissionCents(amountCents, bp);
+  return { fee: commissionCents(amountCents, bp), bp };
 }
 
 // ── C1 / C2: ‹Плати› ─────────────────────────────────────────────────────
@@ -103,11 +111,11 @@ export async function startPayment(actor: AnyActor, input: { number: string; met
     if (providerId === 'stripe' && (!p.providerAccountRef || !p.providerChargesEnabled)) {
       throw new LifecycleError('provider_not_ready', 'The partner cannot take payments yet');
     }
-    const fee = await feeFor(t, bw, due.amountCents, at);
+    const { fee, bp } = await feeFor(t, bw, due.amountCents, at);
 
     if (input.method === 'card') {
       const [c] = await t.insert(charge).values({
-        bookingId: b.id, kind: due.kind, method: 'card', provider: providerId, amountCents: due.amountCents, applicationFeeCents: fee,
+        bookingId: b.id, kind: due.kind, method: 'card', provider: providerId, amountCents: due.amountCents, applicationFeeCents: fee, commissionBp: bp,
         status: 'pending', dueAt: due.dueAt, createdAt: at, updatedAt: at,
       }).returning();
       const n = encodeURIComponent(b.number);
@@ -115,6 +123,7 @@ export async function startPayment(actor: AnyActor, input: { number: string; met
         chargeId: c.id, amountCents: due.amountCents, applicationFeeCents: fee, partnerAccountRef: p.providerAccountRef ?? '',
         description: `${b.serviceTitle} · ${p.businessName} · ${date(b.eventDate)}`, customerEmail: bw.parties.client.email,
         saveCard: due.kind === 'deposit', successUrl: `${appUrl()}/plashtane/${n}/potvardena`, cancelUrl: `${appUrl()}/plashtane/${n}`,
+        expiresAt: due.dueAt,
       });
       const [u] = await t.update(charge).set({ providerRef: co.providerRef, checkoutUrl: co.redirectUrl }).where(eq(charge.id, c.id)).returning();
       await audit(t, { actor, action: 'charge.created', entity: 'charge', entityId: c.id, data: { number: b.number, kind: due.kind, method: 'card', amountCents: due.amountCents, provider: providerId } });
@@ -127,7 +136,7 @@ export async function startPayment(actor: AnyActor, input: { number: string; met
     }
     const demo = s['demo.bank_transfer_details'];
     const [c] = await t.insert(charge).values({
-      bookingId: b.id, kind: due.kind, method: 'bank_transfer', provider: providerId, amountCents: due.amountCents, applicationFeeCents: fee,
+      bookingId: b.id, kind: due.kind, method: 'bank_transfer', provider: providerId, amountCents: due.amountCents, applicationFeeCents: fee, commissionBp: bp,
       status: 'awaiting_transfer', transferIban: demo.iban, transferReference: b.number, dueAt: due.dueAt, createdAt: at, updatedAt: at,
     }).returning();
     await mail(t, {
@@ -191,13 +200,18 @@ export async function onChargeSucceeded(e: ChargeSucceeded, tx?: Tx): Promise<Ch
     await audit(t, { actor: SYSTEM, action: 'charge.succeeded', entity: 'charge', entityId: c.id, data: { number: b.number, amountCents: c.amountCents, kind: c.kind } });
     const s = await getSettings(at, t);
 
-    const firstPayment = b.status === 'awaiting_payment' && c.kind !== 'balance'
+    // The booking's payment only if this charge was still payable and is for what is due now: a stale
+    // checkout for an old price (K16) or a voided charge never confirms the booking (it is a duplicate).
+    const payable = (PAYABLE_WHEN_PAID as readonly string[]).includes(c0.status);
+    const firstPayment = b.status === 'awaiting_payment' && c.kind !== 'balance' && payable
+      && c.amountCents === b.dueNowCents && c.kind === (b.depositPayCents != null ? 'deposit' : 'full')
       && !bw.charges.some(x => x.id !== c.id && (SUCCEEDED as readonly string[]).includes(x.status) && !x.isDuplicate);
     if (firstPayment) {
       await confirmBooking(t, bw, c, at, s);
       return { applied: true, bookingConfirmed: true };
     }
-    const balancePaid = c.kind === 'balance' && ['confirmed', 'cancellation_requested', 'completed'].includes(b.status)
+    const balancePaid = c.kind === 'balance' && payable && c.amountCents === b.balanceCents
+      && ['confirmed', 'cancellation_requested', 'completed'].includes(b.status)
       && !bw.charges.some(x => x.id !== c.id && x.kind === 'balance' && (SUCCEEDED as readonly string[]).includes(x.status));
     if (balancePaid) {
       await t.update(charge).set({ applicationFeeCents: commissionCents(c.amountCents, b.commissionBp ?? 0) }).where(eq(charge.id, c.id));
@@ -226,7 +240,8 @@ export async function onChargeSucceeded(e: ChargeSucceeded, tx?: Tx): Promise<Ch
  */
 export async function confirmBooking(t: Tx, bw: BookingWithSnapshots, c: ChargeRow, at: Date, s: Settings): Promise<void> {
   const b0 = bw.booking;
-  const bp = await snapshotCommission(t, b0, at);
+  // The rate the provider split this payment at (the checkout's fee), so the ledger agrees with it.
+  const bp = await snapshotCommission(t, b0, at, c.commissionBp);
   await t.update(charge).set({ applicationFeeCents: commissionCents(c.amountCents, bp) }).where(eq(charge.id, c.id));
   const [b] = await t.update(booking).set({ status: 'confirmed', paidAt: at, updatedAt: at }).where(eq(booking.id, b0.id)).returning();
   await createPayoutLine(t, b, bp, at);
@@ -307,6 +322,13 @@ export async function onChargeFailed(e: ChargeFailed, tx?: Tx): Promise<ChargeRe
   });
 }
 
+/** Job charge.expire_checkout: close the provider checkout of a charge expired on our side (bookings.expireOpenCharges). */
+export async function expireCheckoutJob(p: Record<string, unknown>): Promise<void> {
+  const [c] = await db.select().from(charge).where(eq(charge.id, String(p.chargeId))).limit(1);
+  if (!c || c.status !== 'expired' || !c.providerRef) return;
+  await providerFor(c.provider).expireCheckout(c.providerRef);
+}
+
 // ── T9 / T10: the balance (deposit schedule, §7.2) ───────────────────────
 
 /** T10's last check: 10:00 Sofia, seven days before the event (§7.2). */
@@ -350,7 +372,7 @@ async function attemptBalance(bookingId: string, attempt: number): Promise<'paid
     const s = await getSettings(at, t);
     const [c] = await t.insert(charge).values({
       bookingId: b.id, kind: 'balance', method: 'card', provider: saved?.provider ?? s['payment.provider'], amountCents: b.balanceCents,
-      applicationFeeCents: commissionCents(b.balanceCents, b.commissionBp ?? 0), status: 'pending', createdAt: at, updatedAt: at,
+      applicationFeeCents: commissionCents(b.balanceCents, b.commissionBp ?? 0), commissionBp: b.commissionBp, status: 'pending', createdAt: at, updatedAt: at,
     }).returning();
     await audit(t, { actor: SYSTEM, action: 'charge.created', entity: 'charge', entityId: c.id, data: { number: b.number, kind: 'balance', attempt } });
     const r = saved
@@ -415,14 +437,9 @@ export async function holdLimitJob(p: Record<string, unknown>): Promise<void> {
     if (!b || b.status !== 'confirmed' || b.eventDate <= today) return;
     const [done] = await t.select({ id: payoutLine.id }).from(payoutLine).where(eq(payoutLine.chargeId, c.id)).limit(1);
     if (done) return;
-    const base = Math.min(c.amountCents - c.refundedCents, await releasableCents(t, b.id));
-    if (base <= 0) return;
-    const sp = await releaseToPartner(t, { bookingId: b.id, actor: SYSTEM, amountCents: base, kind: 'early_release', chargeId: c.id, description: `T18 early release ${b.number}` });
-    const s = await getSettings(at, t);
-    await t.insert(payoutLine).values({
-      bookingId: b.id, chargeId: c.id, partnerId: b.partnerId, batchDate: firstPayoutDay(addDays(today, 1), s['payout.days']),
-      baseCents: sp.baseCents, commissionCents: sp.commissionCents, amountCents: sp.partnerAmountCents, status: 'released_early', readyAt: at, createdAt: at,
-    });
+    // payouts.releaseBookingFunds (early): never what the client is still owed (pending or failed
+    // refunds), never more than the partner is due; the `released_early` line goes to the next batch.
+    await releaseBookingFunds({ bookingId: b.id, early: { chargeId: c.id }, baseCents: c.amountCents - c.refundedCents, description: `T18 early release ${b.number}` }, t);
   });
 }
 

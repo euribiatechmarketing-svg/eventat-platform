@@ -1,8 +1,7 @@
 // Private files (SPEC §14 "Storage"): `/api/files/[id]` serves a media row's bytes after
 // media.canAccess() — message attachments to the conversation's parties, dispute evidence to both
 // sides and the team, and so on. Public files are served as well; static demo photos redirect.
-// `/api/files/private/…` is the same file addressed by its storage key: lib/storage fileUrl()
-// builds that form for private keys (request inspiration photos, review photos, documents).
+// Files are addressed by media id only: a storage key never goes to a browser.
 import { NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db } from '@/db';
@@ -15,15 +14,12 @@ import { getFile } from '@/lib/storage';
 export const dynamic = 'force-dynamic';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const PRIVATE_KEY = /^private\/[\w./-]+$/;
 
 export async function GET(req: Request, { params }: { params: Promise<{ path: string[] }> }) {
   let parts: string[];
   try { parts = (await params).path.map(decodeURIComponent); } catch { return new NextResponse(null, { status: 404 }); }
-  const key = parts.join('/');
-  const byId = parts.length === 1 && UUID.test(parts[0]);
-  if (!byId && (!PRIVATE_KEY.test(key) || parts.includes('..'))) return new NextResponse(null, { status: 404 });
-  const [m] = await db.select().from(media).where(byId ? eq(media.id, parts[0]) : eq(media.storageKey, key)).limit(1);
+  if (parts.length !== 1 || !UUID.test(parts[0])) return new NextResponse(null, { status: 404 });
+  const [m] = await db.select().from(media).where(eq(media.id, parts[0])).limit(1);
   const u = await currentUser();
   const actor = u ? await actorFromUser(u) : null;
   if (!m || !(await canAccess(actor, m.id))) return new NextResponse(null, { status: u ? 404 : 401 });

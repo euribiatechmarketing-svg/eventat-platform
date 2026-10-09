@@ -27,5 +27,6 @@ export const lifecycleHandlers: Record<string, Handler> = {
   'booking.complete': p => bookings.completeBookingJob(p),               // T13
   'booking.review_invite': p => bookings.reviewInviteJob(p),             // T14
   'charge.hold_limit': p => charges.holdLimitJob(p),                     // T18
+  'charge.expire_checkout': p => charges.expireCheckoutJob(p),           // close a voided charge's checkout
   'request.offer_lapse': p => requests.offerLapseJob(p),                 // R10
 };

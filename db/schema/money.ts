@@ -26,6 +26,11 @@ export const charge = pgTable('charge', {
   amountCents: integer('amount_cents').notNull(),
   /** Commission on this charge. */
   applicationFeeCents: integer('application_fee_cents').notNull().default(0),
+  /**
+   * The commission rate (basis points) the application fee was computed with when the charge was
+   * created. The provider splits the money at that rate, so K5 snapshots this rate on the booking.
+   */
+  commissionBp: integer('commission_bp'),
   status: chargeStatus('status').notNull().default('pending'),
   cardBrand: text('card_brand'),
   cardLast4: char('card_last4', { length: 4 }),

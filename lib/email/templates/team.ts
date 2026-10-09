@@ -22,7 +22,7 @@ type InviteVars = {
   email: string; url: string;
 };
 export const teamInvite: EmailTemplate<InviteVars> = {
-  key: 'team-invite', audience: 'team', optional: false,
+  key: 'team-invite', audience: 'team', optional: false, secret: ['url'],
   render: v => ({
     subject: `Покана в екипа на EventAT от ${v.inviterName}`,
     preheader: `Ролята ви е ${v.role}, а паролата си избирате при първото влизане.`,

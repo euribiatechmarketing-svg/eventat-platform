@@ -42,8 +42,11 @@ describe('validation (§14)', () => {
     await validateUpload(partner, { kind: 'partner_avatar', mime: 'image/png', sizeBytes: 10, width: 400, height: 400 });
     await validateUpload(partner, { kind: 'bank_proof', mime: 'application/pdf', sizeBytes: 10 });
     expect(await failure(validateUpload(client, { kind: 'review_photo', mime: 'application/pdf', sizeBytes: 10 }))).toContain('upload_type');
-    const row = await recordUpload(client, { kind: 'review_photo', storageKey: 'public/review_photo/x.jpg', mime: 'image/jpeg', sizeBytes: 1000 });
-    expect(row).toMatchObject({ isPublic: true, kind: 'review_photo' });
+    const row = await recordUpload(client, { kind: 'user_avatar', storageKey: 'public/user_avatar/x.jpg', mime: 'image/jpeg', sizeBytes: 1000 });
+    expect(row).toMatchObject({ isPublic: true, kind: 'user_avatar' });
+    // A review photo stays private until a published review shows it (reviews.publish).
+    const photo = await recordUpload(client, { kind: 'review_photo', storageKey: 'private/review_photo/x.jpg', mime: 'image/jpeg', sizeBytes: 1000 });
+    expect(photo).toMatchObject({ isPublic: false, kind: 'review_photo' });
     const sysRow = await recordUpload(SYSTEM, { kind: 'invoice_pdf', storageKey: 'private/invoice/x.pdf', mime: 'application/pdf', sizeBytes: 1000 });
     expect(sysRow).toMatchObject({ isPublic: false, ownerUserId: null });
   });

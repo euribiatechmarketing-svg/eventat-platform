@@ -7,7 +7,7 @@ type VendorCodeVars = CodeVars & { partnerName: string; contactName: string };
 type VendorLinkVars = LinkVars & { partnerName: string };
 
 export const clientVerifyCode: EmailTemplate<CodeVars> = {
-  key: 'client-verify-code', audience: 'client', optional: false,
+  key: 'client-verify-code', audience: 'client', optional: false, secret: ['code'],
   render: v => ({
     subject: `Код за потвърждение на имейла: ${v.code}`,
     preheader: 'Въведете кода на екрана за регистрация, за да потвърдите имейла си.',
@@ -23,7 +23,7 @@ export const clientVerifyCode: EmailTemplate<CodeVars> = {
 };
 
 export const vendorVerifyCode: EmailTemplate<VendorCodeVars> = {
-  key: 'vendor-verify-code', audience: 'partner', optional: false,
+  key: 'vendor-verify-code', audience: 'partner', optional: false, secret: ['code'],
   render: v => ({
     subject: `Код за потвърждение на имейла: ${v.code}`,
     preheader: `Въведете кода, за да продължите с профила на ${v.partnerName}.`,
@@ -39,7 +39,7 @@ export const vendorVerifyCode: EmailTemplate<VendorCodeVars> = {
 };
 
 export const clientPasswordLink: EmailTemplate<LinkVars> = {
-  key: 'client-password-link', audience: 'client', optional: false,
+  key: 'client-password-link', audience: 'client', optional: false, secret: ['url'],
   render: v => ({
     subject: 'Линк за нова парола в EventAT',
     preheader: 'Задайте нова парола за профила си с бутона в писмото.',
@@ -55,7 +55,7 @@ export const clientPasswordLink: EmailTemplate<LinkVars> = {
 };
 
 export const vendorPasswordReset: EmailTemplate<VendorLinkVars> = {
-  key: 'vendor-password-reset', audience: 'partner', optional: false,
+  key: 'vendor-password-reset', audience: 'partner', optional: false, secret: ['url'],
   render: v => ({
     subject: 'Линк за нова парола за EventAT',
     preheader: 'Натиснете бутона, за да зададете нова парола.',

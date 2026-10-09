@@ -22,6 +22,7 @@ import { getSetting } from './settings';
 import { cancelBookingCore, quoteFor } from './cancellation';
 import { reprojectBookingLine, syncBookingHold } from './payouts';
 import { createRefunds, refundableCharges } from './refunds';
+import { expireOpenCharges } from './bookings';
 import {
   AftercareError, DISPUTE_REASON_LABEL, bpOf, cancelPending, ctxText, loadBookingCtx, low, mailClient, mailPartner, mailTeam, paidCents,
   percentOf, refundablePaidCents, routes, schedule, withTx, type BookingCtx,
@@ -626,8 +627,7 @@ async function repriceBooking(tx: Tx, b: typeof booking.$inferSelect, amount: nu
     amountCents: amount, dueNowCents: dueNow, depositPayCents: depositPay, balanceCents: balance,
     ...(newDueAt ? { paymentDueAt: newDueAt } : {}), updatedAt: at,
   }).where(eq(booking.id, b.id));
-  await tx.update(charge).set({ status: 'expired', updatedAt: at })
-    .where(and(eq(charge.bookingId, b.id), inArray(charge.status, ['pending', 'awaiting_transfer'])));
+  await expireOpenCharges(tx, b.id, at);
   if (newDueAt) {
     const shiftMs = newDueAt.getTime() - b.paymentDueAt.getTime();
     await tx.execute(sql`update job set run_at = run_at + (${shiftMs} * interval '1 millisecond') where id in (

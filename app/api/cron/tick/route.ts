@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { runDueJobs } from '@/lib/jobs';
 import { deliverQueued } from '@/lib/email/send';
+import { purgeUnlinkedMedia } from '@/lib/domain/media';
+import { pruneThrottle } from '@/lib/domain/throttle';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -12,5 +14,11 @@ export async function GET(req: Request) {
   }
   const jobs = await runDueJobs();
   const emails = await deliverQueued();
-  return NextResponse.json({ jobs, emails });
+  // Hourly housekeeping (wall clock): uploads nothing links to, and expired throttle rows.
+  let purged = 0;
+  if (new Date().getUTCMinutes() === 17) {
+    purged = await purgeUnlinkedMedia().catch(e => { console.error('tick: media purge failed', e); return 0; });
+    await pruneThrottle().catch(() => 0);
+  }
+  return NextResponse.json({ jobs, emails, purged });
 }

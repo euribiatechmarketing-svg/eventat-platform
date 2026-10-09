@@ -1,6 +1,7 @@
 // /admin/imeyli/[key]/preview — one email drawn the way it lands in an inbox (prototype emails/email.html?e=):
 // the envelope (subject, from, to, preheader) above the 600 px message. A template renders with its sample
-// variables (lib/email/templates/samples.ts); ?id=<outbox id> shows the message that actually went out.
+// variables (lib/email/templates/samples.ts); ?id=<outbox id> shows the message that actually went out
+// (manage_team_settings only, with any one-time link or code masked — lib/domain emailPreview()).
 import { NextResponse } from 'next/server';
 import { currentUser } from '@/lib/session';
 import { actorFromUser } from '@/lib/domain/actor';
@@ -62,7 +63,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ key: str
   const actor = await actorFromUser(u);
   if (!actor.teamRole) return new NextResponse('Not found', { status: 404 });
   const id = new URL(req.url).searchParams.get('id');
-  const p = await emailPreview(key, id);
+  const p = await emailPreview(actor, key, id);
   if (!p) return new NextResponse('<!doctype html><meta charset="utf-8"><div style="padding:60px 20px;text-align:center;color:#8d8499;font-family:sans-serif">Няма такъв имейл.</div>', { status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
   const from = esc(process.env.EMAIL_FROM ?? 'EventAT <no-reply@eventat.bg>');
   let body: string;

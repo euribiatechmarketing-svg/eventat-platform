@@ -11,6 +11,7 @@ import { actorFromUser } from '@/lib/domain/actor';
 import { DomainError, normalizePhone } from '@/lib/domain/catalogue-kit';
 import { requestDeletion, setAvatar, signOutEverywhere, updateInvoiceProfile } from '@/lib/domain/clients';
 import { upload } from '@/lib/domain/media';
+import { hit } from '@/lib/domain/throttle';
 import { saveSettings } from '@/lib/domain/views-auth-account';
 import { ERR, type FormState } from '../../../(auth)/_ui/messages';
 import { clearAuthCookies } from '../../../(auth)/_ui/server';
@@ -94,7 +95,7 @@ export async function changePhotoAction(_prev: FormState, fd: FormData): Promise
 /** ‹Смени паролата› → auth.requestPasswordReset() → client-password-link; toast ‹Изпратихме линк за нова парола на имейла ви›. */
 export async function changePasswordAction() {
   const u = await requireRole('client', PATH);
-  await auth.api.requestPasswordReset({ body: { email: u.email, redirectTo: '/vhod/nova-parola' }, headers: await headers() });
+  if (await hit('resetEmail', u.email)) await auth.api.requestPasswordReset({ body: { email: u.email, redirectTo: '/vhod/nova-parola' }, headers: await headers() });
   await setFlash('Изпратихме линк за нова парола на имейла ви');
   redirect(PATH);
 }

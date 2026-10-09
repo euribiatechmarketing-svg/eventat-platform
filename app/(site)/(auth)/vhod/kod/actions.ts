@@ -7,8 +7,9 @@ import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { setFlash } from '@/lib/flash';
 import { accountById, recordSignIn, resendWaitMs, safeNext, signInDestination, twoFactorChallenge } from '@/lib/domain/views-auth-account';
+import { hit, hitAll } from '@/lib/domain/throttle';
 import { ERR, type FormState } from '../../_ui/messages';
-import { authErrorCode } from '../../_ui/server';
+import { authErrorCode, clientIp } from '../../_ui/server';
 
 async function challenge() {
   const jar = await cookies();
@@ -23,6 +24,7 @@ export async function verifyTwoFactorAction(_prev: FormState, fd: FormData): Pro
   if (!code.success) return { error: ERR.code };
   const ch = await challenge();
   if (!ch) redirect('/vhod');
+  if (!(await hitAll([['codeKey', `2fa:${ch.userId}`], ['codeIp', await clientIp()]]))) return { error: ERR.generic };
   let userId: string;
   try {
     const r = await auth.api.verifyTwoFactorOTP({ body: { code: code.data, trustDevice: true }, headers: await headers() }) as { user?: { id: string } };
@@ -42,7 +44,7 @@ export async function resendTwoFactorAction(fd: FormData) {
   const ch = await challenge();
   if (!ch) redirect('/vhod');
   const next = safeNext(String(fd.get('next') ?? ''));
-  if (resendWaitMs(ch.sentAt, Date.now()) === 0) {
+  if (resendWaitMs(ch.sentAt, Date.now()) === 0 && await hit('codeSend', `2fa:${ch.userId}`)) {
     await auth.api.sendTwoFactorOTP({ headers: await headers(), body: {} });
     await setFlash('Изпратихме нов код');
   }
