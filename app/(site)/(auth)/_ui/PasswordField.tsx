@@ -2,6 +2,7 @@
 // ‹Парола› with the 4-segment strength meter of register.html (SPEC §16: 4/4 = ‹Силна парола›;
 // the other levels have no approved label, so they show the bar only).
 import { useState } from 'react';
+import { errorProps } from '@/components/ui/forms';
 
 export function strength(pw: string): number {
   if (pw.length < 8) return pw.length ? 1 : 0;
@@ -20,12 +21,12 @@ export function PasswordField({ id, name = 'password', error, wide = true, autoC
   return (
     <div className={`field${wide ? ' reg-wide' : ''}${error ? ' field--error' : ''}`}>
       <label className="field-label" htmlFor={id}>Парола</label>
-      <input id={id} className="field-input" name={name} type="password" autoComplete={autoComplete} value={pw} onChange={e => setPw(e.target.value)} />
+      <input id={id} className="field-input" name={name} type="password" autoComplete={autoComplete} value={pw} onChange={e => setPw(e.target.value)} {...errorProps(id, error)} />
       <div className="reg-meter" aria-hidden={s < 4}>
         <span className="reg-meter-bar">{[0, 1, 2, 3].map(i => <i key={i} className={i < s ? 'is-on' : undefined}></i>)}</span>
         {s === 4 && <span className="reg-meter-t">Силна парола</span>}
       </div>
-      {error && <span className="acc-err">{error}</span>}
+      {error && <span className="acc-err" id={`${id}-err`}>{error}</span>}
     </div>
   );
 }

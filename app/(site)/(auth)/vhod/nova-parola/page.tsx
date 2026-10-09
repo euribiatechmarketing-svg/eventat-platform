@@ -22,7 +22,7 @@ export default async function NewPasswordPage({ searchParams }: { searchParams: 
       <div className="auth-form ver-form">
         <div className="auth-box">
           <div className="ver-mark">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="11" width="14" height="10" rx="2.5" /><path d="M8 11V8a4 4 0 018 0v3" /></svg>
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="11" width="14" height="10" rx="2.5" /><path d="M8 11V8a4 4 0 018 0v3" /></svg>
           </div>
           <h1 className="auth-t">Задайте нова парола</h1>
           {u ? (

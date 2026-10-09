@@ -9,7 +9,7 @@ import { plural } from '@/lib/format';
 import { CLIENT_REASON_OPTIONS, clientDisputeChoices, partyCases, supportSettings } from '@/lib/domain/views-messaging-support';
 import { openDisputeAction, uploadEvidenceAction } from './actions';
 
-const CHEVRON = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M9 6l6 6-6 6" /></svg>;
+const CHEVRON = <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M9 6l6 6-6 6" /></svg>;
 
 export async function ClientSupportScreen({ preselect, path }: { preselect: string | null; path: string }) {
   const user = await requireRole('client', path);
@@ -59,19 +59,19 @@ export async function ClientSupportScreen({ preselect, path }: { preselect: stri
               <div className="dcard">
                 <div className="dcard-head"><h2 className="dcard-title" style={{ fontSize: 17 }}>Какво следва</h2></div>
                 <div className="dp-side-l">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
                   <span>Екипът отговаря в рамките на {plural(s.teamHours, 'час', 'часа')} и може да поиска още детайли от вас.</span>
                 </div>
                 <div className="dp-side-l">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 018 0v3" /></svg>
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 018 0v3" /></svg>
                   <span>Средствата по резервацията остават задържани, докато случаят се разглежда.</span>
                 </div>
                 <div className="dp-side-l">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M3 7l9 6 9-6" /></svg>
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M3 7l9 6 9-6" /></svg>
                   <span>Решението идва по имейл до вас и до изпълнителя, с мотив.</span>
                 </div>
                 <div className="dp-side-l">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 5h16v12H8l-4 4z" /></svg>
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 5h16v12H8l-4 4z" /></svg>
                   <span>Изпълнителят вижда сигнала и има срок да отговори със своята позиция.</span>
                 </div>
               </div>

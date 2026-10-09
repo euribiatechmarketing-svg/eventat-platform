@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'Запазени търсения' };
 
 const Bell = ({ off }: { off?: boolean }) => (
-  <svg className="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.7 21a2 2 0 01-3.4 0" />{off && <path d="M3.5 3.5l17 17" />}</svg>
+  <svg aria-hidden="true" className="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.7 21a2 2 0 01-3.4 0" />{off && <path d="M3.5 3.5l17 17" />}</svg>
 );
 
 export default async function SavedPage() {
@@ -70,7 +70,7 @@ export default async function SavedPage() {
                       <form action={deleteSearchAction}>
                         <input type="hidden" name="id" value={s.id} />
                         <button className="btn btn--ghost btn--icon btn--sm" type="submit" aria-label="Изтрий запазеното търсене" title="Изтрий запазеното търсене">
-                          <svg className="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 7h16" /><path d="M9 7V4h6v3" /><path d="M6.5 7l1 13h9l1-13" /><path d="M10 11v6M14 11v6" /></svg>
+                          <svg aria-hidden="true" className="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 7h16" /><path d="M9 7V4h6v3" /><path d="M6.5 7l1 13h9l1-13" /><path d="M10 11v6M14 11v6" /></svg>
                         </button>
                       </form>
                     </span>
@@ -80,8 +80,8 @@ export default async function SavedPage() {
             </section>
           ) : (
             <div className="empty">
-              <span className="empty-icon"><svg style={{ width: 22, height: 22 }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"><path d="M6 3.5h12v17l-6-4.2-6 4.2v-17z" /></svg></span>
-              <h3 className="empty-title t-h3">Нямате запазени търсения</h3>
+              <span className="empty-icon"><svg aria-hidden="true" style={{ width: 22, height: 22 }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"><path d="M6 3.5h12v17l-6-4.2-6 4.2v-17z" /></svg></span>
+              <h2 className="empty-title t-h3">Нямате запазени търсения</h2>
               <p className="empty-text">Запазеното търсене пази филтрите ви и ви известява, когато се появи нов изпълнител по тях.</p>
               <div className="card-footer" style={{ justifyContent: 'center', marginTop: 0 }}>
                 <Link className="btn btn--primary" href="/tarsene">Отвори каталога</Link>

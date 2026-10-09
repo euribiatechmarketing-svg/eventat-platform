@@ -81,11 +81,11 @@ export function invoiceDocHtml(inv: InvoiceView): string {
         <table class="inv-tbl">
           <thead>
             <tr>
-              <th class="inv-c-no">№</th>
-              <th>Описание</th>
-              <th class="inv-c-q">Количество</th>
-              <th class="inv-c-p">Ед. цена</th>
-              <th class="inv-c-s">Сума</th>
+              <th class="inv-c-no" scope="col">№</th>
+              <th scope="col">Описание</th>
+              <th class="inv-c-q" scope="col">Количество</th>
+              <th class="inv-c-p" scope="col">Ед. цена</th>
+              <th class="inv-c-s" scope="col">Сума</th>
             </tr>
           </thead>
           <tbody>${lines}
@@ -94,7 +94,7 @@ export function invoiceDocHtml(inv: InvoiceView): string {
         </div>
         <div class="inv-close">
           ${paid ? `<div class="inv-paid">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg>
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg>
             <div>
               <div class="inv-paid-t">Платена на ${numericDate(inv.paidOn!)} през платформата</div>
               <div class="inv-paid-d">${esc(inv.paymentNote ?? '')}${inv.paymentNote ? '. ' : ''}Сумата се превежда на изпълнителя след провеждането на събитието.</div>

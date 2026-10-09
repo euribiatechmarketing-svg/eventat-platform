@@ -25,7 +25,7 @@ export default async function BecomePartner() {
             <div className="band-scrim" />
             <div className="band-in">
               <div className="hero-eyebrow" style={{ color: 'var(--pink-300)' }}>За изпълнители</div>
-              <div className="band-t" style={{ marginTop: 12 }}>Работете с клиенти,{' '}<br />които вече са решили да платят</div>
+              <h1 className="band-t" style={{ margin: '12px 0 0' }}>Работете с клиенти,{' '}<br />които вече са решили да платят</h1>
               <p className="band-d">Без обаждания „само да питам“. Заявката идва с дата, брой гости, бюджет и локация — вие отговаряте с да или не.</p>
               <div className="hero-cta" style={{ justifyContent: 'flex-start', marginTop: 24 }}>
                 <Link className="btn btn--lg btn--onDark" href={SIGN_UP}>Стани партньор</Link>
@@ -115,7 +115,7 @@ export default async function BecomePartner() {
                       <div className="rev-name" style={{ fontSize: 16 }}>{n.testimonial.name}</div>
                       <div className="rev-meta">{n.testimonial.meta}</div>
                     </div>
-                    <Stars className="rev-stars" n={n.testimonial.stars} />
+                    <Stars className="rev-stars" n={n.testimonial.stars} rated />
                   </div>
                   <div className="rev-text" style={{ fontSize: 15 }}>„Преди прекарвах вечерите в отговаряне на съобщения от хора, които после изчезваха. Сега получавам заявка с дата и бюджет и решавам за минута. Само за юни имам 9 резервации.“</div>
                 </div>

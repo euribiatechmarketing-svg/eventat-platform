@@ -1,9 +1,10 @@
 'use client';
 // Small client-side pieces shared by every area: toasts, dropdown menus,
 // the menu button that opens the nav/rail on small screens, flash messages.
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { cloneElement, isValidElement, useEffect, useId, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import Link from 'next/link';
 import { Icon } from './Icon';
+import { useDropdown } from './dropdown';
 
 /* ---------- toasts ---------- */
 type ToastKind = 'ok' | 'error';
@@ -45,32 +46,35 @@ export function FlashToast({ message, kind = 'ok' }: { message: string | null; k
 /* ---------- dropdown menu ---------- */
 export type MenuItem = { label: string; href?: string; onSelect?: () => void | Promise<void> } | null;
 
+/**
+ * A menu button (WAI-ARIA menu button). The trigger element itself becomes the button: it gets the role,
+ * the Tab stop (so its focus ring shows), the state and the keys. Its accessible name is its own text, or
+ * its own `aria-label` when that text alone does not say what it opens; `label` names the menu.
+ */
 export function Menu({ trigger, items, align = 'down', className = '', wide = false, label }: {
   trigger: ReactNode; items?: MenuItem[]; children?: ReactNode; align?: 'down' | 'up'; className?: string; wide?: boolean; label?: string;
 } & { children?: ReactNode }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent | KeyboardEvent) => {
-      if (e instanceof KeyboardEvent ? e.key === 'Escape' : !ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', close);
-    document.addEventListener('keydown', close);
-    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', close); };
-  }, [open]);
+  const btn = useRef<HTMLElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const id = useId();
+  const { onTriggerKey, onPanelKey } = useDropdown({ open, setOpen, wrap: ref, trigger: btn, panel, menu: true });
+  const props = {
+    ref: btn, role: 'button', tabIndex: 0, 'aria-haspopup': 'menu' as const, 'aria-expanded': open, 'aria-controls': open ? id : undefined,
+    onClick: () => setOpen(!open), onKeyDown: onTriggerKey,
+  };
   return (
     <span ref={ref} className={`ui-menu-wrap ${className}`}>
-      <span role="button" tabIndex={0} aria-haspopup="menu" aria-expanded={open} aria-label={label}
-        onClick={() => setOpen(o => !o)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(o => !o); } }}
-        style={{ display: 'contents' }}>
-        {trigger}
-      </span>
+      {isValidElement(trigger)
+        ? cloneElement(trigger as ReactElement<Record<string, unknown>>, props)
+        : <span {...props} aria-label={label}>{trigger}</span>}
       {open && (
-        <div className={`ui-menu ui-menu--${align}${wide ? ' ui-menu--wide' : ''}`} role="menu">
+        <div ref={panel} id={id} className={`ui-menu ui-menu--${align}${wide ? ' ui-menu--wide' : ''}`} role="menu" aria-label={label} onKeyDown={onPanelKey}>
           {items?.map((it, i) => it === null ? <hr key={i} /> : it.href
-            ? <Link key={i} href={it.href} role="menuitem" onClick={() => setOpen(false)}>{it.label}</Link>
-            : <button key={i} type="button" className="ui-menu-item" role="menuitem" onClick={() => { setOpen(false); it.onSelect?.(); }}>{it.label}</button>)}
+            ? <Link key={i} href={it.href} role="menuitem" tabIndex={-1} onClick={() => setOpen(false)}
+                onKeyDown={e => { if (e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}>{it.label}</Link>
+            : <button key={i} type="button" className="ui-menu-item" role="menuitem" tabIndex={-1} onClick={() => { setOpen(false); btn.current?.focus(); it.onSelect?.(); }}>{it.label}</button>)}
         </div>
       )}
     </span>
@@ -78,10 +82,38 @@ export function Menu({ trigger, items, align = 'down', className = '', wide = fa
 }
 
 /* ---------- menu button for small screens ---------- */
+/**
+ * Opens the client nav / the panel rail on small screens. Its expanded state follows the `is-open` class
+ * (DrawerAutoClose closes the drawer too); Escape closes the drawer and brings focus back here.
+ */
 export function Burger({ target }: { target: 'nav' | 'shell' }) {
+  const btn = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const host = () => btn.current?.closest(target === 'nav' ? '.nav' : '.shell') as HTMLElement | null;
+  useEffect(() => {
+    const h = host();
+    if (!h) return;
+    const mo = new MutationObserver(() => setOpen(h.classList.contains('is-open')));
+    mo.observe(h, { attributes: true, attributeFilter: ['class'] });
+    return () => mo.disconnect();
+  }, [target]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!open) return;
+    // On window, so it runs after a menu, the bell or the search suggestions inside the drawer have
+    // handled the same Escape: one Escape closes only the innermost layer.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      const h = host();
+      const inside = !!h?.contains(document.activeElement);
+      h?.classList.remove('is-open');
+      if (inside) btn.current?.focus();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <button type="button" className="ui-burger" aria-label="Меню"
-      onClick={e => (e.currentTarget.closest(target === 'nav' ? '.nav' : '.shell') as HTMLElement | null)?.classList.toggle('is-open')}>
+    <button ref={btn} type="button" className="ui-burger" aria-label="Меню" aria-expanded={open}
+      onClick={() => host()?.classList.toggle('is-open')}>
       <Icon name="menu" />
     </button>
   );

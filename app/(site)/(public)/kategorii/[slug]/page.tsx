@@ -55,9 +55,9 @@ export default async function CategoryPage({ params, searchParams }: Props) {
               <p className="hero-d" style={{ marginLeft: 0, maxWidth: 520 }}>{hero.countText}.{hero.category.intro ? ` ${hero.category.intro}` : ''}</p>
               {r.facets.subtypes.length > 0 && (
                 <div className="cat-pills">
-                  <Link className={`cat-pill${p.vid ? '' : ' is-on'}`} href={href({ ...pc, vid: null })} scroll={false}>Всички</Link>
+                  <Link className={`cat-pill${p.vid ? '' : ' is-on'}`} href={href({ ...pc, vid: null })} scroll={false} aria-current={p.vid ? undefined : 'true'}>Всички</Link>
                   {r.facets.subtypes.map(s => (
-                    <Link key={s.value} className={`cat-pill${s.active ? ' is-on' : ''}`} href={href({ ...pc, vid: s.value })} scroll={false}>{s.label}</Link>
+                    <Link key={s.value} className={`cat-pill${s.active ? ' is-on' : ''}`} href={href({ ...pc, vid: s.value })} scroll={false} aria-current={s.active ? 'true' : undefined}>{s.label}</Link>
                   ))}
                 </div>
               )}

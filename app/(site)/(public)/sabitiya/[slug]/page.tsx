@@ -57,7 +57,7 @@ export default async function EventTypePage({ params, searchParams }: Props) {
           <div className="results-head pub-types" style={{ marginBottom: 24 }}>
             <span className="results-n" style={{ marginRight: 16 }}>Тип събитие</span>
             <div className="cat-pills" style={{ marginTop: 0 }}>
-              {v.types.map(t => <Link key={t.slug} className={`cat-pill${t.slug === slug ? ' is-on' : ''}`} href={`/sabitiya/${t.slug}`}>{t.name}</Link>)}
+              {v.types.map(t => <Link key={t.slug} className={`cat-pill${t.slug === slug ? ' is-on' : ''}`} href={`/sabitiya/${t.slug}`} aria-current={t.slug === slug ? 'page' : undefined}>{t.name}</Link>)}
             </div>
           </div>
 

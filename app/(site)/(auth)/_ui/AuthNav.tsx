@@ -16,7 +16,7 @@ export function AuthNav() {
     <header className="nav">
       <Burger target="nav" />
       <Link className="nav-brand" href="/"><img className="nav-logo" src="/assets/eventat-logo.png" alt="EventAT" /></Link>
-      <nav className="nav-links">
+      <nav className="nav-links" aria-label="Основна навигация">
         {LINKS.map(([label, href]) => <Link key={href} className="nav-link" href={href}>{label}</Link>)}
       </nav>
       <div className="nav-right">

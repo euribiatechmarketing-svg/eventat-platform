@@ -4,6 +4,7 @@
 // buttons writing one hidden value; ‹Публикувай ревюто› waits for every rating
 // and a comment of at least 40 characters (SPEC V2).
 import { useState } from 'react';
+import { radioKeys, radioTab } from '@/components/ui/dropdown';
 import Link from 'next/link';
 import { PhotoPicker, type UploadResult } from './PhotoPicker';
 import { SubmitButton } from './SubmitButton';
@@ -29,9 +30,9 @@ export function ReviewFields({ tags, minChars, maxPhotos, maxMb, upload }: {
     <>
       {(Object.keys(r) as Key[]).map(k => <input key={k} type="hidden" name={k} value={r[k] || ''} />)}
       <div className="field-label" style={{ marginBottom: 12 }}>Обща оценка</div>
-      <div className="rw-stars" role="radiogroup" aria-label="Обща оценка">
+      <div className="rw-stars" role="radiogroup" aria-label="Обща оценка" onKeyDown={radioKeys}>
         {[1, 2, 3, 4, 5].map(i => (
-          <button key={i} type="button" role="radio" aria-checked={r.ratingOverall === i} aria-label={i === 1 ? '1 звезда' : `${i} звезди`}
+          <button key={i} type="button" role="radio" aria-checked={r.ratingOverall === i} tabIndex={radioTab(r.ratingOverall === i, i - 1, r.ratingOverall > 0)} aria-label={i === 1 ? '1 звезда' : `${i} звезди`}
             className={i <= r.ratingOverall ? 'is-on' : undefined} onClick={() => set('ratingOverall', i)}>
             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d={STAR} /></svg>
           </button>
@@ -45,9 +46,9 @@ export function ReviewFields({ tags, minChars, maxPhotos, maxMb, upload }: {
           {CRITERIA.map(([k, label]) => (
             <div key={k} className="rw-item">
               <span className="rw-item-n">{label}</span>
-              <span className="rw-mini" role="radiogroup" aria-label={label}>
+              <span className="rw-mini" role="radiogroup" aria-label={label} onKeyDown={radioKeys}>
                 {[1, 2, 3, 4, 5].map(i => (
-                  <button key={i} type="button" role="radio" aria-checked={r[k] === i} aria-label={`${label}: ${i}`}
+                  <button key={i} type="button" role="radio" aria-checked={r[k] === i} tabIndex={radioTab(r[k] === i, i - 1, r[k] > 0)} aria-label={`${label}: ${i}`}
                     className={i > r[k] ? 'is-off' : undefined} onClick={() => set(k, i)}>
                     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d={STAR} /></svg>
                   </button>

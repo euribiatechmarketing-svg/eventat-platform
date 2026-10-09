@@ -28,7 +28,7 @@ export default async function RequestFormPage({ params, searchParams }: {
       <div className="h-row"><div><h1 className="h-page">Изпратете запитване</h1><p className="h-sub">Изпълнителят отговаря до {v.responseHours} часа. Плащате само ако заявката бъде одобрена.</p></div></div>
 
       <div className="steps">
-        <div className="step is-on"><span className="step-n">1</span><span className="step-t">Детайли за събитието</span></div>
+        <div className="step is-on" aria-current="step"><span className="step-n">1</span><span className="step-t">Детайли за събитието</span></div>
         <span className="step-line" />
         <div className="step"><span className="step-n">2</span><span className="step-t">Преглед</span></div>
         <span className="step-line" />

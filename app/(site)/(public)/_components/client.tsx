@@ -2,7 +2,7 @@
 // Small interactive pieces of the public pages: a link that confirms with a toast, the
 // ‹Уведоми ме› button, the BG/EN switch, the mobile filter drawer, the price range and the
 // legal page's side navigation.
-import { useEffect, useRef, useState, useTransition, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, useTransition, type MouseEvent, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { toast } from '@/components/ui/client';
@@ -36,6 +36,14 @@ export function NotifyButton({ partnerId, date, sabitieId, signIn, label = 'Ув
   return <button type="button" className={className} onClick={click} disabled={pending} aria-busy={pending}>{label}</button>;
 }
 
+/** A filter link that reads as a checkbox (role="checkbox"): Space toggles it as Enter does. */
+export function CheckLink({ href, checked, className, children }: { href: string; checked: boolean; className?: string; children: ReactNode }) {
+  return (
+    <Link className={className} href={href} scroll={false} role="checkbox" aria-checked={checked}
+      onKeyDown={e => { if (e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}>{children}</Link>
+  );
+}
+
 /** ‹BG› / ‹EN› lives with the site header. */
 export { Lang } from '@/components/site/Lang';
 
@@ -43,15 +51,16 @@ export { Lang } from '@/components/site/Lang';
 export function FiltersPanel({ children, activeCount }: { children: ReactNode; activeCount: number }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
+  const id = useId();
   useEffect(() => { setOpen(false); }, [pathname]);
   return (
     <div className={`pub-filters${open ? ' is-open' : ''}`}>
-      <button type="button" className="filter-btn pub-filters-btn" aria-expanded={open} onClick={() => setOpen(o => !o)}>
+      <button type="button" className="filter-btn pub-filters-btn" aria-expanded={open} aria-controls={id} onClick={() => setOpen(o => !o)}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" /></svg>
         Филтри{activeCount ? <span className="pub-filters-n">{activeCount}</span> : null}
         <svg className="proto-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
       </button>
-      <aside className="filters">{children}</aside>
+      <aside className="filters" id={id} aria-label="Филтри">{children}</aside>
     </div>
   );
 }
@@ -127,10 +136,10 @@ export function DocNav({ items, children }: { items: { id: string; label: string
     };
   }, [items]);
   return (
-    <nav className="doc-nav">
-      <div className="doc-nav-t">На тази страница</div>
+    <nav className="doc-nav" aria-labelledby="doc-nav-t">
+      <div className="doc-nav-t" id="doc-nav-t">На тази страница</div>
       {items.map(i => (
-        <a key={i.id} className={`doc-link${on === i.id ? ' is-on' : ''}`} href={`#${i.id}`} onClick={() => { clicked.current = i.id; setOn(i.id); }}>{i.label}</a>
+        <a key={i.id} className={`doc-link${on === i.id ? ' is-on' : ''}`} href={`#${i.id}`} aria-current={on === i.id ? 'location' : undefined} onClick={() => { clicked.current = i.id; setOn(i.id); }}>{i.label}</a>
       ))}
       {children}
     </nav>

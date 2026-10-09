@@ -4,6 +4,7 @@
 // uploaded as it is chosen.
 import { useActionState, useState } from 'react';
 import Link from 'next/link';
+import { radioKeys, radioTab } from '@/components/ui/dropdown';
 import { Evidence } from './Evidence';
 
 const NBSP = '\u00A0';
@@ -48,9 +49,9 @@ export function ClientDisputeForm({ choices, reasons, defaultReason, preselect, 
 
       <div className="dp-sec">
         <h2 className="dp-h">Какъв е проблемът</h2>
-        <div className="opt-row" role="radiogroup" aria-label="Какъв е проблемът">
-          {reasons.map(r => (
-            <button key={r.value} type="button" role="radio" aria-checked={reason === r.value} className={`opt${reason === r.value ? ' is-on' : ''}`} onClick={() => setReason(r.value)}>{r.label}</button>
+        <div className="opt-row" role="radiogroup" aria-label="Какъв е проблемът" onKeyDown={radioKeys}>
+          {reasons.map((r, i) => (
+            <button key={r.value} type="button" role="radio" aria-checked={reason === r.value} tabIndex={radioTab(reason === r.value, i, reasons.some(x => x.value === reason))} className={`opt${reason === r.value ? ' is-on' : ''}`} onClick={() => setReason(r.value)}>{r.label}</button>
           ))}
         </div>
         <input type="hidden" name="reason" value={reason} />

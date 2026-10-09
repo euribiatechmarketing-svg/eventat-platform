@@ -4,10 +4,11 @@
 // (‹Локация›, ‹Дата›, ‹Гости›, ‹Тип събитие›). Every choice is a GET parameter, so each
 // change re-queries at once and the URL describes the view (§13.1). The page gives this
 // component a `key` per URL, so it starts fresh after every navigation.
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from '@/components/ui/client';
+import { useDropdown } from '@/components/ui/dropdown';
 import type { SuggestRow } from '@/lib/domain/search';
 import { recordQueryAction, suggestAction } from '../tarsene/actions';
 
@@ -60,23 +61,30 @@ function useOutside(open: boolean, close: () => void) {
   return ref;
 }
 
-/** A dropdown cell: label, value, chevron; the options are links. */
+/**
+ * A dropdown cell: label, value, chevron; the options are links (the chosen one is aria-current). The cell
+ * discloses them: Enter / Space open the list with focus on the chosen option, the arrows move, Escape closes
+ * it and returns to the cell.
+ */
 function MenuCell({ m }: { m: BarMenu }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
-  const ref = useOutside(open, () => setOpen(false));
-  const toggle = () => setOpen(o => !o);
+  const ref = useRef<HTMLSpanElement>(null);
+  const cell = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const id = useId();
+  const { onTriggerKey, onPanelKey } = useDropdown({ open, setOpen, wrap: ref, trigger: cell, panel });
   return (
     <span ref={ref} className="ui-anchor ui-anchor--block">
-      <div className={`sb-cell ui-click${open ? ' is-open' : ''}`} role="button" tabIndex={0} aria-haspopup="menu" aria-expanded={open}
-        onClick={toggle} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }}>
+      <div ref={cell} className={`sb-cell ui-click${open ? ' is-open' : ''}`} role="button" tabIndex={0} aria-expanded={open} aria-controls={id}
+        onClick={() => setOpen(!open)} onKeyDown={onTriggerKey}>
         <div className="sb-l">{m.label}</div>
         <div className={`sb-v${m.empty ? ' is-empty' : ''}`}>{m.value}</div>
         {CHEVRON}
       </div>
-      <div className="ui-menu ui-menu--down ui-bar-menu" role="menu" hidden={!open}>
+      <div ref={panel} id={id} className="ui-menu ui-menu--down ui-bar-menu" role="group" aria-label={m.label} hidden={!open} onKeyDown={onPanelKey}>
         {m.options.map(o => (
-          <Link key={o.href + o.label} href={o.href} scroll={false} role="menuitem" className={o.on ? 'is-on' : undefined} onClick={() => setOpen(false)}>{o.label}</Link>
+          <Link key={o.href + o.label} href={o.href} scroll={false} aria-current={o.on ? 'true' : undefined} className={o.on ? 'is-on' : undefined} onClick={() => setOpen(false)}>{o.label}</Link>
         ))}
         {m.date && (
           <>
@@ -110,6 +118,15 @@ function QueryField({ c, onRun, again }: { c: QueryCell; onRun: (run: () => Prom
   const seq = useRef(0);
   const input = useRef<HTMLInputElement>(null);
   const ref = useOutside(open, () => setOpen(false));
+  // The highlighted suggestion (arrow keys); focus stays in the field (aria-activedescendant).
+  const [active, setActive] = useState(-1);
+  const listId = useId();
+  const rows = groups.flatMap(g => g.rows);
+  const shown = open && groups.length > 0;
+  useEffect(() => { setActive(-1); }, [groups, open]);
+  useEffect(() => {
+    if (active >= 0) document.getElementById(`${listId}-${active}`)?.scrollIntoView({ block: 'nearest' });
+  }, [active, listId]);
 
   const load = (t: string, p: typeof picked) => {
     const n = ++seq.current;
@@ -162,8 +179,17 @@ function QueryField({ c, onRun, again }: { c: QueryCell; onRun: (run: () => Prom
   };
 
   const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') { e.preventDefault(); void run(); }
-    if (e.key === 'Escape') setOpen(false);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!shown) { setOpen(true); return; }
+      if (!rows.length) return;
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      setActive(a => (a < 0 ? (step > 0 ? 0 : rows.length - 1) : (a + step + rows.length) % rows.length));
+      return;
+    }
+    if (e.key === 'Enter') { e.preventDefault(); if (shown && active >= 0 && rows[active]) pick(rows[active]); else void run(); }
+    // Escape closes the suggestions (and only then, as a search field does, clears the text).
+    if (e.key === 'Escape' && shown) { e.preventDefault(); setOpen(false); }
   };
 
   return (
@@ -172,25 +198,30 @@ function QueryField({ c, onRun, again }: { c: QueryCell; onRun: (run: () => Prom
         <div className="sb-l">{c.label}</div>
         {c.icon && <svg className="sb-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.9-3.9" /></svg>}
         <input ref={input} className="sb-v" type="search" enterKeyHint="search" autoComplete="off" aria-label={c.label} placeholder={c.placeholder}
-          value={text} role="combobox" aria-expanded={open} aria-autocomplete="list"
+          value={text} role="combobox" aria-expanded={shown} aria-controls={listId} aria-autocomplete="list"
+          aria-activedescendant={shown && active >= 0 ? `${listId}-${active}` : undefined}
           onFocus={e => { setOpen(true); if (picked && text === picked.name) e.target.select(); }}
           onChange={e => { const v = e.target.value; setText(v); if (picked && v !== picked.name) setPicked(null); setOpen(true); }}
           onKeyDown={onKey}
           onBlur={() => { setTimeout(() => { if (changed()) void run(); }, 0); }} />
       </div>
-      <div className="ui-menu ui-menu--down ui-menu--wide ui-suggest" role="listbox" hidden={!open || !groups.length}
+      <div id={listId} className="ui-menu ui-menu--down ui-menu--wide ui-suggest" role="listbox" aria-label={c.label} hidden={!shown}
         onMouseDown={e => e.preventDefault()}>
-        {groups.map(g => (
-          <div key={g.heading}>
-            <div className="ui-suggest-h">{g.heading}</div>
-            {g.rows.map(r => (
-              <a key={r.kind + r.href + r.label} className="ui-note" href={r.kind === 'brief' ? c.briefHref : r.href} role="option" aria-selected={false}
-                onClick={e => { e.preventDefault(); pick(r); }}>
-                <b>{r.label}</b><span>{r.meta}</span>
-              </a>
-            ))}
-          </div>
-        ))}
+        {groups.map((g, gi) => {
+          const first = groups.slice(0, gi).reduce((n, x) => n + x.rows.length, 0);
+          return (
+            <div key={g.heading} role="group" aria-labelledby={`${listId}-g${gi}`}>
+              <div className="ui-suggest-h" id={`${listId}-g${gi}`} role="presentation">{g.heading}</div>
+              {g.rows.map((r, ri) => (
+                <a key={r.kind + r.href + r.label} id={`${listId}-${first + ri}`} className={`ui-note${active === first + ri ? ' is-active' : ''}`}
+                  href={r.kind === 'brief' ? c.briefHref : r.href} role="option" aria-selected={active === first + ri} tabIndex={-1}
+                  onClick={e => { e.preventDefault(); pick(r); }}>
+                  <b>{r.label}</b><span>{r.meta}</span>
+                </a>
+              ))}
+            </div>
+          );
+        })}
       </div>
     </span>
   );

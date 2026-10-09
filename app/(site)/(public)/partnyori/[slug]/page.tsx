@@ -139,7 +139,7 @@ export default async function PartnerPage({ params, searchParams }: Props) {
                           <div className="rev-head">
                             <span className="avatar">{initialsOf(r.author)}</span>
                             <div><div className="rev-name">{r.author}</div><div className="rev-meta">{r.eventType} · {monthName(m)} {y}</div></div>
-                            <Stars className="rev-stars" n={r.rating} />
+                            <Stars className="rev-stars" n={r.rating} rated />
                           </div>
                           <p className="rev-text">{r.body}</p>
                           {r.reply && (

@@ -23,8 +23,8 @@ export default async function Start() {
         </div>
       </header>
 
-      <section className="st-head" id="main">
-        <h1 className="hero-t st-ask">Как ще използвате EventAT?</h1>
+      <section className="st-head" id="main" aria-labelledby="st-ask">
+        <h1 className="hero-t st-ask" id="st-ask">Как ще използвате EventAT?</h1>
         <p className="hero-d st-lead">Свързваме организаторите на събития с проверени изпълнители.</p>
       </section>
 

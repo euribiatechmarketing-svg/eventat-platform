@@ -5,7 +5,7 @@ import { Menu } from '@/components/ui/client';
 import type { Card, SearchResult } from '@/lib/domain/search';
 import { watchDatesAction } from '../tarsene/actions';
 import { ChatIcon, Close, SearchIcon, ShieldCheck, Stars } from './icons';
-import { FiltersPanel, NotifyButton, PriceRange, ToastLink } from './client';
+import { CheckLink, FiltersPanel, NotifyButton, PriceRange, ToastLink } from './client';
 import { Num } from './text';
 
 export type Viewer = { kind: 'guest' | 'client' | 'other'; signIn: string; register: (href: string) => string };
@@ -20,8 +20,9 @@ export function VCard({ c, date, sabitieId, viewer, ownBooking = false }: { c: C
   if (date) q.set('data', date);
   if (sabitieId) q.set('sabitie-id', sabitieId);
   const href = q.toString() ? `${c.href}?${q}` : c.href;
-  return (
-    <a className={`v-card${c.busy ? ' is-off' : ''}`} href={href}>
+  const notify = !!(c.busy && date && viewer.kind !== 'other' && !ownBooking);
+  const body = (
+    <>
       <span className="v-cover" style={c.coverUrl ? { backgroundImage: `url('${c.coverUrl}')` } : undefined}>
         {c.verified && <span className="v-tag"><ShieldCheck />Проверен</span>}
       </span>
@@ -38,14 +39,25 @@ export function VCard({ c, date, sabitieId, viewer, ownBooking = false }: { c: C
         {c.busy && date && (
           <span className="v-busy">
             <span className="badge badge--danger badge--dot">{c.busyLabel}</span>
-            {viewer.kind !== 'other' && !ownBooking && (
+            {notify && (
               <NotifyButton partnerId={c.partnerId} date={date} sabitieId={sabitieId} signIn={viewer.kind === 'guest' ? viewer.signIn : null} />
             )}
           </span>
         )}
       </span>
-    </a>
+    </>
   );
+  // ‹Уведоми ме› cannot sit inside the card's link (a button in a link is lost to keyboard and screen
+  // reader users): that card is a box with its link stretched over it and the button above the link.
+  if (notify) {
+    return (
+      <div className={`v-card v-card--split${c.busy ? ' is-off' : ''}`}>
+        <a className="v-card-link" href={href} aria-label={c.name} />
+        {body}
+      </div>
+    );
+  }
+  return <a className={`v-card${c.busy ? ' is-off' : ''}`} href={href}>{body}</a>;
 }
 
 /** The active filters, each removable on its own, and ‹Изчисти филтрите›. */
@@ -74,13 +86,13 @@ export function Sort({ r }: { r: SearchResult }) {
 /** The facet column (catalog.html `aside.filters`): counts under every other active group (D43). */
 export function Facets({ r, basePath, baseQuery }: { r: SearchResult; basePath: string; baseQuery: string }) {
   const f = r.facets;
-  const group = (title: string, items: SearchResult['facets']['types']) => (
-    <div className="f-group">
-      <div className="f-title">{title}</div>
+  const group = (title: string, items: SearchResult['facets']['types'], n: number) => (
+    <div className="f-group" role="group" aria-labelledby={`f-title-${n}`}>
+      <div className="f-title" id={`f-title-${n}`}>{title}</div>
       {items.map(it => (
-        <Link key={it.value} className="f-item" href={it.href} scroll={false} role="checkbox" aria-checked={it.active}>
+        <CheckLink key={it.value} className="f-item" href={it.href} checked={it.active}>
           <span className={`f-box${it.active ? ' is-on' : ''}`} />{it.label}<span className="f-count">{it.count}</span>
-        </Link>
+        </CheckLink>
       ))}
     </div>
   );
@@ -89,16 +101,16 @@ export function Facets({ r, basePath, baseQuery }: { r: SearchResult; basePath: 
   const active = [...f.types, ...f.cities, ...f.ratings, ...f.policies, ...f.others].filter(x => x.active).length + (f.price.active ? 1 : 0);
   return (
     <FiltersPanel activeCount={active}>
-      {group('Тип събитие', f.types)}
-      {group('Град', f.cities)}
-      <div className="f-group">
-        <div className="f-title">Цена за събитие</div>
+      {group('Тип събитие', f.types, 1)}
+      {group('Град', f.cities, 2)}
+      <div className="f-group" role="group" aria-labelledby="f-title-3">
+        <div className="f-title" id="f-title-3">Цена за събитие</div>
         <PriceRange key={`${f.price.from}-${f.price.to}`} from={f.price.from} to={f.price.to} basePath={basePath} baseQuery={priceQuery.toString()} />
       </div>
-      {group('Рейтинг', f.ratings)}
-      {group('Политика за анулиране', f.policies)}
+      {group('Рейтинг', f.ratings, 4)}
+      {group('Политика за анулиране', f.policies, 5)}
       {/* ‹Предлагат друга дата› means something only once a date is chosen (§13.4). */}
-      {group('Други', f.others.filter(o => o.value !== 'druga-data' || !!r.params.data))}
+      {group('Други', f.others.filter(o => o.value !== 'druga-data' || !!r.params.data), 6)}
     </FiltersPanel>
   );
 }
@@ -109,7 +121,7 @@ export function Zero({ r, qs, back, viewer, watchable = true }: { r: SearchResul
   return (
     <div className="empty">
       <span className="empty-icon"><SearchIcon style={{ width: 22, height: 22 }} /></span>
-      <h3 className="empty-title t-h3">{z.title}</h3>
+      <h2 className="empty-title t-h3">{z.title}</h2>
       <p className="empty-text">{z.text}</p>
       <div className="card-footer" style={{ justifyContent: 'center', marginTop: 0 }}>
         {z.buttons.map(b => {
@@ -139,7 +151,7 @@ export function Cta({ r, viewer }: { r: SearchResult; viewer: Viewer }) {
   return (
     <div className="empty empty--cta">
       <span className="empty-icon"><ChatIcon style={{ width: 22, height: 22 }} /></span>
-      <h3 className="empty-title t-h3">{c.title}</h3>
+      <h2 className="empty-title t-h3">{c.title}</h2>
       <p className="empty-text">{c.text}</p>
       <div className="card-footer" style={{ justifyContent: 'center', marginTop: 0 }}>
         {viewer.kind !== 'other' && <Link className="btn btn--primary" href={viewer.kind === 'guest' ? viewer.register(c.briefHref) : c.briefHref}>Изпрати запитване</Link>}

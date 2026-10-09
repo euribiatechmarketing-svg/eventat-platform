@@ -611,7 +611,7 @@ def main():
         # (2026-0614-ФК, the other seeded Гъвкава booking, has an open case: K7 rightly offers no ‹Анулиране› there.)
         dec19, TD = dt.date(2026, 12, 19), '2026-1219-ТД'
         p = petya.go('/tarsene?kategoriya=torti-i-deserti&data=2026-12-19&druga-data=1')
-        card = p.locator('a.v-card:has-text("Мед и мляко")')
+        card = p.locator('.v-card:has-text("Мед и мляко")')
         expect(card.locator('.badge')).to_have_text('Зает на 19 декември')
         p = petya.go('/partnyori/sladkarnitsa-med-i-mlyako?data=2026-12-19')
         expect(p.locator('.book')).to_contain_text('Заета дата')
@@ -693,7 +693,7 @@ def main():
         step(f'Умерена {n_mod}: Мария requests Студио Мелодия for {fdate(d_mod)} → the partner approves → Мария pays 640 € → confirmed at 10%')
 
         p = stefka.go(f'/tarsene?kategoriya=dj-i-ozvuchavane&data={d_mod}&druga-data=1')
-        card = p.locator('a.v-card:has-text("Студио Мелодия")')
+        card = p.locator('.v-card:has-text("Студио Мелодия")')
         expect(card.locator('.badge')).to_have_text(f'Зает на {fshort(d_mod)}')
         card.locator('button:has-text("Уведоми ме")').click()
         toast(p, 'Ще ви известим, ако датата се освободи')
@@ -920,7 +920,7 @@ def main():
         cell = calendar_day(melodia, d_exp)
         expect(cell.locator('.chip--hold')).to_have_count(1)
         p = stefka.go(f'/tarsene?kategoriya=dj-i-ozvuchavane&data={d_exp}&druga-data=1')
-        card = p.locator('a.v-card:has-text("Студио Мелодия")')
+        card = p.locator('.v-card:has-text("Студио Мелодия")')
         expect(card.locator('.badge')).to_have_text(f'Зает на {fshort(d_exp)}')
         card.locator('button:has-text("Уведоми ме")').click()
         toast(p, 'Ще ви известим, ако датата се освободи')

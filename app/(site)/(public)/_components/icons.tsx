@@ -13,10 +13,13 @@ function S({ children, className, style, sw = 2, filled = false }: P & { childre
 const STAR = 'M12 3l2.7 5.8 6.3.8-4.6 4.3 1.2 6.2L12 17.8 6.4 20.1l1.2-6.2L3 9.6l6.3-.8L12 3z';
 
 export const Star = (p: P) => <S {...p} filled><path d={STAR} /></S>;
-/** Five filled stars (`.v-stars`, `.rev-stars`); `n` of them lit when given. */
-export function Stars({ n = 5, className }: { n?: number; className?: string }) {
+/**
+ * Five filled stars (`.v-stars`, `.rev-stars`); `n` of them lit when given. `rated`: the stars are the only
+ * place the rating shows (a review), so they read as ‹5 звезди›; beside a printed rating they stay hidden.
+ */
+export function Stars({ n = 5, className, rated = false }: { n?: number; className?: string; rated?: boolean }) {
   return (
-    <span className={className}>
+    <span className={className} {...(rated ? { role: 'img', 'aria-label': n === 1 ? '1 звезда' : `${n} звезди` } : {})}>
       {[0, 1, 2, 3, 4].map(i => <Star key={i} style={i < n ? undefined : { opacity: 0.25 }} />)}
     </span>
   );
