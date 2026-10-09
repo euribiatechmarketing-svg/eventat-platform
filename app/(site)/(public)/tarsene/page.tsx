@@ -12,7 +12,7 @@ import { SearchBar } from '../_components/SearchBar';
 import { barMenus, searchPageHref, withoutQuery } from '../_components/bar';
 import { Chips, Cta, Facets, Sort, VCard, Zero } from '../_components/Results';
 import { SearchIcon } from '../_components/icons';
-import { Num, RichText, hereUrl, toSearch } from '../_components/text';
+import { Num, RichText, cardsShown, hereUrl, moreCardsHref, toSearch } from '../_components/text';
 import { viewerFor } from '../_components/viewer';
 import { saveSearchAction } from './actions';
 
@@ -31,7 +31,8 @@ export default async function SearchPage({ searchParams }: { searchParams: SP })
   if (p.data && p.data < choices.today) redirect(searchHref({ ...p, data: null, drugaData: false }, '/tarsene'));
   const r = await search(p, { clientId, basePath: '/tarsene' });
   // A busy card that is the client's own booking offers no ‹Уведоми ме›.
-  const own = clientId && p.data ? await ownOnDate(clientId, r.cards.filter(c => c.busy).map(c => c.partnerId), p.data) : new Map<string, { holdsDate: boolean }>();
+  const shown = cardsShown(sp);
+  const own = clientId && p.data ? await ownOnDate(clientId, r.cards.slice(0, shown).filter(c => c.busy).map(c => c.partnerId), p.data) : new Map<string, { holdsDate: boolean }>();
   const watchable = clientId && r.zero?.dateCaused ? await zeroWatchable(p, clientId) : true;
   const href = searchPageHref('/tarsene');
   const canonical = toQuery(p);
@@ -115,8 +116,11 @@ export default async function SearchPage({ searchParams }: { searchParams: SP })
                   <Chips chips={r.chips} clearHref={r.clearHref} />
                   {r.cards.length > 0 && (
                     <div className="v-grid">
-                      {r.cards.map(c => <VCard key={c.partnerId} c={c} date={p.data} sabitieId={p.sabitieId} viewer={viewer} ownBooking={!!own.get(c.partnerId)?.holdsDate} />)}
+                      {r.cards.slice(0, shown).map(c => <VCard key={c.partnerId} c={c} date={p.data} sabitieId={p.sabitieId} viewer={viewer} ownBooking={!!own.get(c.partnerId)?.holdsDate} />)}
                     </div>
+                  )}
+                  {r.cards.length > shown && (
+                    <div className="pub-more"><Link className="btn btn--outline btn--sm" href={moreCardsHref(searchHref(p, '/tarsene'), shown)} scroll={false}>Покажи още</Link></div>
                   )}
                   {r.zero && <Zero r={r} qs={canonical} back={here} viewer={viewer} watchable={watchable} />}
                   {/* The open-request invitation is for clients and guests; a partner or the team has nothing to send. */}

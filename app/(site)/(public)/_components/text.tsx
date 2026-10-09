@@ -32,5 +32,19 @@ export function hereUrl(path: string, sp: URLSearchParams): string {
   return qs ? `${path}?${qs}` : path;
 }
 
+/** Cards per ‹Покажи още› step on /tarsene and /kategorii/[slug] (`?stranitsa=2` = the first 48). */
+export const CARDS_PER_PAGE = 24;
+
+/** How many result cards this URL shows: CARDS_PER_PAGE × `stranitsa` (1–100). */
+export function cardsShown(sp: URLSearchParams): number {
+  const n = Number.parseInt(sp.get('stranitsa') ?? '1', 10);
+  return Math.min(Math.max(Number.isFinite(n) ? n : 1, 1), 100) * CARDS_PER_PAGE;
+}
+
+/** ‹Покажи още›: the same view with the next step of cards. */
+export function moreCardsHref(viewHref: string, shown: number): string {
+  return `${viewHref}${viewHref.includes('?') ? '&' : '?'}stranitsa=${shown / CARDS_PER_PAGE + 1}`;
+}
+
 export const signInHref = (next: string) => `/vhod?next=${encodeURIComponent(next)}`;
 export const registerHref = (next: string) => `/registratsiya?next=${encodeURIComponent(next)}`;

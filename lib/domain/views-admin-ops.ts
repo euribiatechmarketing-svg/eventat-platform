@@ -491,12 +491,15 @@ type ClientRow = {
 
 async function clientRows(q: Queryable): Promise<ClientRow[]> {
   const rows = await q.execute<ClientRow>(sql`
+    with bk as (select client_id, count(*)::int as n from booking where paid_at is not null group by client_id),
+      paid as (select b.client_id, sum(c.amount_cents) as s from charge c join booking b on b.id = c.booking_id where c.status = 'succeeded' group by b.client_id),
+      refunded as (select b.client_id, sum(r.amount_cents) as s from refund r join booking b on b.id = r.booking_id where r.status = 'succeeded' group by b.client_id),
+      disp as (select b.client_id, count(*)::int as n from dispute d join booking b on b.id = d.booking_id where d.status in ('collecting', 'awaiting_decision') group by b.client_id)
     select u.id, u.name, u.email, u.phone, u.created_at, u.banned, cp.client_type, ci.name as city, ci.slug as city_slug,
-      (select count(*)::int from booking b where b.client_id = u.id and b.paid_at is not null) as bookings,
-      (select coalesce(sum(c.amount_cents), 0) from charge c join booking b on b.id = c.booking_id where b.client_id = u.id and c.status = 'succeeded')
-        - (select coalesce(sum(r.amount_cents), 0) from refund r join booking b on b.id = r.booking_id where b.client_id = u.id and r.status = 'succeeded') as spent,
-      (select count(*)::int from dispute d join booking b on b.id = d.booking_id where b.client_id = u.id and d.status in ('collecting', 'awaiting_decision')) as open_disputes
+      coalesce(bk.n, 0) as bookings, coalesce(paid.s, 0) - coalesce(refunded.s, 0) as spent, coalesce(disp.n, 0) as open_disputes
     from "user" u left join client_profile cp on cp.user_id = u.id left join city ci on ci.id = cp.city_id
+      left join bk on bk.client_id = u.id left join paid on paid.client_id = u.id left join refunded on refunded.client_id = u.id
+      left join disp on disp.client_id = u.id
     where u.role = 'client' and u.deleted_at is null
     order by u.created_at desc`);
   return rows.map(r => ({ ...r, created_at: toDate(r.created_at) }));
@@ -511,7 +514,10 @@ export function clientBadge(c: { banned: boolean; openDisputes: number }): { lab
 
 export const CLIENT_TYPE_LABEL: Record<string, string> = { private: 'Частно лице', business: 'Бизнес клиент' };
 
-export async function adminClientList(actor: AnyActor, a: { tab: ClientTab; city?: string | null; registered?: ClientRegistered; q?: string | null }, q: Queryable = db) {
+/** Rows per ‹Покажи още› step on /admin/klienti (`?stranitsa=2` = the first 100). */
+export const CLIENTS_PER_PAGE = 50;
+
+export async function adminClientList(actor: AnyActor, a: { tab: ClientTab; city?: string | null; registered?: ClientRegistered; q?: string | null; page?: number }, q: Queryable = db) {
   assertTeamMember(actor);
   const at = await now();
   const today = sofiaDate(at);
@@ -541,7 +547,8 @@ export async function adminClientList(actor: AnyActor, a: { tab: ClientTab; city
   return {
     counts: { all: all.length, withBookings: all.filter(c => c.bookings > 0).length, business: all.filter(c => c.client_type === 'business').length, newThisMonth: all.filter(c => c.created_at >= monthStart).length },
     tabCounts: { vsichki: base.length, 's-rezervatsiya': base.filter(c => c.bookings > 0).length, biznes: base.filter(c => c.client_type === 'business').length },
-    rows: tabbed.map(c => ({
+    hasMore: tabbed.length > CLIENTS_PER_PAGE * Math.max(1, a.page ?? 1),
+    rows: tabbed.slice(0, CLIENTS_PER_PAGE * Math.max(1, a.page ?? 1)).map(c => ({
       id: c.id, name: c.name, email: c.email, cityName: c.city ?? '', typeLabel: CLIENT_TYPE_LABEL[c.client_type ?? 'private'],
       bookings: c.bookings, spentCents: int(c.spent), badge: clientBadge({ banned: c.banned, openDisputes: c.open_disputes }),
     })),

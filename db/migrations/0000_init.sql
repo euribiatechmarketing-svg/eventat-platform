@@ -1474,6 +1474,7 @@ CREATE INDEX "audit_entity_idx" ON "audit_log" USING btree ("entity","entity_id"
 CREATE INDEX "audit_actor_idx" ON "audit_log" USING btree ("actor_id");--> statement-breakpoint
 CREATE INDEX "email_outbox_status_idx" ON "email_outbox" USING btree ("status","created_at");--> statement-breakpoint
 CREATE INDEX "email_outbox_user_idx" ON "email_outbox" USING btree ("to_user_id");--> statement-breakpoint
+CREATE INDEX "email_outbox_created_idx" ON "email_outbox" USING btree ("created_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "email_outbox_dedupe_idx" ON "email_outbox" USING btree ("dedupe_key");--> statement-breakpoint
 CREATE INDEX "job_due_idx" ON "job" USING btree ("status","run_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "job_dedupe_idx" ON "job" USING btree ("dedupe_key");--> statement-breakpoint
@@ -1526,6 +1527,10 @@ CREATE INDEX "booking_partner_date_status_idx" ON "booking" USING btree ("partne
 CREATE INDEX "booking_client_date_idx" ON "booking" USING btree ("client_id","event_date");--> statement-breakpoint
 CREATE INDEX "booking_status_due_idx" ON "booking" USING btree ("status","payment_due_at");--> statement-breakpoint
 CREATE INDEX "booking_batch_date_idx" ON "booking" USING btree ("batch_date") WHERE status in ('confirmed', 'completed', 'cancelled');--> statement-breakpoint
+CREATE INDEX "booking_event_date_idx" ON "booking" USING btree ("event_date");--> statement-breakpoint
+CREATE INDEX "booking_status_event_date_idx" ON "booking" USING btree ("status","event_date");--> statement-breakpoint
+CREATE INDEX "booking_approved_at_idx" ON "booking" USING btree ("approved_at","created_at");--> statement-breakpoint
+CREATE INDEX "booking_paid_at_idx" ON "booking" USING btree ("paid_at") WHERE paid_at is not null;--> statement-breakpoint
 CREATE UNIQUE INDEX "cancellation_booking_key" ON "cancellation" USING btree ("booking_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "partner_cancellation_request_pending_key" ON "partner_cancellation_request" USING btree ("booking_id") WHERE status = 'pending';--> statement-breakpoint
 CREATE INDEX "payment_extension_booking_idx" ON "payment_extension" USING btree ("booking_id");--> statement-breakpoint

@@ -11,7 +11,7 @@ import { SearchBar } from '../../_components/SearchBar';
 import { barMenus, searchPageHref, withoutQuery } from '../../_components/bar';
 import { Chips, Sort, VCard, Zero } from '../../_components/Results';
 import { TipIcon } from '../../_components/icons';
-import { Num, RichText, hereUrl, toSearch } from '../../_components/text';
+import { Num, RichText, cardsShown, hereUrl, moreCardsHref, toSearch } from '../../_components/text';
 import { viewerFor } from '../../_components/viewer';
 
 export const dynamic = 'force-dynamic';
@@ -39,7 +39,8 @@ export default async function CategoryPage({ params, searchParams }: Props) {
   const { hero, result: r } = v;
   const pc = { ...p, kategoriya: slug };
   const href = searchPageHref(basePath);
-  const own = clientId && p.data ? await ownOnDate(clientId, r.cards.filter(c => c.busy).map(c => c.partnerId), p.data) : new Map<string, { holdsDate: boolean }>();
+  const shown = cardsShown(sp);
+  const own = clientId && p.data ? await ownOnDate(clientId, r.cards.slice(0, shown).filter(c => c.busy).map(c => c.partnerId), p.data) : new Map<string, { holdsDate: boolean }>();
   const watchable = clientId && r.zero?.dateCaused ? await zeroWatchable(pc, clientId) : true;
   const brief = r.zero?.buttons.find(b => b.kind === 'brief')?.href ?? `/zayavka/otvorena?cat=${slug}`;
 
@@ -83,8 +84,11 @@ export default async function CategoryPage({ params, searchParams }: Props) {
           <Chips chips={r.chips} clearHref={r.clearHref} />
           {r.cards.length > 0 && (
             <div className="v-grid">
-              {r.cards.map(c => <VCard key={c.partnerId} c={c} date={p.data} sabitieId={p.sabitieId} viewer={viewer} ownBooking={!!own.get(c.partnerId)?.holdsDate} />)}
+              {r.cards.slice(0, shown).map(c => <VCard key={c.partnerId} c={c} date={p.data} sabitieId={p.sabitieId} viewer={viewer} ownBooking={!!own.get(c.partnerId)?.holdsDate} />)}
             </div>
+          )}
+          {r.cards.length > shown && (
+            <div className="pub-more"><Link className="btn btn--outline btn--sm" href={moreCardsHref(searchHref(pc, basePath), shown)} scroll={false}>Покажи още</Link></div>
           )}
           {r.zero && <Zero r={r} qs={toQuery(pc)} back={here} viewer={viewer} watchable={watchable} />}
 

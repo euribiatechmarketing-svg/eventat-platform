@@ -18,6 +18,8 @@ const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) 
 export default async function AdminBookings({ searchParams }: { searchParams: SP }) {
   const sp = await searchParams;
   const params = { mesec: one(sp.mesec), kategoriya: one(sp.kategoriya), tab: one(sp.tab), q: one(sp.q), grad: one(sp.grad), 'sabitie-id': one(sp['sabitie-id']) };
+  const page = Math.min(Math.max(Number.parseInt(one(sp.stranitsa) ?? '1', 10) || 1, 1), 100);
+  const shown = ROWS_PER_PAGE * page;
   const self = `/admin/rezervacii${qs(params)}`;
   const actor = await adminActor(self);
   const r = await bookingsRegister(actor, { month: params.mesec, category: params.kategoriya, tab: params.tab, q: params.q, city: params.grad, eventId: params['sabitie-id'] });
@@ -111,7 +113,7 @@ export default async function AdminBookings({ searchParams }: { searchParams: SP
               </tr>
             </thead>
             <tbody>
-              {r.rows.map(b => (
+              {r.rows.slice(0, shown).map(b => (
                 <RowLink key={b.id} href={bookingPath(b.number)}>
                   <td className="c-date"><div className="tbl-event">{dateShort(b.eventDate)}</div><div className="tbl-sub">{b.eventWeekday}</div></td>
                   <td className="c-main"><div className="tbl-event"><CellLink href={bookingPath(b.number)}>{b.eventTypeName} · {b.clientName}</CellLink></div><div className="tbl-sub">{[b.number, b.venue].filter(Boolean).join(' · ')}</div></td>
@@ -124,10 +126,16 @@ export default async function AdminBookings({ searchParams }: { searchParams: SP
             </tbody>
           </table></div>
         ) : <div className="ui-empty">Няма записи в този изглед.</div>}
+        {r.rows.length > shown && (
+          <div className="am-more"><Link className="btn btn--outline btn--sm" href={`/admin/rezervacii${qs({ ...params, stranitsa: String(page + 1) })}`} scroll={false}>Покажи още</Link></div>
+        )}
       </section>
     </div>
   );
 }
+
+/** Register rows per ‹Покажи още› step (`?stranitsa=2` = the first 200 of the month). */
+const ROWS_PER_PAGE = 100;
 
 function qs(p: Record<string, string | undefined>): string {
   const u = new URLSearchParams();

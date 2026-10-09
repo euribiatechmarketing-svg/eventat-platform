@@ -46,6 +46,8 @@ export const emailOutbox = pgTable('email_outbox', {
 }, t => [
   index('email_outbox_status_idx').on(t.status, t.createdAt),
   index('email_outbox_user_idx').on(t.toUserId),
+  // Админ → Имейли: the newest emails first.
+  index('email_outbox_created_idx').on(t.createdAt), // ascending: read backwards for ‹order by created_at desc›
   uniqueIndex('email_outbox_dedupe_idx').on(t.dedupeKey),
 ]);
 
