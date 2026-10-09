@@ -3,10 +3,11 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
-import { decide, remind, requestInfo, setHoldsPayout } from '@/lib/domain/disputes';
+import { decide, remind, requestInfo, setHoldsPayout, type DecideInput } from '@/lib/domain/disputes';
 import { extendPaymentDeadline } from '@/lib/domain/bookings';
 import { getSetting } from '@/lib/domain/settings';
-import { disputeCase } from '@/lib/domain/views-admin-money';
+import { disputeCase, obligationTitle } from '@/lib/domain/views-admin-money';
+import { moneyShort, parseMoney } from '@/lib/format';
 import { setFlash } from '@/lib/flash';
 import { NUMBER_RE, adminActor, casePath, deliverNow, refuse, str } from '../../_money/server';
 
@@ -35,8 +36,23 @@ export async function decideAction(fd: FormData) {
   if (!motive) { await setFlash('Напишете мотива — той отива до клиента и до изпълнителя заедно с решението.', 'error'); redirect(t.page); }
   const opt = t.c.options.find(o => (optionId ? o.id === optionId : !o.id && o.kind === kind));
   if (!opt) redirect(t.page);
+  let input: DecideInput = opt.id ? { disputeId: t.c.id, optionId: opt.id, motive } : { disputeId: t.c.id, kind: opt.kind, title: opt.label, motive };
+  if (!opt.id && opt.compose === 'obligation') {
+    // ‹Задължи {страна} да …›: the team writes what the side has to do.
+    const what = str(fd.get('obligation')).trim().slice(0, 300);
+    if (!what) redirect(t.page);
+    input = { ...input, title: obligationTitle(opt.label, what) };
+  } else if (!opt.id && opt.compose === 'refund') {
+    // ‹Частично възстановяване — 450 €›: more than nothing, never more than was paid.
+    const cents = parseMoney(str(fd.get('refund')));
+    if (cents === null || cents <= 0 || cents > t.c.paid) { await setFlash('Проверете сумата за връщане', 'error'); redirect(t.page); }
+    input = {
+      ...input, refundCents: cents, title: `${opt.label} — ${moneyShort(cents)}`,
+      detail: `${moneyShort(cents)} към ${t.c.clientName}, ${moneyShort(t.c.paid - cents)} остават за ${t.c.partnerName}.`,
+    };
+  }
   try {
-    await decide(t.actor, opt.id ? { disputeId: t.c.id, optionId: opt.id, motive } : { disputeId: t.c.id, kind: opt.kind, title: opt.label, motive });
+    await decide(t.actor, input);
   } catch (e) { return refuse(e, t.page); }
   await deliverNow();
   await done('/admin/sporove', 'Решението е изпратено до двете страни');

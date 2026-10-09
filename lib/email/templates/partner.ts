@@ -713,7 +713,7 @@ export const vendorTicketClientOpened: EmailTemplate<TicketClientOpenedVars> = {
       ['Причина', v.reason],
       ['Срок за позиция', '48 часа'],
     ],
-    cta: { label: 'Изпрати позицията', href: '/partner/poddrazhka' },
+    cta: { label: 'Изпрати позицията', href: `/partner/poddrazhka/${v.bookingNo}` },
   }),
 };
 
@@ -734,7 +734,7 @@ export const vendorTicketReminder: EmailTemplate<TicketReminderVars> = {
       ['Събитие', `${v.eventType} · ${v.hosts}, ${v.eventDate}`],
       ['Сигнал от', v.clientName],
     ],
-    cta: { label: 'Изпрати позицията', href: '/partner/poddrazhka' },
+    cta: { label: 'Изпрати позицията', href: `/partner/poddrazhka/${v.bookingNo}` },
   }),
 };
 
@@ -1017,7 +1017,7 @@ export const vendorTicketInfoRequest: EmailTemplate<TicketInfoRequestVars> = {
       ['Услуга', v.serviceName],
       ['Сигнал', v.topic],
     ],
-    cta: { label: 'Отговори на екипа', href: '/partner/poddrazhka' },
+    cta: { label: 'Отговори на екипа', href: `/partner/poddrazhka/${v.bookingNo}` },
   }),
 };
 

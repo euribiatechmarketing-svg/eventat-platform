@@ -945,6 +945,8 @@ type Common = {
   daysToEvent: number;
   policy: { policy: BookingRow['cancellationPolicy']; depositPercent: number; freeCancelUntil: DateStr | null };
   disputeOpen: boolean;
+  /** A case was opened on the booking, open or not: one case per booking (SPEC X1/X2, ‹По тази резервация вече има сигнал.›). */
+  hasDispute: boolean;
   conversationId: string | null;
   requestNumber: string;
 };
@@ -1002,6 +1004,7 @@ async function common(q: Queryable, bw: BookingWithSnapshots, at: Date): Promise
     daysToEvent: daysBetween(sofiaDate(at), b.eventDate),
     policy: { policy: b.cancellationPolicy, depositPercent: b.depositPercent, freeCancelUntil: b.freeCancelUntil },
     disputeOpen: !!(await openDisputeOf(q, b.id)),
+    hasDispute: (await q.select({ id: dispute.id }).from(dispute).where(eq(dispute.bookingId, b.id)).limit(1)).length > 0,
     conversationId: conv?.id ?? null,
     requestNumber: bw.request.number,
   };

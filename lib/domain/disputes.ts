@@ -20,7 +20,7 @@ import { ForbiddenError, SYSTEM, assertCan, type Actor, type AnyActor } from './
 import { audit } from './audit';
 import { getSetting } from './settings';
 import { cancelBookingCore, quoteFor } from './cancellation';
-import { syncBookingHold } from './payouts';
+import { reprojectBookingLine, syncBookingHold } from './payouts';
 import { createRefunds, refundableCharges } from './refunds';
 import {
   AftercareError, DISPUTE_REASON_LABEL, bpOf, cancelPending, ctxText, loadBookingCtx, low, mailClient, mailPartner, mailTeam, paidCents,
@@ -513,6 +513,8 @@ export async function decide(actor: Actor, input: DecideInput, tx?: Tx): Promise
         const r = input.refundCents ?? opt?.refundCents ?? (input.refundPercent !== undefined ? percentOf(paid, input.refundPercent) : undefined);
         if (r === undefined || !Number.isSafeInteger(r) || r <= 0 || r > paid) throw new AftercareError('bad_refund_amount');
         await createRefunds(tx, { bookingId: b.id, amountCents: r, reason: 'dispute_decision', actor, disputeId: d.id });
+        // Before the event the line still projects the full price: it now carries what the partner keeps.
+        await reprojectBookingLine(tx, b.id);
         refundCents = r;
         title ??= `Върни разликата — ${moneyShort(r)}`;
         break;
@@ -590,7 +592,9 @@ export async function decide(actor: Actor, input: DecideInput, tx?: Tx): Promise
     await mailPartner(tx, ctx, 'vendor-ticket-decision', {
       caseNo: d.number, eventType: t.eventType, eventTypeDefinite: t.eventTypeDefinite, eventDate: t.eventDate, packageName: t.packageName,
       decision: input.decisionShort?.trim() || title || '', summary: input.partnerSummary?.trim() || input.summary?.trim() || decisionText,
-      account: input.partnerAccount?.trim() || d.summary || d.description, motive,
+      // The team's account of the case; a client's or partner's own statement is not the team's account (it would
+      // reach the partner unquoted, in the filer's first person), so without one the decision itself leads.
+      account: input.partnerAccount?.trim() || d.summary || (d.openedBy === 'team' ? d.description : decisionText), motive,
       payoutLine: input.payoutLine?.trim() || (cancelled ? NO_PAYOUT : PAYOUT_ON_SCHEDULE),
       refunded: money(refundCents), partnerAmount: money(keeps - bpOf(keeps, b.commissionBp ?? 0)),
       decidedBy: admin?.name ?? '', decidedAt: dateTime(at),

@@ -209,10 +209,43 @@ describe('X8 decisions', () => {
     expect(cd.vars).toMatchObject({ heldAmount: money(101_500), heldUntil: date('2025-09-06'), motive: 'услугата беше 3 часа вместо 4.' });
     const [vd] = await emails('vendor-ticket-decision', partner.user.id);
     expect(vd.vars).toMatchObject({ refunded: money(43_500), partnerAmount: money(91_350), decidedBy: adminUser.name, payoutLine: 'Изплащането по резервацията продължава по обичайния график — на 1-во или 15-то число.' });
+    // The partner's email leads with the decision, not with the client's own statement.
+    expect(vd.vars).toMatchObject({ account: `Върни разликата — ${moneyShort(43_500)}` });
     await runJobs();
     expect(await bookingBalances(db, b.id)).toMatchObject({ client_funds: 0, partner_payable: 91_350, commission_revenue: 10_150, provider_held: 91_350 });
-    expect(await emails('client-refund-sent', client.user.id)).toHaveLength(1);
+    const sent = await emails('client-refund-sent', client.user.id);
+    expect(sent).toHaveLength(1);
+    // The booking stands: the refund email does not call it cancelled or speak of a free cancellation period.
+    expect(sent[0].text).toContain(`Върнахме ${money(43_500)} по резервацията при`);
+    expect(sent[0].text).not.toMatch(/анулира|безплатния срок/);
     expect(await failure(decide(admin, { disputeId: d.id, kind: 'no_refund', motive: 'x' }))).toContain('dispute_closed');
+    expect(await db.transaction(tx => releaseBookingFunds({ bookingId: b.id }, tx))).toMatchObject({ releasedCents: 0 });
+    await expectLedgerHealthy();
+  });
+
+  it('partial refund before the event: the line projects what the partner keeps, and K13 releases exactly that', async () => {
+    const { actor: admin } = await createAdmin('admin');
+    const { client, booking: b } = await paidBooking({ eventDate: '2025-09-20' });
+    const d = await openByClient(client.actor, { bookingId: b.id, reason: 'not_as_described', description: 'Менюто е друго.' });
+    await decide(admin, { disputeId: d.id, kind: 'partial_refund', refundCents: 45_000, motive: 'x' });
+    // ‹Получавате› on the partner's booking page and ‹За изплащане› read this line until the event.
+    expect(await lineOf(b.id)).toMatchObject({ status: 'awaiting_event', readyAt: null, baseCents: 100_000, commissionCents: 10_000, amountCents: 90_000 });
+    await runJobs(); // the refund settles
+    expect(await lineOf(b.id)).toMatchObject({ status: 'awaiting_event', amountCents: 90_000 });
+    setTestNow(sofiaInstant('2025-09-21', 0, 1));
+    expect(await db.transaction(tx => releaseBookingFunds({ bookingId: b.id }, tx))).toMatchObject({ releasedCents: 100_000, commissionCents: 10_000 });
+    expect(await lineOf(b.id)).toMatchObject({ status: 'ready', baseCents: 100_000, commissionCents: 10_000, amountCents: 90_000 });
+    await expectLedgerHealthy();
+  });
+
+  it('partial refund of everything paid before the event: no payout is left to project', async () => {
+    const { actor: admin } = await createAdmin('admin');
+    const { client, booking: b } = await paidBooking({ eventDate: '2025-09-20' });
+    const d = await openByClient(client.actor, { bookingId: b.id, reason: 'no_show', description: 'Отказаха.' });
+    await decide(admin, { disputeId: d.id, kind: 'partial_refund', refundCents: 145_000, motive: 'x' });
+    expect(await lineOf(b.id)).toMatchObject({ status: 'cancelled', amountCents: 0 });
+    await runJobs();
+    setTestNow(sofiaInstant('2025-09-21', 0, 1));
     expect(await db.transaction(tx => releaseBookingFunds({ bookingId: b.id }, tx))).toMatchObject({ releasedCents: 0 });
     await expectLedgerHealthy();
   });
@@ -232,6 +265,9 @@ describe('X8 decisions', () => {
     await runJobs();
     expect(await bookingBalances(db, b.id)).toMatchObject({ client_funds: 0, provider_held: 0 });
     expect((await lineOf(b.id)).status).toBe('cancelled');
+    const [sent] = await emails('client-refund-sent', client.user.id);
+    expect(sent.text).toContain('по анулираната резервация при');
+    expect(sent.text).not.toContain('безплатния срок');
     await expectLedgerHealthy();
   });
 

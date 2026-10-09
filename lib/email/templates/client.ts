@@ -630,7 +630,7 @@ export const clientDisputeOpened: EmailTemplate<DisputeOpenedVars> = {
       ['Подаден', v.openedAt],
       ['Задържани', v.heldAmount],
     ],
-    cta: { label: 'Моите сигнали', href: '/akaunt/poddrazhka' },
+    cta: { label: 'Моите сигнали', href: `/akaunt/poddrazhka/${v.bookingNo}` },
   }),
 };
 
@@ -648,7 +648,7 @@ export const clientDisputeInfoRequest: EmailTemplate<DisputeInfoRequestVars> = {
       'Средствата по резервацията остават задържани, докато случаят се разглежда.',
     ],
     details: [['Резервация №', v.bookingNo], ['Изпълнител', v.partnerName], ['Сигнал', v.topic]],
-    cta: { label: 'Отговори', href: '/akaunt/poddrazhka' },
+    cta: { label: 'Отговори', href: `/akaunt/poddrazhka/${v.bookingNo}` },
   }),
 };
 
@@ -827,7 +827,7 @@ export const clientTicketVendorOpened: EmailTemplate<TicketVendorOpenedVars> = {
       ['Услуга', `Пакет „${v.packageName}“`],
       ['Срок за отговор', v.replyBy],
     ],
-    cta: { label: 'Отговори на екипа', href: '/akaunt/poddrazhka' },
+    cta: { label: 'Отговори на екипа', href: `/akaunt/poddrazhka/${v.bookingNo}` },
   }),
 };
 
@@ -853,19 +853,21 @@ export const clientTicketReminder: EmailTemplate<TicketReminderVars> = {
       ['Причина', v.reason],
       ['Срок за отговор', v.replyBy],
     ],
-    cta: { label: 'Отговори на екипа', href: '/akaunt/poddrazhka' },
+    cta: { label: 'Отговори на екипа', href: `/akaunt/poddrazhka/${v.bookingNo}` },
   }),
 };
 
 /**
  * policyDefinite: 'умерената'. The prototype's running text is the in-period cancellation case (the default);
  * any other refund (`inFreePeriod: false`: a late cancellation's part, the partner's or the team's
- * cancellation, a case decision) does not claim the policy gave everything back.
+ * cancellation) does not claim the policy gave everything back. decision: the refund comes from a decision
+ * on a case (SPEC §4.9 ‹Решение по сигнал›), so the cancellation sentence does not apply; cancelled: the
+ * booking was cancelled.
  */
 type RefundSentVars = {
   bookingNo: string; partnerName: string; packageName: string; eventDate: string;
   paid: string; paidOn: string; refund: string; cardLast4: string; paymentMethod: string; policyDefinite: string;
-  inFreePeriod?: boolean;
+  inFreePeriod?: boolean; decision?: boolean; cancelled?: boolean;
 };
 export const clientRefundSent: EmailTemplate<RefundSentVars> = {
   key: 'client-refund-sent', audience: 'client', optional: false,
@@ -874,7 +876,9 @@ export const clientRefundSent: EmailTemplate<RefundSentVars> = {
     preheader: `Сумата е преведена към картата, завършваща на ${v.cardLast4}.`,
     trigger: 'Възстановена сума',
     heading: 'Сумата е възстановена',
-    paragraphs: [
+    paragraphs: v.decision ? [
+      `Върнахме ${v.refund} по ${v.cancelled ? 'анулираната резервация' : 'резервацията'} при ${v.partnerName} за ${v.eventDate}. Сумата е преведена към картата, завършваща на ${v.cardLast4} — същата, с която платихте.`,
+    ] : [
       `Върнахме ${v.refund} по анулираната резервация при ${v.partnerName} за ${v.eventDate}. Сумата е преведена към картата, завършваща на ${v.cardLast4} — същата, с която платихте.`,
       (v.inFreePeriod ?? true) ? `Анулирането беше в безплатния срок по ${v.policyDefinite} политика на изпълнителя, затова се връща цялата сума без удръжки.` : '',
     ].filter(Boolean),

@@ -32,8 +32,6 @@ function Num({ text }: { text: string }) {
   return <>{text.split(/(\d+)/).map((p, i) => (/^\d+$/.test(p) ? <span key={i} className="num">{p}</span> : <Fragment key={i}>{p}</Fragment>))}</>;
 }
 
-const thumb = (key: string) => (key.startsWith('/photos/') ? key.replace('/photos/', '/photos/thumbs/') : key);
-
 function Party({ p }: { p: CaseParty }) {
   return (
     <div className={`cs-party${p.vendor ? ' is-vendor' : ''}`}>
@@ -49,8 +47,10 @@ function Party({ p }: { p: CaseParty }) {
           <div className="cs-quote">„{s.body}“<span className="cs-quote-m">{s.meta}</span></div>
           {(s.pics.length > 0 || s.docs.length > 0) && (
             <div className="cs-att">
-              {s.pics.map(k => <a key={k} className="cs-att-i" href={k} target="_blank" rel="noopener" style={{ backgroundImage: `url('${thumb(k)}')` }} aria-label="Снимка" />)}
-              {s.docs.map(d => <span key={d} className="cs-doc">{ICON.doc}{d}</span>)}
+              {s.pics.map(k => <a key={k.href} className="cs-att-i" href={k.href} target="_blank" rel="noopener" style={{ backgroundImage: `url('${k.thumb}')` }} aria-label={k.name} title={k.name} />)}
+              {s.docs.map((d, i) => d.href
+                ? <a key={d.href} className="cs-doc" href={d.href} target="_blank" rel="noopener">{ICON.doc}{d.name}</a>
+                : <span key={`${d.name}${i}`} className="cs-doc">{ICON.doc}{d.name}</span>)}
             </div>
           )}
         </Fragment>
@@ -181,7 +181,7 @@ export default async function AdminCase({ params }: { params: P }) {
                   )}
                 </span></div>
               )}
-              <DecisionForm action={decideAction} disputeId={c.id} number={c.number} options={c.options} />
+              <DecisionForm action={decideAction} disputeId={c.id} number={c.number} options={c.options} paidCents={c.paid} />
               <div className="cs-acts am-case-acts">
                 {c.remind && (c.remind.side === 'partner' ? (
                   <form action={remindAction}>

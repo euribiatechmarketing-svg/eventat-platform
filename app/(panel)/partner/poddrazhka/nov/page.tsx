@@ -1,11 +1,11 @@
 // /partner/poddrazhka/nov?rezervaciya=[nomer] — SCREENS §7 vendor/dispute.html form (guard: partner).
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { PartnerDisputeForm } from '@/components/messaging-support/DisputeForms';
 import { requireRole } from '@/lib/session';
 import { actorFromUser } from '@/lib/domain/actor';
 import { plural } from '@/lib/format';
-import { PARTNER_REASON_OPTIONS, partnerDisputeChoices, supportSettings } from '@/lib/domain/views-messaging-support';
+import { PARTNER_REASON_OPTIONS, existingCaseNumber, partnerDisputeChoices, supportSettings } from '@/lib/domain/views-messaging-support';
 import { openDisputeAction, uploadEvidenceAction } from '../actions';
 
 export const dynamic = 'force-dynamic';
@@ -19,6 +19,9 @@ export default async function PartnerNewCasePage({ searchParams }: { searchParam
   const user = await requireRole('partner', `/partner/poddrazhka/nov${preselect ? `?rezervaciya=${encodeURIComponent(preselect)}` : ''}`);
   const actor = await actorFromUser(user);
   if (!actor.partnerId) notFound();
+  // A booking that already has its case (one per booking) opens the case, as ‹Сигнал до екипа› on the booking does.
+  const existing = preselect ? await existingCaseNumber(actor, preselect) : null;
+  if (existing) redirect(`/partner/poddrazhka/${encodeURIComponent(existing)}`);
   const [choices, s] = await Promise.all([partnerDisputeChoices(actor, preselect ?? undefined), supportSettings()]);
   return (
     <>

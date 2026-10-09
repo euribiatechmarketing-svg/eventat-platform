@@ -2,7 +2,7 @@
 // Client pieces of the admin money screens: filter dropdowns, clickable rows,
 // submit buttons with a pending state, dialogs, the case decision form, the
 // note field that saves on blur.
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useFormStatus } from 'react-dom';
@@ -104,9 +104,9 @@ export function DialogClose({ className, children }: { className: string; childr
 }
 
 /* ---------- the case decision: options, the motive, ‹Приложи решението› ---------- */
-export function DecisionForm({ action, disputeId, number, options }: {
-  action: FormAction; disputeId: string; number: string;
-  options: { id: string | null; kind: string; label: string; description: string | null }[];
+export function DecisionForm({ action, disputeId, number, options, paidCents }: {
+  action: FormAction; disputeId: string; number: string; paidCents: number;
+  options: { id: string | null; kind: string; label: string; description: string | null; compose?: 'obligation' | 'refund' }[];
 }) {
   const [sel, setSel] = useState(0);
   const o = options[sel];
@@ -118,11 +118,19 @@ export function DecisionForm({ action, disputeId, number, options }: {
       <input type="hidden" name="kind" value={o?.kind ?? ''} />
       <div className="res" role="radiogroup" aria-label="Решение">
         {options.map((x, i) => (
-          <label key={i} className={`res-opt${i === sel ? ' is-on' : ''}`}>
-            <input type="radio" name="opt" className="sr-only" checked={i === sel} onChange={() => setSel(i)} />
-            <span className="res-dot" />
-            <span><span className="res-n">{x.label}</span>{x.description ? <span className="res-d">{x.description}</span> : null}</span>
-          </label>
+          <Fragment key={i}>
+            <label className={`res-opt${i === sel ? ' is-on' : ''}`}>
+              <input type="radio" name="opt" className="sr-only" checked={i === sel} onChange={() => setSel(i)} />
+              <span className="res-dot" />
+              <span><span className="res-n">{x.label}</span>{x.description ? <span className="res-d">{x.description}</span> : null}</span>
+            </label>
+            {i === sel && x.compose === 'obligation' && (
+              <div className="am-compose">
+                <input className="fld-i" name="obligation" required maxLength={300} autoComplete="off" aria-label={x.label} />
+              </div>
+            )}
+            {i === sel && x.compose === 'refund' && <PartialRefund paidCents={paidCents} />}
+          </Fragment>
         ))}
       </div>
       <label className="fld cs-motive">
@@ -134,6 +142,23 @@ export function DecisionForm({ action, disputeId, number, options }: {
         <Submit className="btn btn--primary btn--block">Приложи решението</Submit>
       </div>
     </form>
+  );
+}
+
+/* ---------- a partial refund: ‹Връща се› more than nothing and never more than was paid; ‹Задържа се› follows ---------- */
+function PartialRefund({ paidCents }: { paidCents: number }) {
+  const [v, setV] = useState('');
+  const ref = useRef<HTMLInputElement>(null);
+  const cents = parseMoney(v);
+  const ok = cents !== null && cents > 0 && cents <= paidCents;
+  useEffect(() => { ref.current?.setCustomValidity(ok ? '' : 'Проверете сумата за връщане'); }, [ok]);
+  return (
+    <div className="am-compose">
+      <label className="split am-refund"><span>Връща се</span>
+        <span className="rate-f"><input ref={ref} className="rate-in am-refund-in" name="refund" inputMode="decimal" autoComplete="off" value={v} onChange={e => setV(e.target.value)} aria-label="Връща се" aria-invalid={!ok} /><span className="rate-u">€</span></span>
+      </label>
+      <div className="split is-fee"><span>Задържа се</span><b>{ok ? money(paidCents - (cents ?? 0)) : '—'}</b></div>
+    </div>
   );
 }
 

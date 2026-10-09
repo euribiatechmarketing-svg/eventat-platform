@@ -13,6 +13,8 @@ import {
 } from '@/lib/domain/views-admin-money';
 import { AftercareError } from '@/lib/domain/aftercare-shared';
 import { seedDemo } from '@/scripts/seed/run';
+import { prepareBatch } from '@/lib/domain/payouts';
+import { adminBell } from '@/lib/domain/views-panel';
 
 const NOW = sofiaInstant('2025-08-31', 12, 0);
 let admin: Actor, support: Actor;
@@ -170,5 +172,21 @@ describe('emails and reports', () => {
     expect(tie('3 200 € за 4 часа')).toBe('3 200 € за 4 часа');
     expect(refusalText(new AftercareError('motive_required'))).toMatch(/^Напишете мотива/);
     expect(refusalText(new AftercareError('whatever'))).toBe('Действието вече не е възможно');
+  });
+});
+
+describe('admin bell', () => {
+  it('names the batch the payments page offers next, not an older one left unreleased', async () => {
+    try {
+      setTestNow(sofiaInstant('2025-09-14', 9, 30));
+      await prepareBatch('2025-09-15'); // prepared by T17, then nobody releases it
+      setTestNow(sofiaInstant('2025-10-02', 12, 0));
+      const next = (await payoutsOverview(admin)).next;
+      expect(next.batchDate).toBe('2025-10-15');
+      const bell = (await adminBell(admin)).find(i => i.id === 'batch');
+      expect(plain(bell?.title)).toBe('Партида 15 октомври 2025');
+      expect(plain(bell?.body)).toMatch(new RegExp(`^${next.partners} изпълнител.* · `));
+      expect((await adminBell(support)).find(i => i.id === 'batch')).toBeUndefined();
+    } finally { setTestNow(NOW); }
   });
 });
