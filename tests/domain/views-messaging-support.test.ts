@@ -8,8 +8,12 @@ import { openByClient, openByPartner, submitStatement, withdraw } from '@/lib/do
 import {
   caseView, clientDisputeChoices, conversationList, conversationView, dayLabel, listTime, partnerDisputeChoices, partyCases,
 } from '@/lib/domain/views-messaging-support';
+import { eq } from 'drizzle-orm';
+import { db } from '@/db';
+import { media } from '@/db/schema';
 import { createClient } from '../helpers/factories';
 import { clearJobs, paidBooking } from '../helpers/aftercare';
+import { mediaRow } from '../helpers/catalogue';
 
 const NOW = sofiaInstant('2025-08-31', 12, 0);
 beforeEach(async () => { await clearJobs(); setTestNow(NOW); });
@@ -43,6 +47,17 @@ describe('messages', () => {
     const stranger = await createClient();
     await expect(conversationView(stranger.actor, c.id)).rejects.toThrow();
     expect((await conversationList(stranger.actor)).items).toHaveLength(0);
+  });
+
+  it('a message that is only a file previews as the file name', async () => {
+    const { client, partner, booking } = await paidBooking({ status: 'awaiting_payment', line: false });
+    const c = await getOrCreate(client.actor, { bookingId: booking.id });
+    const file = await mediaRow(client.user.id, 'message_attachment', { mime: 'application/pdf' });
+    await db.update(media).set({ originalName: 'plan-na-zalata.pdf' }).where(eq(media.id, file.id));
+    await send(client.actor, { conversationId: c.id, body: '', attachmentMediaId: file.id });
+    expect((await conversationList(partner.actor)).items[0].preview).toBe('plan-na-zalata.pdf');
+    await send(partner.actor, { conversationId: c.id, body: 'Получихме плана.' });
+    expect((await conversationList(client.actor)).items[0].preview).toBe('Получихме плана.');
   });
 });
 

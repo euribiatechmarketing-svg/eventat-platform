@@ -5,7 +5,7 @@ import 'server-only';
 import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import {
-  booking, category, clientEvent, clientProfile, conversation, dispute, disputeAttachment, eventType, media, partner, request, user,
+  booking, category, clientEvent, clientProfile, conversation, dispute, disputeAttachment, eventType, media, message, messageAttachment, partner, request, user,
   type DisputeReason,
 } from '@/db/schema';
 import { now } from '@/lib/clock';
@@ -112,7 +112,10 @@ export async function conversationList(actor: Actor, a: { q?: string; unreadOnly
     a.q || a.unreadOnly ? listConversations(actor, { q: a.q, unreadOnly: a.unreadOnly }) : null,
   ]);
   const list = shown ?? all;
-  const avatars = await avatarUrls(list.items.map(i => i.conversation.partnerId));
+  const [avatars, files] = await Promise.all([
+    avatarUrls(list.items.map(i => i.conversation.partnerId)),
+    lastFileNames(list.items.filter(i => i.lastMessage && !i.lastMessage.body).map(i => i.conversation.id)),
+  ]);
   return {
     totals: all.totals,
     items: list.items.map(i => ({
@@ -122,10 +125,23 @@ export async function conversationList(actor: Actor, a: { q?: string; unreadOnly
       avatarUrl: avatars.get(i.conversation.partnerId) ?? null,
       event: [i.eventTitle, i.eventDate ? fmtDate(i.eventDate) : null].filter(Boolean).join(' · '),
       unread: i.unread,
-      preview: i.lastMessage?.body ?? '',
+      // A message that is only a file previews as the file's name.
+      preview: i.lastMessage?.body || files.get(i.conversation.id) || '',
       time: i.lastMessage ? listTime(i.lastMessage.at, today) : '',
     })),
   };
+}
+
+/** The file name of each conversation's last message (for messages sent with a file and no text). */
+async function lastFileNames(conversationIds: string[]): Promise<Map<string, string>> {
+  if (!conversationIds.length) return new Map();
+  const rows = await db.selectDistinctOn([message.conversationId], { conversationId: message.conversationId, name: media.originalName })
+    .from(message)
+    .innerJoin(messageAttachment, eq(messageAttachment.messageId, message.id))
+    .innerJoin(media, eq(media.id, messageAttachment.mediaId))
+    .where(inArray(message.conversationId, conversationIds))
+    .orderBy(message.conversationId, desc(message.createdAt));
+  return new Map(rows.filter(r => r.name).map(r => [r.conversationId, r.name as string]));
 }
 
 type Badge = { label: string; tone: 'success' | 'primary' | 'warning' };

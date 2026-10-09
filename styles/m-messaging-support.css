@@ -232,7 +232,9 @@
 .msg-body > :first-child { margin-top: auto; }
 .msg-b, .vmsg-b { white-space: pre-line; overflow-wrap: anywhere; }
 .vmsg-conv { color: inherit; text-decoration: none; }
-.vmsg-conv-x { overflow-wrap: anywhere; }
+/* the prototype's previews end in ‹…› after two lines */
+.vmsg-conv-x { overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+.vmsg-conv-p > .vmsg-conv-x { min-width: 0; }
 
 /* the search boxes are real inputs */
 .msg-search input, .vmsg-find input {
