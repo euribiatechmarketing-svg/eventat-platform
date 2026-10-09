@@ -10,8 +10,8 @@ import { now } from '@/lib/clock';
 import { date, dateShort, dateTime, money, moneyShort, sofiaDate } from '@/lib/format';
 import { shortName } from '@/lib/initials';
 import { requireTeam } from '../../_ops/guard';
-import { Badge, fromToday, initials, monthYearShort, n, Email } from '../../_ops/fmt';
-import { ActionDialog, MailLink, NoteOnBlur, RowLink } from '../../_ops/ui';
+import { Badge, Dots, Num, fromToday, initials, monthYearShort, n, Email } from '../../_ops/fmt';
+import { ActionDialog, MailLink, NoteOnBlur, RowLink, TopbarTitleText } from '../../_ops/ui';
 import { addClientNoteAction, blockClientAction } from '../actions';
 
 export const metadata = { title: 'Профил на клиент' };
@@ -34,23 +34,28 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
     d.reqCounts.waiting ? `${n(d.reqCounts.waiting, 'чака', 'чакат')} отговор` : null,
     d.reqCounts.awaitingPayment ? `${n(d.reqCounts.awaitingPayment, 'чака', 'чакат')} плащане` : null,
     d.reqCounts.declined ? n(d.reqCounts.declined, 'отказана', 'отказани') : null,
-  ].filter(Boolean).join(' · ');
+  ].filter((x): x is string => !!x);
   const paidTotal = d.bookings.reduce((s, b) => s + b.amountCents, 0);
   const due = d.state.reviewsDue[0];
   const events = [...d.events.filter(e => e.upcoming), ...d.events.filter(e => !e.upcoming).reverse()];
+  // admin/client.html order: what is coming first (soonest first), then what is over (latest first); requests grouped by event, newest first.
+  const bookings = [...d.bookings.filter(b => b.upcoming), ...d.bookings.filter(b => !b.upcoming).reverse()];
+  const eventOrder = new Map(events.map((e, i) => [e.id, i]));
+  const requests = [...d.requests].sort((a, b) => (eventOrder.get(a.eventId) ?? 99) - (eventOrder.get(b.eventId) ?? 99) || b.sentAt.getTime() - a.sentAt.getTime());
 
   return (
     <div className="ops-page">
+      <TopbarTitleText text={`Клиент · ${c.name}`} short={c.name} />
       <Link className="crumb" href="/admin/klienti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6" /></svg>Клиенти</Link>
       <div className="page-head">
         <div>
           <h1 className="page-title">Профил на клиент</h1>
-          <p className="page-sub">{[c.typeLabel, c.cityName, `регистрация от ${date(c.createdAt)}`].filter(Boolean).join(' · ')}</p>
+          <p className="page-sub"><Dots parts={[c.typeLabel, c.cityName, `регистрация от ${date(c.createdAt)}`]} /></p>
         </div>
         <div className="page-head-right"><Badge tone={c.badge.tone}>{c.badge.label}</Badge></div>
       </div>
 
-      <div className={`gmv${finance ? '' : ' ops-gmv--3'}`} style={{ marginBottom: 20 }}>
+      <div className={`gmv ops-gmv--client${finance ? '' : ' ops-gmv--3'}`} style={{ marginBottom: 20 }}>
         {finance && (
           <div className="gmv-cell gmv-cell--lead">
             <span className="gmv-l">Похарчени общо</span>
@@ -66,7 +71,7 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
         <div className="gmv-cell">
           <span className="gmv-l">Заявки</span>
           <span className="gmv-v">{d.requests.length}</span>
-          {reqParts && <span className="gmv-d is-flat">{reqParts}</span>}
+          {reqParts.length > 0 && <span className="gmv-d is-flat"><Dots parts={reqParts} /></span>}
         </div>
         <div className="gmv-cell">
           <span className="gmv-l">Събития</span>
@@ -81,8 +86,8 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
             <div className="cprof-id">
               <span className="avatar avatar--lg">{initials(c.name)}</span>
               <div>
-                <div className="cprof-id-n">{c.name}</div>
-                <div className="cprof-id-s">{[c.typeLabel, c.cityName, c.email].filter(Boolean).join(' · ')}</div>
+                <div className="cprof-id-n"><Num>{c.name}</Num></div>
+                <div className="cprof-id-s"><Dots parts={[c.typeLabel, c.cityName, c.email]} /></div>
               </div>
               <div className="cprof-id-end">
                 <span className="cprof-id-l">Клиент от</span>
@@ -112,7 +117,7 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
                 </span>
                 <span>
                   <span className="cprof-ev-n">{e.title}</span>
-                  <span className="cprof-ev-s">{[e.place, e.guests ? n(e.guests, 'гост', 'гости') : null].filter(Boolean).join(' · ')}</span>
+                  <span className="cprof-ev-s"><Dots parts={[e.place, e.guests ? n(e.guests, 'гост', 'гости') : null]} /></span>
                 </span>
                 <span className="cprof-ev-end">
                   <span className="cprof-ev-when">{fromToday(e.date, today, at)}</span>
@@ -132,12 +137,12 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
                 <table className="tbl ops-tbl">
                   <thead><tr><th>Резервация</th><th>Изпълнител</th><th style={{ textAlign: 'right' }}>Сума</th>{finance && <th style={{ textAlign: 'right' }}>Комисиона</th>}<th>Статус</th></tr></thead>
                   <tbody>
-                    {d.bookings.map(b => (
+                    {bookings.map(b => (
                       <RowLink key={b.number} href={`/admin/rezervacii/${encodeURIComponent(b.number)}`}>
-                        <td><Link className="tbl-event cprof-link ops-link" href={`/admin/rezervacii/${encodeURIComponent(b.number)}`}>{b.number}</Link><div className="tbl-sub">{b.eventTitle} · {dateShort(b.eventDate)}</div></td>
+                        <td><Link className="tbl-event cprof-link ops-link" href={`/admin/rezervacii/${encodeURIComponent(b.number)}`}>{b.number}</Link><div className="tbl-sub"><Dots parts={[b.eventTitle, dateShort(b.eventDate)]} /></div></td>
                         <td><div className="tbl-event">{b.partnerName}</div><div className="tbl-sub">{b.serviceTitle}</div></td>
-                        <td className="num">{money(b.amountCents)}</td>
-                        {finance && <td className="num strong">{money(b.commissionCents)}</td>}
+                        <td className="num" data-l="Сума">{money(b.amountCents)}</td>
+                        {finance && <td className="num strong" data-l="Комисиона">{money(b.commissionCents)}</td>}
                         <td><Badge tone={BOOKING_ADMIN[b.status]?.tone ?? ''}>{BOOKING_ADMIN[b.status]?.label}</Badge></td>
                       </RowLink>
                     ))}
@@ -157,13 +162,13 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
                 <table className="tbl ops-tbl">
                   <thead><tr><th>Заявка</th><th>Изпълнител</th><th>Събитие</th><th style={{ textAlign: 'right' }}>Сума</th><th>Статус</th></tr></thead>
                   <tbody>
-                    {d.requests.map(r => {
+                    {requests.map(r => {
                       const cells = (
                         <>
                           <td>{r.hasBooking ? <Link className="tbl-event cprof-link ops-link" href={`/admin/rezervacii/${encodeURIComponent(r.number)}`}>{r.number}</Link> : <div className="tbl-event">{r.number}</div>}<div className="tbl-sub">{dateShort(r.sentAt)}</div></td>
                           <td><div className="tbl-event">{r.partnerName}</div><div className="tbl-sub">{r.categoryName}</div></td>
-                          <td className="muted">{r.eventTitle}</td>
-                          <td className="num">{r.amountCents != null ? money(r.amountCents) : '—'}</td>
+                          <td className="muted" data-l="Събитие">{r.eventTitle}</td>
+                          <td className="num" data-l="Сума">{r.amountCents != null ? money(r.amountCents) : '—'}</td>
                           <td><Badge tone={r.badge.tone}>{r.badge.label}</Badge></td>
                         </>
                       );
@@ -186,7 +191,7 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
                   submitClass="btn btn--danger" action={blockClientAction} hidden={{ clientId: c.id }}>
                   <div className="cprof-id" style={{ borderBottom: 0, paddingBottom: 0, marginBottom: 0 }}>
                     <span className="avatar">{initials(c.name)}</span>
-                    <div><div className="cprof-id-n" style={{ fontSize: 18 }}>{c.name}</div><div className="cprof-id-s">{c.email}</div></div>
+                    <div><div className="cprof-id-n" style={{ fontSize: 18 }}><Num>{c.name}</Num></div><div className="cprof-id-s">{c.email}</div></div>
                   </div>
                 </ActionDialog>
               )}

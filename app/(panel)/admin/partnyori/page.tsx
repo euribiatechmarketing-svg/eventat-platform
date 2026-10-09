@@ -2,12 +2,14 @@
 // recently approved, active and deactivated partners; the oldest application in the side panel.
 import Link from 'next/link';
 import '@/styles/m-admin-ops.css';
+import { AdminSearch } from '../_ops/AdminSearch';
+import { Suspense } from 'react';
 import { can } from '@/lib/domain/actor';
 import { CHECK_LIST_LABEL, adminPartnerDetail, adminPartnerList, type PartnerTab } from '@/lib/domain/views-admin-ops';
 import { now } from '@/lib/clock';
 import { moneyShort } from '@/lib/format';
 import { requireTeam } from '../_ops/guard';
-import { Badge, ago, initials, wait } from '../_ops/fmt';
+import { Badge, Dots, Num, ago, initials, wait } from '../_ops/fmt';
 import { ActionDialog, ActionForm, FilterMenu, Submit } from '../_ops/ui';
 import { CheckRow, DecisionDialogs, NotesCard } from './_parts';
 import { invitePartnerAction, requestPartnersExportAction } from './actions';
@@ -43,7 +45,7 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
       <span className="avatar">{initials(r.name)}</span>
       <span>
         <span className="rec-n">{r.name}</span>
-        <span className="rec-s">{[r.categoryName, r.cityName, r.status === 'submitted' ? r.contactName : null].filter(Boolean).join(' · ')}</span>
+        <span className="rec-s"><Dots parts={[r.categoryName, r.cityName, r.status === 'submitted' ? r.contactName : null]} /></span>
       </span>
       {r.status === 'submitted' ? (
         <span className="rec-meta">
@@ -90,6 +92,7 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
         </div>
       </div>
 
+      <Suspense><AdminSearch inPage /></Suspense>
       <div className="toolbar">
         <nav className="tab-bar">
           {TABS.map(t => (
@@ -99,7 +102,7 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
           ))}
         </nav>
         <div className="toolbar-right">
-          <FilterMenu label={category?.name ?? 'Категория'} icon="layers"
+          <FilterMenu label={category?.name ?? 'Категория'} icon="filter"
             options={[{ label: 'Всички категории', href: href({ kategoriya: '' }), on: !category }, ...data.categories.map(c => ({ label: c.name, href: href({ kategoriya: c.slug }), on: category?.slug === c.slug }))]} />
           <FilterMenu label={city?.name ?? 'Град'} icon="pin"
             options={[{ label: 'Всички градове', href: href({ grad: '' }), on: !city }, ...data.cities.map(c => ({ label: c.name, href: href({ grad: c.slug }), on: city?.slug === c.slug }))]} />
@@ -131,9 +134,9 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
               <div style={{ display: 'flex', alignItems: 'center', gap: 14, paddingBottom: 18, marginBottom: 16, borderBottom: '1px solid var(--app-line)' }}>
                 <span className="avatar avatar--lg">{initials(selected.partner.businessName)}</span>
                 <div>
-                  <Link href={`/admin/partnyori/${selected.partner.id}`} className="ops-link" style={{ fontFamily: 'var(--font-display)', fontWeight: 'var(--fw-bold)' as never, fontSize: 20, color: 'var(--primary-900)' }}>{selected.partner.businessName}</Link>
+                  <Link href={`/admin/partnyori/${selected.partner.id}`} className="ops-link" style={{ fontFamily: 'var(--font-display)', fontWeight: 'var(--fw-bold)' as never, fontSize: 20, color: 'var(--primary-900)' }}><Num>{selected.partner.businessName}</Num></Link>
                   <div style={{ fontSize: 12.5, color: 'var(--neutral-600)', marginTop: 3 }}>
-                    {[selected.categoryName, selected.cityName, selected.partner.submittedAt ? `подадена ${ago(selected.partner.submittedAt, at)}` : null].filter(Boolean).join(' · ')}
+                    <Dots parts={[selected.categoryName, selected.cityName, selected.partner.submittedAt ? `подадена ${ago(selected.partner.submittedAt, at)}` : null]} />
                   </div>
                 </div>
               </div>
@@ -154,7 +157,7 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
               <DecisionDialogs partnerId={selected.partner.id} name={selected.partner.businessName} />
             </section>
 
-            <NotesCard partnerId={selected.partner.id} notes={selected.notes} back={back} />
+            <NotesCard partnerId={selected.partner.id} notes={selected.notes} back={back} editable={false} />
           </aside>
         )}
       </div>

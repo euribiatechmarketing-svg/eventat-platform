@@ -2,11 +2,13 @@
 // badge (D96: ‹Блокиран› > ‹Отворен спор› > ‹Активен›; the type stays in the sub-line), demand and sources.
 import Link from 'next/link';
 import '@/styles/m-admin-ops.css';
+import { AdminSearch } from '../_ops/AdminSearch';
+import { Suspense } from 'react';
 import { can } from '@/lib/domain/actor';
 import { adminClientList, type ClientRegistered, type ClientTab } from '@/lib/domain/views-admin-ops';
 import { moneyShort } from '@/lib/format';
 import { requireTeam } from '../_ops/guard';
-import { Badge, initials } from '../_ops/fmt';
+import { Badge, Dots, initials } from '../_ops/fmt';
 import { ActionForm, FilterMenu, Submit } from '../_ops/ui';
 import { requestClientsExportAction } from './actions';
 
@@ -55,6 +57,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
         </div>
       </div>
 
+      <Suspense><AdminSearch inPage /></Suspense>
       <div className="toolbar">
         <nav className="tab-bar">
           {TABS.map(t => (
@@ -79,7 +82,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
               <span className="avatar">{initials(c.name)}</span>
               <span>
                 <span className="rec-n">{c.name}</span>
-                <span className="rec-s">{[c.typeLabel, c.cityName, c.email].filter(Boolean).join(' · ')}</span>
+                <span className="rec-s"><Dots parts={[c.typeLabel, c.cityName, c.email]} /></span>
               </span>
               <span className="rec-meta">
                 <span className="rec-col"><span className="rec-l">Резервации</span><span className="rec-v">{c.bookings}</span></span>

@@ -2,12 +2,14 @@
 // services: price + description; edits: ‹Беше› / ‹Става›), what we check, this week, common notes.
 import Link from 'next/link';
 import '@/styles/m-admin-ops.css';
+import { AdminSearch } from '../_ops/AdminSearch';
+import { Suspense } from 'react';
 import { moderationCounts, moderationFilterNames, moderationItems, moderationWeek } from '@/lib/domain/views-admin-ops';
 import { now } from '@/lib/clock';
 import { Icon } from '@/components/ui/Icon';
 import { requireTeam } from '../_ops/guard';
-import { ago, n } from '../_ops/fmt';
-import { ActionDialog, ActionForm, InsertChips, Submit } from '../_ops/ui';
+import { Dots, Num, ago, n } from '../_ops/fmt';
+import { ActionDialog, ActionForm, CommonNotePicks, InsertChips, ReturnNoteField, Submit } from '../_ops/ui';
 import { approveChangeAction, publishRevisionAction, returnRevisionAction } from './actions';
 
 export const metadata = { title: 'Модерация' };
@@ -56,6 +58,7 @@ export default async function ModerationPage({ searchParams }: { searchParams: P
         </div>
       </div>
 
+      <Suspense><AdminSearch inPage /></Suspense>
       {chips.length > 0 && (
         <div className="ui-chips ops-chips">
           {chips.map(c => <Link key={c.href} className="ui-chip ops-chip" href={c.href} scroll={false}>{c.label}<Icon name="close" /></Link>)}
@@ -79,7 +82,7 @@ export default async function ModerationPage({ searchParams }: { searchParams: P
                 <span className="mod-img" style={it.cover ? { backgroundImage: `url('${it.cover}')` } : undefined}></span>
                 <div>
                   <span className="mod-n">{isNew ? it.name : `${it.name}${it.priceChanged ? ' — промяна на цена' : ''}`}</span>
-                  <span className="mod-by">{it.partnerName} · {it.categoryName} · {isNew ? 'нова услуга' : 'редакция'} · подадена {ago(it.submittedAt, at)}</span>
+                  <span className="mod-by"><Dots parts={[it.partnerName, it.categoryName, isNew ? 'нова услуга' : 'редакция', `подадена ${ago(it.submittedAt, at)}`]} /></span>
                   {rows.map((r, i) => (
                     <div className="mod-diff" key={i}>
                       {r.map((p, j) => (
@@ -97,11 +100,11 @@ export default async function ModerationPage({ searchParams }: { searchParams: P
                     <input type="hidden" name="back" value={back} />
                     <Submit className="btn btn--primary btn--sm ops-fill">{isNew ? 'Публикувай' : 'Одобри'}</Submit>
                   </ActionForm>
-                  <ActionDialog trigger="Върни с бележка" triggerClass="btn btn--outline btn--sm" title={it.name} submitLabel="Върни с бележка"
+                  <ActionDialog trigger="Върни с бележка" triggerClass="btn btn--outline btn--sm" title={<Num>{it.name}</Num>} submitLabel="Върни с бележка"
                     action={returnRevisionAction} hidden={{ revisionId: it.revisionId, back }}>
                     <label className="fld">
                       <span className="fld-l">Бележка до изпълнителя<span className="required-mark">*</span></span>
-                      <textarea className="fld-i fld-i--area" name="note" rows={4} maxLength={2000} required />
+                      <ReturnNoteField />
                     </label>
                     <div className="ops-chips-l">Чести бележки</div>
                     <InsertChips items={COMMON_NOTES} />
@@ -133,7 +136,7 @@ export default async function ModerationPage({ searchParams }: { searchParams: P
 
           <section className="dcard">
             <div className="dcard-head"><h2 className="dcard-title" style={{ fontSize: 17 }}>Чести бележки</h2></div>
-            <div className="chips">{COMMON_NOTES.map(t => <span className="chip" key={t}>{t}</span>)}</div>
+            <CommonNotePicks items={COMMON_NOTES} />
           </section>
         </aside>
       </div>

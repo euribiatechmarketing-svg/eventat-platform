@@ -67,7 +67,6 @@ export function Num({ children }: { children: string | number | null | undefined
   return <>{parts.map((p, i) => (i % 2 ? <span key={i} className="num">{p}</span> : <Fragment key={i}>{p}</Fragment>))}</>;
 }
 
-/** ‹МД› for Мария Димитрова, ‹ПН› for Петя и Николай (connectors skipped), ‹СУ› for СУ „Христо Ботев“ (a leading abbreviation stays whole). */
 /** An address that may break after the ‹@› (and only there) when the column is narrow. */
 export function Email({ value }: { value: string }) {
   const at = value.indexOf('@');
@@ -75,9 +74,22 @@ export function Email({ value }: { value: string }) {
   return <>{value.slice(0, at + 1)}<wbr />{value.slice(at + 1)}</>;
 }
 
+/**
+ * A ‹ · › line (‹Фотография · Пловдив · Емилия Стоянова›) whose parts never split: when the column is
+ * narrow the line breaks after a separator, so a name or an address is never cut in two.
+ */
+export function Dots({ parts }: { parts: (string | null | undefined | false)[] }) {
+  const xs = parts.filter((p): p is string => !!p);
+  return <>{xs.map((p, i) => <Fragment key={i}>{i > 0 && ' · '}<span className="ops-nb">{p}</span></Fragment>)}</>;
+}
+
+/**
+ * ‹МД› for Мария Димитрова, ‹ПН› for Петя и Николай and ‹ТМ› for Тортите на Мими (short joining words
+ * skipped), ‹СУ› for СУ „Христо Ботев“ (a leading abbreviation stays whole).
+ */
 export function initials(name: string): string {
   const words = name.replace(/[„“"]/g, '').split(/\s+/)
-    .filter(w => /[\p{L}\d]/u.test(w) && !/^(и|&|and)$/i.test(w));
+    .filter(w => /[\p{L}\d]/u.test(w) && !/^(и|на|за|от|в|във|с|със|по|&|and|of|the)$/i.test(w));
   if (words.length > 1 && /^[А-ЯЁ]{2,3}$/u.test(words[0])) return words[0];
   const letters = words.slice(0, 2).map(w => [...w].find(ch => /[\p{L}\d]/u.test(ch)) ?? '').join('');
   return letters.toLocaleUpperCase('bg');

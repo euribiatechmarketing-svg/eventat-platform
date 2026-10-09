@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { dateTime } from '@/lib/format';
 import { shortName } from '@/lib/initials';
 import { ActionDialog, ActionForm, NoteOnBlur } from '../_ops/ui';
-import { initials } from '../_ops/fmt';
+import { Num, initials } from '../_ops/fmt';
 import { addPartnerNoteAction, decidePartnerAction, setCheckAction } from './actions';
 
 const OkBox = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6L9 17l-5-5" /></svg>;
@@ -27,17 +27,17 @@ export function DecisionDialogs({ partnerId, name }: { partnerId: string; name: 
   return (
     <>
       <div style={{ display: 'flex', gap: 9, marginTop: 20 }}>
-        <ActionDialog trigger="Одобри" triggerClass="btn btn--primary" triggerStyle={{ flex: 1 }} title={name} submitLabel="Одобри"
+        <ActionDialog trigger="Одобри" triggerClass="btn btn--primary" triggerStyle={{ flex: 1 }} title={<Num>{name}</Num>} submitLabel="Одобри"
           action={decidePartnerAction} hidden={{ partnerId, decision: 'approve' }}>
           <NoteField required={false} />
         </ActionDialog>
-        <ActionDialog trigger="Върни за поправка" triggerClass="btn btn--outline" title={name} submitLabel="Върни за поправка"
+        <ActionDialog trigger="Върни за поправка" triggerClass="btn btn--outline" title={<Num>{name}</Num>} submitLabel="Върни за поправка"
           action={decidePartnerAction} hidden={{ partnerId, decision: 'return' }}>
           <NoteField required />
         </ActionDialog>
       </div>
       <ActionDialog trigger="Откажи заявката" triggerClass="btn btn--ghost btn--sm btn--block" triggerStyle={{ marginTop: 8, color: 'var(--danger-600)' }}
-        title={name} submitLabel="Откажи заявката" submitClass="btn btn--danger" action={decidePartnerAction} hidden={{ partnerId, decision: 'reject' }}>
+        title={<Num>{name}</Num>} submitLabel="Откажи заявката" submitClass="btn btn--danger" action={decidePartnerAction} hidden={{ partnerId, decision: 'reject', from: 'list' }}>
         <NoteField required />
       </ActionDialog>
     </>
@@ -101,8 +101,11 @@ export function CheckRow({ c, partnerId, editable, back, openHref }: { c: CheckV
   );
 }
 
-/** ‹Бележки от модерацията› with the team's notes and a field that saves on blur. */
-export function NotesCard({ partnerId, notes, back }: { partnerId: string; notes: { id: string; body: string; at: Date; authorName: string }[]; back: string }) {
+/**
+ * ‹Бележки от модерацията› with the team's notes; on the application page also a field that saves on blur
+ * (the queue's side panel only reads them, as in admin/vendors.html).
+ */
+export function NotesCard({ partnerId, notes, back, editable = true }: { partnerId: string; notes: { id: string; body: string; at: Date; authorName: string }[]; back: string; editable?: boolean }) {
   return (
     <section className="dcard">
       <div className="dcard-head"><h2 className="dcard-title" style={{ fontSize: 17 }}>Бележки от модерацията</h2></div>
@@ -115,8 +118,9 @@ export function NotesCard({ partnerId, notes, back }: { partnerId: string; notes
           <div className="rev-text">{x.body}</div>
         </div>
       ))}
-      <NoteOnBlur action={addPartnerNoteAction} label="Вътрешна бележка" hidden={{ partnerId, back }}
-        hint={<div className="cprof-only"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 018 0v3" /></svg><span>Бележката се вижда само от екипа на платформата.</span></div>} />
+      {editable && <NoteOnBlur action={addPartnerNoteAction} label="Вътрешна бележка" hidden={{ partnerId, back }}
+        hint={<div className="cprof-only"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 018 0v3" /></svg><span>Бележката се вижда само от екипа на платформата.</span></div>} />}
+      {!editable && !notes.length && <div className="ui-empty">Няма записи в този изглед.</div>}
     </section>
   );
 }

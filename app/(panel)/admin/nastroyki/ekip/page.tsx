@@ -2,14 +2,16 @@
 // with their last activity (audit log), invites, the permission matrix.
 import Link from 'next/link';
 import '@/styles/m-admin-ops.css';
+import { AdminSearch } from '../../_ops/AdminSearch';
+import { Suspense } from 'react';
 import { ROLE_PERMISSIONS, type TeamPermission } from '@/lib/domain/actor';
 import { listTeam, ROLE_LABEL } from '@/lib/domain/team';
 import { matches, teamMatches } from '@/lib/domain/views-admin-ops';
 import { now } from '@/lib/clock';
-import { monthName, sofiaParts } from '@/lib/format';
+import { daysBetween, monthName, sofiaDate, sofiaParts } from '@/lib/format';
 import { Icon } from '@/components/ui/Icon';
 import { requireTeam } from '../../_ops/guard';
-import { Badge, ago, dayTime, initials } from '../../_ops/fmt';
+import { Badge, Num, ago, dayTime, initials } from '../../_ops/fmt';
 import { ActionDialog, ActionForm, Submit } from '../../_ops/ui';
 import { inviteMemberAction, removeMemberAction, revokeInviteAction } from './actions';
 
@@ -34,7 +36,8 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
   const at = await now();
   const team = await listTeam(actor);
   const members = team.members.filter(m => teamMatches(sp.q, m));
-  const invites = team.invites.filter(i => matches(sp.q, i.email, i.roleLabel, i.inviterName));
+  // oldest invite first, as admin/team.html lists them
+  const invites = team.invites.filter(i => matches(sp.q, i.email, i.roleLabel, i.inviterName)).sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
   const cap = (s: string) => s.charAt(0).toLocaleUpperCase('bg') + s.slice(1);
 
   return (
@@ -48,6 +51,7 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
         </div>
       </div>
 
+      <Suspense><AdminSearch inPage /></Suspense>
       <section className="dcard">
         <div className="dcard-head">
           <h2 className="dcard-title">Хора с достъп</h2>
@@ -64,6 +68,8 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
                   const last = m.lastActivity ?? m.lastActiveAt;
                   const joined = sofiaParts(m.joinedAt);
                   const me = m.userId === user.id;
+                  // ‹Преди 25 минути› over ‹днес, 11:35› today; an older one reads ‹Вчера, 17:40› on its own line
+                  const today = !!last && daysBetween(sofiaDate(last), sofiaDate(at)) === 0;
                   return (
                     <tr key={m.userId}>
                       <td>
@@ -73,13 +79,13 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
                       <td className="tm-mail">{m.email}</td>
                       <td><div className="tbl-event">{m.roleLabel}</div><div className="tbl-sub">{m.roleScope}</div></td>
                       <td>
-                        <div className="tbl-event">{me ? 'Онлайн сега' : last ? cap(ago(last, at)) : '—'}</div>
-                        {last && <div className="tbl-sub">{dayTime(last, at)}</div>}
+                        <div className="tbl-event">{me ? 'Онлайн сега' : !last ? '—' : today ? cap(ago(last, at)) : cap(dayTime(last, at))}</div>
+                        {last && (me || today) && <div className="tbl-sub">{dayTime(last, at)}</div>}
                       </td>
                       <td><Badge tone="success">Активен</Badge></td>
                       <td className="tm-acc">
                         {m.isOwner ? <span className="tm-owner">Собственик</span> : me ? null : (
-                          <ActionDialog trigger="Премахни" triggerClass="btn btn--ghost btn--sm" title={m.name} submitLabel="Премахни" submitClass="btn btn--danger"
+                          <ActionDialog trigger="Премахни" triggerClass="btn btn--ghost btn--sm" title={<Num>{m.name}</Num>} submitLabel="Премахни" submitClass="btn btn--danger"
                             action={removeMemberAction} hidden={{ userId: m.userId }}>
                             <p className="tm-mail" style={{ margin: 0 }}>{m.roleLabel} · {m.email}</p>
                           </ActionDialog>
@@ -144,7 +150,7 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
               {team.matrix.map(row => (
                 <tr key={row.permission}>
                   <td><div className="tm-cap-n">{CAPS[row.permission][0]}</div><div className="tm-cap-d">{CAPS[row.permission][1]}</div></td>
-                  {ROLES.map(r => <td key={r}>{ROLE_PERMISSIONS[r].includes(row.permission) ? <span className="tm-can"><Check /></span> : <span className="tm-cant">—</span>}</td>)}
+                  {ROLES.map(r => <td key={r} data-role={ROLE_LABEL[r]}>{ROLE_PERMISSIONS[r].includes(row.permission) ? <span className="tm-can"><Check /></span> : <span className="tm-cant">—</span>}</td>)}
                 </tr>
               ))}
             </tbody>

@@ -7,7 +7,7 @@ import { can } from '@/lib/domain/actor';
 import { BOOKING_ADMIN, PARTNER_ADMIN, adminSearch } from '@/lib/domain/views-admin-ops';
 import { date, money } from '@/lib/format';
 import { requireTeam } from '../_ops/guard';
-import { Badge, initials, n } from '../_ops/fmt';
+import { Badge, Dots, Num, initials, n } from '../_ops/fmt';
 
 export const metadata = { title: 'Търсене' };
 
@@ -23,7 +23,7 @@ export default async function AdminSearchPage({ searchParams }: { searchParams: 
     <div className="ops-page">
       <div className="page-head">
         <div>
-          <h1 className="page-title">{q ? `„${q}“` : 'Търсене'}</h1>
+          <h1 className="page-title">{q ? <Num>{`„${q}“`}</Num> : 'Търсене'}</h1>
           {q && <p className="page-sub">{[can(actor, 'approve_partners') ? n(r.partners.length, 'изпълнител', 'изпълнители') : null, n(r.clients.length, 'клиент', 'клиенти'), n(r.bookings.length, 'резервация', 'резервации')].filter(Boolean).join(' · ')}</p>}
         </div>
       </div>
@@ -41,7 +41,7 @@ export default async function AdminSearchPage({ searchParams }: { searchParams: 
           {r.partners.map(p => (
             <Link key={p.id} className="rec" href={`/admin/partnyori/${p.id}`}>
               <span className="avatar">{initials(p.name)}</span>
-              <span><span className="rec-n">{p.name}</span><span className="rec-s">{[p.categoryName, p.cityName].filter(Boolean).join(' · ')}</span></span>
+              <span><span className="rec-n">{p.name}</span><span className="rec-s"><Dots parts={[p.categoryName, p.cityName]} /></span></span>
               <span></span>
               <span className="rec-end"><Badge tone={PARTNER_ADMIN[p.status]?.tone ?? ''}>{PARTNER_ADMIN[p.status]?.label}</Badge></span>
             </Link>
@@ -55,7 +55,7 @@ export default async function AdminSearchPage({ searchParams }: { searchParams: 
           {r.clients.map(c => (
             <Link key={c.id} className="rec" href={`/admin/klienti/${c.id}`}>
               <span className="avatar">{initials(c.name)}</span>
-              <span><span className="rec-n">{c.name}</span><span className="rec-s">{[c.typeLabel, c.cityName, c.email].filter(Boolean).join(' · ')}</span></span>
+              <span><span className="rec-n">{c.name}</span><span className="rec-s"><Dots parts={[c.typeLabel, c.cityName, c.email]} /></span></span>
               <span></span>
               <span className="rec-end"><Badge tone={c.badge.tone}>{c.badge.label}</Badge><span className="btn btn--outline btn--sm">Профил</span></span>
             </Link>
@@ -69,7 +69,7 @@ export default async function AdminSearchPage({ searchParams }: { searchParams: 
           {r.bookings.map(b => (
             <Link key={b.number} className="rec" href={`/admin/rezervacii/${encodeURIComponent(b.number)}`}>
               <span className="cat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 10h18M8 2v4M16 2v4" /></svg></span>
-              <span><span className="rec-n">{b.number}</span><span className="rec-s">{b.client} · {b.partner} · {date(b.event_date)}</span></span>
+              <span><span className="rec-n">{b.number}</span><span className="rec-s"><Dots parts={[b.client, b.partner, date(b.event_date)]} /></span></span>
               <span></span>
               <span className="rec-end"><span className="rec-v">{money(b.amount)}</span><Badge tone={BOOKING_ADMIN[b.status]?.tone ?? ''}>{BOOKING_ADMIN[b.status]?.label}</Badge></span>
             </Link>

@@ -167,6 +167,67 @@ export function Submit({ className = 'btn btn--primary', children, name, value, 
   return <button type="submit" className={className} name={name} value={value} formNoValidate={formNoValidate} style={style}>{children}</button>;
 }
 
+/* ---------- the topbar title of a record page (‹Изпълнител · Лунна Фотография›, ‹Клиент · Мария Димитрова›) ----------
+   The shared TopbarTitle takes titles by path prefix only; like the other panel areas, this swaps the text
+   of its node while the page is shown (the short form on a phone, where the topbar has room for the name only)
+   and puts the rail label back when the page goes. */
+export function TopbarTitleText({ text, short }: { text: string; short?: string }) {
+  useEffect(() => {
+    const node = document.querySelector('.shell .topbar .topbar-title')?.firstChild;
+    if (!node || node.nodeType !== Node.TEXT_NODE) return;
+    const before = node.nodeValue;
+    const phone = window.matchMedia('(max-width: 640px)');
+    const set = () => { node.nodeValue = phone.matches && short ? short : text; };
+    set();
+    phone.addEventListener('change', set);
+    return () => {
+      phone.removeEventListener('change', set);
+      if (node.nodeValue === text || node.nodeValue === short) node.nodeValue = before;
+    };
+  }, [text, short]);
+  return null;
+}
+
+/* ---------- ‹Чести бележки› on the moderation page: picked notes start the next ‹Върни с бележка› note ---------- */
+let pickedNotes: string[] = [];
+const pickListeners = new Set<() => void>();
+const notePrefill = () => pickedNotes.map(t => `${t}.`).join(' ');
+
+export function CommonNotePicks({ items }: { items: string[] }) {
+  const [picked, setPicked] = useState<string[]>(pickedNotes);
+  useEffect(() => {
+    const on = () => setPicked([...pickedNotes]);
+    pickListeners.add(on);
+    return () => { pickListeners.delete(on); };
+  }, []);
+  const flip = (t: string) => {
+    pickedNotes = pickedNotes.includes(t) ? pickedNotes.filter(x => x !== t) : [...pickedNotes, t];
+    pickListeners.forEach(f => f());
+  };
+  return (
+    <div className="chips">
+      {items.map(t => (
+        <button key={t} type="button" className={`chip ops-pick${picked.includes(t) ? ' is-on' : ''}`} aria-pressed={picked.includes(t)} onClick={() => flip(t)}>{t}</button>
+      ))}
+    </div>
+  );
+}
+
+/** The required note of ‹Върни с бележка›: starts with the common notes picked on the page. */
+export function ReturnNoteField({ name = 'note' }: { name?: string }) {
+  const [initial] = useState(notePrefill);
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    // once a note is sent, the picks have done their job
+    const form = ref.current?.form;
+    if (!form) return;
+    const sent = () => { if (pickedNotes.length) { pickedNotes = []; pickListeners.forEach(f => f()); } };
+    form.addEventListener('submit', sent);
+    return () => form.removeEventListener('submit', sent);
+  }, []);
+  return <textarea ref={ref} className="fld-i fld-i--area" name={name} rows={4} maxLength={2000} required defaultValue={initial} />;
+}
+
 /* ---------- chips that put a ready-made sentence into the form's note (‹Чести бележки›) ---------- */
 export function InsertChips({ items, field = 'note' }: { items: string[]; field?: string }) {
   return (

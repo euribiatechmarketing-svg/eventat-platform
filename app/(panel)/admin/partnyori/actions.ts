@@ -15,6 +15,8 @@ const back = (fd: FormData) => safeBack(String(fd.get('back') ?? ''), '/admin/pa
 
 const decision = z.object({ partnerId: uuid, decision: z.enum(['approve', 'return', 'reject']), note: z.string().trim().max(2000).default('') });
 const TOAST = { approve: 'Профилът е одобрен', return: 'Профилът е върнат за поправка', reject: 'Заявката е отказана' } as const;
+/** admin/vendors.html words the queue's ‹Откажи заявката› toast longer than the application page does. */
+const LIST_REJECT_TOAST = 'Заявката е отказана — изпратихме имейл с мотива';
 
 /** ‹Одобри› / ‹Върни за поправка› / ‹Откажи заявката› (note required for the last two). */
 export async function decidePartnerAction(fd: FormData) {
@@ -30,7 +32,7 @@ export async function decidePartnerAction(fd: FormData) {
     });
   } catch (e) { return { error: failure(e) }; }
   revalidatePath('/admin', 'layout');
-  await toastBack(TOAST[d.data.decision], '/admin/partnyori');
+  await toastBack(d.data.decision === 'reject' && fd.get('from') === 'list' ? LIST_REJECT_TOAST : TOAST[d.data.decision], '/admin/partnyori');
 }
 
 const check = z.object({ partnerId: uuid, kind: z.enum(['company', 'contacts', 'gallery']), state: z.enum(['ok', 'waiting']) });

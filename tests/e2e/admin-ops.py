@@ -64,6 +64,38 @@ def go(page, path):
     page.goto(BASE + path, wait_until='domcontentloaded')
     page.wait_for_load_state('networkidle')
 
+# Layout checks run in the page: controls on one line, nothing outside the viewport or hidden in a scroller.
+LAYOUT_JS = r"""
+() => {
+  const W = document.documentElement.clientWidth;
+  const out = { scrollWidth: document.documentElement.scrollWidth, wraps: [], cut: [] };
+  const lines = e => {
+    const r = document.createRange(); r.selectNodeContents(e);
+    const tops = [...r.getClientRects()].filter(x => x.width > 1).map(x => Math.round(x.top + x.height / 2)).sort((a, b) => a - b);
+    let n = 0, last = -999; for (const t of tops) { if (t - last > 8) { n++; last = t; } } return n;
+  };
+  for (const e of document.querySelectorAll('.btn, .badge, .chip, .tab-bar-item, .filter-btn, .ops-seg, .topbar-title, .rec-l, .kv-label, .gmv-l, .gmv-d, .side-item, .crumb')) {
+    if (!e.getBoundingClientRect().width || e.closest('[hidden], .side')) continue;
+    if (lines(e) > 1) out.wraps.push((e.innerText || '').trim().replace(/\s+/g, ' ').slice(0, 50));
+  }
+  for (const e of document.querySelectorAll('.content *')) {
+    if (e.closest('svg') || e.children.length && !e.matches('td, .tab-bar-item, .btn, .badge, .chip, .filter-btn')) continue;
+    const r = e.getBoundingClientRect(); if (!r.width || !r.height) continue;
+    let box = { left: 0, right: W }, p = e.parentElement;
+    while (p && p !== document.body) { const st = getComputedStyle(p); if (/(auto|scroll|hidden|clip)/.test(st.overflowX)) { const pr = p.getBoundingClientRect(); box = { left: Math.max(box.left, pr.left), right: Math.min(box.right, pr.right) }; } p = p.parentElement; }
+    if (r.right > box.right + 1 || r.left < box.left - 1) out.cut.push((e.innerText || e.tagName).trim().slice(0, 40));
+  }
+  return out;
+}
+"""
+
+def check_layout(page, path, width):
+    go(page, path)
+    r = page.evaluate(LAYOUT_JS)
+    assert r['scrollWidth'] <= width, f'{path} @{width}: page scrolls sideways ({r["scrollWidth"]})'
+    assert not r['wraps'], f'{path} @{width}: wraps onto a second line: {r["wraps"]}'
+    assert not r['cut'], f'{path} @{width}: cut off or hidden in a scroller: {r["cut"][:6]}'
+
 def reseed():
     env = {**os.environ, 'DATABASE_URL': DB_URL, 'PATH': os.path.dirname(NODE) + os.pathsep + os.environ.get('PATH', '')}
     for script in ['db:reset', 'db:seed']:
@@ -107,6 +139,40 @@ def main():
         assert '/admin/partnyori' in m.url
         ctx.close()
 
+        # ── Layout at both widths (review fixes) ─────────────────────────
+        lunna = one("select id from partner where business_name = 'Лунна Фотография'")['id']
+        maria = one("select id from \"user\" where email = 'maria.dimitrova@gmail.com'")['id']
+        routes = ['/admin', '/admin/partnyori', f'/admin/partnyori/{lunna}', '/admin/moderatsiya', '/admin/klienti', f'/admin/klienti/{maria}',
+                  '/admin/nastroyki', '/admin/nastroyki/ekip', '/admin/tarsene?q=' + quote('Мелодия')]
+        for width, height in [(390, 844), (1440, 900)]:
+            step(f'layout @{width}: no sideways scroll, nothing cut off, no wrapped controls')
+            ctx = b.new_context(viewport={'width': width, 'height': height}, locale='bg-BG', timezone_id='Europe/Sofia')
+            sign_in(ctx, 'admin')
+            lp = ctx.new_page()
+            for path in routes:
+                check_layout(lp, path, width)
+            if width == 390:
+                # phone: tables become stacked rows with labelled amounts; the permission matrix names each role
+                go(lp, f'/admin/klienti/{maria}')
+                expect(lp.locator('.ops-tbl thead').first).to_be_hidden()
+                assert lp.locator('.ops-tbl td[data-l="Комисиона"]').first.evaluate("e => getComputedStyle(e, '::before').content") == '"Комисиона"'
+                expect(lp.locator('.topbar-title')).to_have_text('Мария Димитрова')
+                go(lp, '/admin/nastroyki/ekip')
+                assert lp.locator('.tm-cap td[data-role="Счетоводство"]').first.evaluate("e => getComputedStyle(e, '::after').content") == '"Счетоводство"'
+                go(lp, '/admin/partnyori')
+                expect(lp.locator('a.tab-bar-item:has-text("Деактивирани")')).to_be_in_viewport()
+                # the topbar search hides on a phone; the list repeats it in the page
+                go(lp, '/admin/klienti')
+                expect(lp.locator('.topbar .search')).to_be_hidden()
+                lp.fill('.ops-search--narrow input[name=q]', 'Мария')
+                lp.press('.ops-search--narrow input[name=q]', 'Enter')
+                lp.wait_for_url(re.compile(r'/admin/klienti\?q='))
+                expect(lp.locator('a.rec')).to_have_count(1)
+            else:
+                go(lp, '/admin/klienti')
+                expect(lp.locator('.ops-search--narrow')).to_be_hidden()
+            ctx.close()
+
         # ── Admin session ────────────────────────────────────────────────
         ctx = b.new_context(viewport={'width': 1440, 'height': 900}, locale='bg-BG', timezone_id='Europe/Sofia')
         sign_in(ctx, 'admin')
@@ -115,6 +181,14 @@ def main():
         page.on('response', lambda r: page_errors.append(f'HTTP {r.status} {r.url}') if r.status >= 500 else None)
 
         # ── Dashboard ────────────────────────────────────────────────────
+        step('dashboard: rail icons, initials and the registrations in queue order (admin/dashboard.html)')
+        go(page, '/admin')
+        assert 'M3 21V8l9-5 9 5v13' in page.locator('.side-item:has-text("Изпълнители") svg').inner_html()
+        assert 'M12 3l9.5 17h-19L12 3z' in page.locator('.side-item:has-text("Спорове") svg').inner_html()
+        expect(page.locator('.mini:has-text("Тортите на Мими") .avatar')).to_have_text('ТМ')
+        regs = page.locator('section:has(h2:has-text("Нови регистрации")) .mini-n').all_inner_texts()
+        assert regs[0] == 'Лунна Фотография' and regs[-1] == 'Тортите на Мими', regs
+
         step('dashboard: period, city filter, export')
         go(page, '/admin')
         expect(page.locator('h1.page-title')).to_have_text('Август 2025')
@@ -156,6 +230,28 @@ def main():
         expect(page.locator('a.rec')).to_have_count(1)
         go(page, '/admin/partnyori')
 
+        step('partners: the queue panel reads the notes only; sub-lines keep names whole')
+        expect(page.locator('a.rec.is-sel')).to_contain_text('Лунна Фотография')
+        expect(page.locator('aside form.ops-note')).to_have_count(0)
+        expect(page.locator('a.rec.is-sel .rec-s .ops-nb', has_text='Емилия Стоянова')).to_have_count(1)
+
+        step('application page: prototype wording, record title and the list search in the topbar')
+        go(page, f'/admin/partnyori/{lunna}')
+        expect(page.locator('.topbar-title')).to_have_text('Изпълнител · Лунна Фотография')
+        expect(page.locator('.kv-item:has-text("Фирма") small')).to_have_text('седалище Пловдив')
+        expect(page.locator('.kv-item:has-text("Телефон") small')).to_have_text('потвърден')
+        expect(page.locator('.chk:has-text("ЕИК проверен") .chk-d')).to_have_text('207845112 · Лунна Фотография ЕООД · данните съвпадат с Търговския регистър')
+        expect(page.locator('.chk:has-text("Контакти потвърдени") .chk-d')).to_have_text('Имейлът и телефонът са потвърдени на 29 август')
+        expect(page.locator('.chk:has-text("Политика за анулиране") .chk-d')).to_have_text('Умерена · безплатно анулиране до 30 дни преди събитието')
+        expect(page.locator('.chk:has-text("Банкова сметка") .chk-d')).to_have_text('IBAN подаден в Пощенска банка, чака потвърждение от банката')
+        expect(page.locator('.topbar input[name=q]')).to_have_attribute('placeholder', 'Търси по име, категория или град')
+        page.fill('.topbar input[name=q]', 'Балон')
+        page.press('.topbar input[name=q]', 'Enter')
+        page.wait_for_url(re.compile(r'/admin/partnyori\?q='))
+        expect(page.locator('a.rec')).to_have_count(1)
+        expect(page.locator('.topbar-title')).to_have_text('Изпълнители')
+        go(page, '/admin/partnyori')
+
         step('partners: return the oldest application from the side panel (note required)')
         expect(page.locator('a.rec.is-sel')).to_contain_text('Лунна Фотография')
         page.click('aside button:has-text("Върни за поправка")')
@@ -195,6 +291,15 @@ def main():
         toast(page, 'Заявката е отказана')
         assert one(f"select status from partner where id = '{pid}'")['status'] == 'rejected'
 
+        step('partners: reject from the queue panel (admin/vendors.html toast)')
+        go(page, '/admin/partnyori')
+        expect(page.locator('a.rec.is-sel')).to_contain_text('Тортите на Мими')
+        page.click('aside button:has-text("Откажи заявката")')
+        page.fill('.ops-modal textarea[name=note]', 'Липсват снимки на собствени торти.')
+        page.click('.ops-modal button[type=submit]:has-text("Откажи заявката")')
+        toast(page, 'Заявката е отказана — изпратихме имейл с мотива')
+        assert one("select status from partner where business_name = 'Тортите на Мими'")['status'] == 'rejected'
+
         # ── Moderation ───────────────────────────────────────────────────
         step('moderation: filter, approve an edit, publish, return with a common note')
         go(page, '/admin/moderatsiya')
@@ -206,15 +311,24 @@ def main():
         assert one("select price_cents from service where name = 'Меню „Градина“'")['price_cents'] == 3200
         page.click('.seg a:has-text("Нови")')
         page.wait_for_url(re.compile(r'filter=novi'))
+        page.click('.mod:has-text("Фотокабина „360 Premium“") button:has-text("Върни с бележка")')
+        expect(page.locator('.ops-modal-title .num')).to_have_text('360')  # digits in a display-font title
+        page.keyboard.press('Escape')
+        expect(page.locator('.ops-modal')).to_have_count(0)
         page.click('.mod:has-text("Фотокабина „360 Premium“") button:has-text("Публикувай")')
         toast(page, 'Обявата е публикувана')
         assert one("select status from service where name = 'Фотокабина „360 Premium“'")['status'] == 'active'
+        page.click('aside button.chip:has-text("Телефон в описанието")')  # ‹Чести бележки› side card: pick a note
+        expect(page.locator('aside button.chip.is-on')).to_have_text('Телефон в описанието')
         page.click('.mod:has-text("Струнен дует") button:has-text("Върни с бележка")')
+        expect(page.locator('.ops-modal textarea[name=note]')).to_have_value('Телефон в описанието.')
         page.click('.ops-modal button.chip:has-text("Няма продължителност")')
-        expect(page.locator('.ops-modal textarea[name=note]')).to_have_value('Няма продължителност.')
+        expect(page.locator('.ops-modal textarea[name=note]')).to_have_value('Телефон в описанието. Няма продължителност.')
         page.click('.ops-modal button[type=submit]:has-text("Върни с бележка")')
         toast(page, 'Обявата е върната с бележка')
         assert one("select status from service where name = 'Струнен дует за церемония'")['status'] == 'returned'
+        assert 'Телефон в описанието' in one("select note from service_revision r join service s on s.id = r.service_id where s.name = 'Струнен дует за церемония' order by r.decided_at desc nulls last limit 1")['note']
+        expect(page.locator('aside button.chip.is-on')).to_have_count(0)  # sent: the picks are cleared
         page.fill('.topbar input[name=q]', 'Флора')
         page.press('.topbar input[name=q]', 'Enter')
         page.wait_for_url(re.compile(r'q=%D0%A4'))
@@ -241,8 +355,16 @@ def main():
         page.click('a.rec:has-text("Мария Димитрова")')
         page.wait_for_url(re.compile(r'/admin/klienti/\w+'))
 
-        step('client profile: contact, internal note')
+        step('client profile: title, search, bookings coming first, requests grouped by event (admin/client.html)')
         expect(page.locator('h1.page-title')).to_have_text('Профил на клиент')
+        expect(page.locator('.topbar-title')).to_have_text('Клиент · Мария Димитрова')
+        expect(page.locator('.topbar input[name=q]')).to_have_attribute('placeholder', 'Търси по име, имейл или телефон')
+        nums = page.locator('section:has(h2:has-text("Резервации")) tbody tr td:first-child .tbl-event').all_inner_texts()
+        assert nums[0].startswith('2026-0614') and nums[-1].startswith('2025-'), nums
+        reqs = page.locator('section:has(h2:has-text("Заявки")) tbody tr td:first-child .tbl-event').all_inner_texts()
+        assert [r[:9] for r in reqs] == ['2026-0614'] * 3 + ['2026-1219'] * 3, reqs
+
+        step('client profile: contact, internal note')
         page.click('a:has-text("Свържи се")')
         toast(page, 'Отваряме имейл до клиента')
         page.fill('form.ops-note textarea', 'Обади се за фактура на фирма.')
@@ -261,6 +383,13 @@ def main():
         expect(page.locator('a.rec:has-text("Георги Колев") .badge')).to_have_text('Блокиран')
 
         # ── Team ─────────────────────────────────────────────────────────
+        step('team: invites oldest first; an older activity reads ‹Вчера, 17:40› once')
+        go(page, '/admin/nastroyki/ekip')
+        expect(page.locator('.tm-inv').first).to_contain_text('ivan.marinov@eventat.bg')
+        row = page.locator('tr:has-text("Красимир Йотов") td').nth(3)
+        expect(row.locator('.tbl-event')).to_have_text(re.compile(r'^Вчера, \d\d:\d\d$'))
+        expect(row.locator('.tbl-sub')).to_have_count(0)
+
         step('team: invite, revoke, remove')
         go(page, '/admin/nastroyki/ekip')
         page.fill('input[name=email]', 'test.member@eventat.bg')

@@ -15,12 +15,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const groups: RailGroup[] = [
     { label: 'Платформа', items: [
       { label: 'Табло', href: '/admin', icon: 'dashboard' },
-      ...(can(actor, 'approve_partners') ? [{ label: 'Изпълнители', href: '/admin/partnyori', icon: 'users' as const, count: c.partners }] : []),
+      ...(can(actor, 'approve_partners') ? [{ label: 'Изпълнители', href: '/admin/partnyori', icon: 'store' as const, count: c.partners }] : []),
       ...(can(actor, 'moderate_listings') ? [{ label: 'Модерация', href: '/admin/moderatsiya', icon: 'shield' as const, count: c.revisions }] : []),
-      { label: 'Резервации', href: '/admin/rezervacii', icon: 'booking' },
-      ...(can(actor, 'resolve_disputes') ? [{ label: 'Спорове', href: '/admin/sporove', icon: 'flag' as const, count: c.disputes }] : []),
+      { label: 'Резервации', href: '/admin/rezervacii', icon: 'calendar' },
+      ...(can(actor, 'resolve_disputes') ? [{ label: 'Спорове', href: '/admin/sporove', icon: 'alert' as const, count: c.disputes }] : []),
       ...(can(actor, 'view_finance') ? [{ label: 'Плащания', href: '/admin/plashtaniya', icon: 'wallet' as const }] : []),
-      { label: 'Клиенти', href: '/admin/klienti', icon: 'user' },
+      { label: 'Клиенти', href: '/admin/klienti', icon: 'users' },
     ] },
     { label: 'Система', items: [
       { label: 'Имейли', href: '/admin/imeyli', icon: 'mail' },

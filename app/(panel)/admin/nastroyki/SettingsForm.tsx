@@ -18,12 +18,13 @@ export type SettingsState = {
 const POLICY_NAME = { flexible: 'Гъвкава', moderate: 'Умерена', strict: 'Строга' } as const;
 const RETAINED = { none: 'Пълно възстановяване', deposit: 'Депозитът се задържа', total: 'Сумата не се връща' } as const;
 
-function summary(p: Policies): string {
+function summary(p: Policies): ReactNode {
   const one = (k: keyof Policies) => {
     const d = p[k].tiers.find(t => t.retained === 'none')?.minDaysBefore;
     return `${POLICY_NAME[k]} (${d != null ? `до ${d} дни` : 'депозитът не се връща'})`;
   };
-  return [one('flexible'), one('moderate'), one('strict')].join(' · ');
+  // each policy stays on one line; a narrow row breaks between them
+  return (['flexible', 'moderate', 'strict'] as const).map((k, i) => <span key={k}>{i > 0 && ' · '}<span className="ops-nb">{one(k)}</span></span>);
 }
 
 /**

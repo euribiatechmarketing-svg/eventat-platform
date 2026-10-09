@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { db, type Queryable, type Tx } from '@/db';
 import {
   account, adminNote, category, categorySubtype, city, metricsSnapshot, partner, partnerDecision, partnerPhoto, partnerSubtype, partnerTag,
-  media, reportJob, service, serviceRevision, teamInvite, user, type ReportKind,
+  media, payoutAccount, reportJob, service, serviceRevision, teamInvite, user, type ReportKind,
 } from '@/db/schema';
 import { invalidateClock, now } from '@/lib/clock';
 import { runDueJobs } from '@/lib/jobs';
@@ -307,9 +307,13 @@ export async function adminPartnerList(actor: AnyActor, a: { tab: PartnerTab; ca
   }));
   let recent: typeof list = [];
   if (a.tab === 'chakat') {
-    const ap = await q.select({ p: partner, categoryName: category.name, cityName: city.name })
+    // the same filters as the queue, so a search or a filter never shows unrelated partners under it
+    const ap = (await q.select({ p: partner, categoryName: category.name, categorySlug: category.slug, cityName: city.name, citySlug: city.slug })
       .from(partner).leftJoin(category, eq(category.id, partner.primaryCategoryId)).leftJoin(city, eq(city.id, partner.cityId))
-      .where(eq(partner.status, 'approved')).orderBy(desc(partner.approvedAt)).limit(3);
+      .where(eq(partner.status, 'approved')).orderBy(desc(partner.approvedAt)))
+      .filter(r => (!a.category || r.categorySlug === a.category) && (!a.city || r.citySlug === a.city)
+        && matches(a.q, r.p.businessName, r.categoryName, r.cityName, r.p.contactName))
+      .slice(0, 3);
     const t = await partnerTotals(ap.map(r => r.p.id), q);
     recent = ap.map(r => ({
       id: r.p.id, name: r.p.businessName, contactName: r.p.contactName, categoryName: r.categoryName ?? '', cityName: r.cityName ?? '',
@@ -351,6 +355,8 @@ export async function adminPartnerDetail(actor: AnyActor, partnerId: string, q: 
     .where(eq(partnerDecision.partnerId, p.id)).orderBy(desc(partnerDecision.decidedAt)).limit(1);
   const queue = await q.select({ id: partner.id }).from(partner).where(eq(partner.status, 'submitted')).orderBy(asc(partner.submittedAt));
   const totals = (await partnerTotals([p.id], q)).get(p.id) ?? { bookings: 0, turnoverCents: 0 };
+  const [bank] = await q.select({ name: payoutAccount.bankName }).from(payoutAccount)
+    .where(and(eq(payoutAccount.partnerId, p.id), eq(payoutAccount.status, 'pending_verification'))).orderBy(desc(payoutAccount.submittedAt)).limit(1);
   return {
     partner: p, categoryName: row.categoryName ?? '', cityName: row.cityName ?? '', emailVerified: !!row.ownerVerified,
     phone: displayPhone(p.phone), checks, subtypes: [...subtypes.map(s => s.label), ...tags.map(t => t.label)],
@@ -362,7 +368,7 @@ export async function adminPartnerDetail(actor: AnyActor, partnerId: string, q: 
     notes: notes.map(x => ({ id: x.n.id, body: x.n.body, at: x.n.createdAt, authorName: x.authorName })),
     lastDecision: lastDecision ? { ...lastDecision.d, byName: lastDecision.by } : null,
     queueSize: queue.length, queueIndex: queue.findIndex(x => x.id === p.id),
-    totals,
+    totals, pendingBankName: bank?.name ?? null,
   };
 }
 
@@ -573,10 +579,10 @@ export async function adminClientDetail(actor: AnyActor, clientId: string, q: Qu
     where b.client_id = ${clientId} order by b.event_date, b.number`);
   const requests = await q.execute<{
     number: string; status: string; kind: string; amount: number | null; sent_at: Date; decline_reason: string | null; partner: string; category: string | null;
-    event_title: string; booking_status: string | null; booking_paid: boolean | null;
+    event_title: string; event_id: string; booking_status: string | null; booking_paid: boolean | null;
   }>(sql`
     select r.number, r.status, r.kind, coalesce(r.amount_cents, b.amount_cents) as amount, r.sent_at, r.decline_reason, p.business_name as partner,
-      c.name as category, ce.title as event_title, b.status as booking_status, (b.paid_at is not null) as booking_paid
+      c.name as category, ce.title as event_title, ce.id as event_id, b.status as booking_status, (b.paid_at is not null) as booking_paid
     from request r join partner p on p.id = r.partner_id left join category c on c.id = p.primary_category_id
     join client_event ce on ce.id = r.client_event_id left join booking b on b.request_id = r.id
     where r.client_id = ${clientId} order by r.sent_at desc`);
@@ -619,10 +625,10 @@ export async function adminClientDetail(actor: AnyActor, clientId: string, q: Qu
     })),
     bookings: paidBookings.map(b => ({
       number: b.number, status: b.status, amountCents: b.amount, commissionCents: Math.floor((b.amount * (b.bp ?? std) + 5000) / 10000),
-      eventTitle: b.event_title, eventDate: b.event_date, partnerName: b.partner, partnerId: b.partner_id, serviceTitle: b.service_title,
+      eventTitle: b.event_title, eventDate: b.event_date, upcoming: b.event_date >= today, partnerName: b.partner, partnerId: b.partner_id, serviceTitle: b.service_title,
     })),
     requests: openRequests.map(r => ({
-      number: r.number, sentAt: toDate(r.sent_at), partnerName: r.partner, categoryName: r.category ?? '', eventTitle: r.event_title, amountCents: r.amount,
+      number: r.number, sentAt: toDate(r.sent_at), partnerName: r.partner, categoryName: r.category ?? '', eventTitle: r.event_title, eventId: r.event_id, amountCents: r.amount,
       badge: requestAdminLabel({ status: r.status, declineReason: r.decline_reason, bookingStatus: r.booking_status }), hasBooking: !!r.booking_status,
     })),
     reqCounts,

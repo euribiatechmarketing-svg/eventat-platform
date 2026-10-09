@@ -5,13 +5,15 @@ import { notFound } from 'next/navigation';
 import '@/styles/m-admin-ops.css';
 import { can } from '@/lib/domain/actor';
 import { NotFoundError } from '@/lib/domain/catalogue-kit';
+import { POLICY_FREE_DAYS } from '@/lib/domain/partners';
 import { CHECK_DETAIL_LABEL, EXPERIENCE_LABEL, PARTNER_ADMIN, adminPartnerDetail, policyLine } from '@/lib/domain/views-admin-ops';
 import { now } from '@/lib/clock';
-import { date, dateTime, moneyShort } from '@/lib/format';
+import { date, dateShort, dateTime, moneyShort } from '@/lib/format';
 import { shortName } from '@/lib/initials';
 import { requireTeam } from '../../_ops/guard';
-import { Badge, Num, ago, initials, n, Email } from '../../_ops/fmt';
+import { Badge, Dots, Num, ago, initials, n, Email } from '../../_ops/fmt';
 import { CheckRow, DecisionForm, NotesCard } from '../_parts';
+import { TopbarTitleText } from '../../_ops/ui';
 
 export const metadata = { title: 'Профил на изпълнител' };
 
@@ -35,17 +37,28 @@ export default async function PartnerApplicationPage({ params }: { params: Promi
   const rawDetail = (kind: string) => kind === 'company' ? [p.eik ? `ЕИК ${p.eik}` : null, p.legalName].filter(Boolean).join(' · ')
     : kind === 'contacts' ? [d.phone, p.notificationEmail].filter(Boolean).join(' · ')
     : kind === 'gallery' ? n(d.photos.length, 'снимка', 'снимки') : null;
+  const contactsOk = d.checks.checks.some(c => c.kind === 'contacts' && c.state === 'ok');
+  // The application page words the checks as admin/vendor.html does (the queue panel keeps the shorter vendors.html lines).
+  const freeDays = p.cancellationPolicy ? POLICY_FREE_DAYS[p.cancellationPolicy] : null;
+  const pageDetail = (c: (typeof d.checks.checks)[number]): string | null => {
+    if (c.kind === 'company' && c.state === 'ok' && p.eik) return [p.eik, p.legalName, 'данните съвпадат с Търговския регистър'].filter(Boolean).join(' · ');
+    if (c.kind === 'contacts' && c.state === 'ok' && c.checkedAt) return `Имейлът и телефонът са потвърдени на ${dateShort(c.checkedAt)}`;
+    if (c.kind === 'cancellation_policy' && c.state === 'ok' && pol && freeDays != null) return `${pol.name} · безплатно анулиране до ${freeDays} дни преди събитието`;
+    if (c.kind === 'bank_account' && c.state !== 'ok' && d.pendingBankName) return `IBAN подаден в ${d.pendingBankName}, чака потвърждение от банката`;
+    return c.detail ?? rawDetail(c.kind);
+  };
 
   return (
     <div className="ops-page">
+      <TopbarTitleText text={`Изпълнител · ${p.businessName}`} short={p.businessName} />
       <Link className="crumb" href="/admin/partnyori"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6" /></svg>Изпълнители</Link>
       <div className="page-head">
         <div>
           <h1 className="page-title">Профил на изпълнител</h1>
           <p className="page-sub">
             {submitted
-              ? ['Заявка за одобрение', p.submittedAt ? `подадена ${ago(p.submittedAt, at)}` : null, `профил ${d.checks.ok} от ${d.checks.total}`].filter(Boolean).join(' · ')
-              : [status.label, `профил ${d.checks.ok} от ${d.checks.total}`].join(' · ')}
+              ? <Dots parts={['Заявка за одобрение', p.submittedAt ? `подадена ${ago(p.submittedAt, at)}` : null, `профил ${d.checks.ok} от ${d.checks.total}`]} />
+              : <Dots parts={[status.label, `профил ${d.checks.ok} от ${d.checks.total}`]} />}
           </p>
         </div>
         <div className="page-head-right"><Badge tone={status.tone}>{status.label}</Badge></div>
@@ -58,7 +71,7 @@ export default async function PartnerApplicationPage({ params }: { params: Promi
               <span className="avatar avatar--lg">{initials(p.businessName)}</span>
               <div>
                 <div className="vrev-id-n"><Num>{p.businessName}</Num></div>
-                <div className="vrev-id-s">{[d.categoryName, d.cityName, p.contactName].filter(Boolean).join(' · ')}</div>
+                <div className="vrev-id-s"><Dots parts={[d.categoryName, d.cityName, p.contactName]} /></div>
               </div>
               {p.submittedAt && (
                 <div className="vrev-id-end">
@@ -70,14 +83,14 @@ export default async function PartnerApplicationPage({ params }: { params: Promi
 
             <div className="dcard-head"><h2 className="dcard-title" style={{ fontSize: 17 }}>Подадени данни</h2></div>
             <div className="kv">
-              <div className="kv-item"><div className="kv-label">Фирма</div><div className="kv-value">{p.legalName ?? p.businessName}{p.registeredAddress && <small>{p.registeredAddress}</small>}</div></div>
+              <div className="kv-item"><div className="kv-label">Фирма</div><div className="kv-value">{p.legalName ?? p.businessName}{p.registeredAddress && <small>седалище {p.registeredAddress}</small>}</div></div>
               <div className="kv-item"><div className="kv-label">ЕИК</div><div className="kv-value">{p.eik ?? '—'}{d.checks.checks.some(c => c.kind === 'company' && c.state === 'ok') && <small>проверен в Търговския регистър</small>}</div></div>
               <div className="kv-item"><div className="kv-label">Град на работа</div><div className="kv-value">{d.cityName || '—'}{p.alsoServesNote && <small>{p.alsoServesNote}</small>}</div></div>
               <div className="kv-item"><div className="kv-label">Категория</div><div className="kv-value">{d.categoryName || '—'}{d.subtypes.length > 0 && <small>{n(d.subtypes.length, 'подкатегория', 'подкатегории')}</small>}</div></div>
               <div className="kv-item"><div className="kv-label">Лице за контакт</div><div className="kv-value">{p.contactName}{p.contactRole && <small>{p.contactRole}</small>}</div></div>
               <div className="kv-item"><div className="kv-label">Опит</div><div className="kv-value">{p.activeSinceYear ? `от ${p.activeSinceYear} г.` : p.experienceBand ? EXPERIENCE_LABEL[p.experienceBand] : '—'}<small>по данни на изпълнителя</small></div></div>
               <div className="kv-item"><div className="kv-label">Имейл</div><div className="kv-value"><Email value={p.notificationEmail} />{d.emailVerified && <small>потвърден</small>}</div></div>
-              <div className="kv-item"><div className="kv-label">Телефон</div><div className="kv-value">{d.phone || '—'}</div></div>
+              <div className="kv-item"><div className="kv-label">Телефон</div><div className="kv-value">{d.phone || '—'}{d.phone && contactsOk && <small>потвърден</small>}</div></div>
               <div className="kv-item"><div className="kv-label">Анулиране</div><div className="kv-value">{pol ? `${pol.name} политика` : '—'}{pol && <small>{pol.detail}</small>}</div></div>
             </div>
 
@@ -127,7 +140,7 @@ export default async function PartnerApplicationPage({ params }: { params: Promi
               {waitingChecks > 0 && <span className="badge badge--warning">{waitingChecks === 1 ? 'остава 1 проверка' : `остават ${waitingChecks} проверки`}</span>}
             </div>
             {d.checks.checks.map(c => (
-              <CheckRow key={c.kind} c={{ kind: c.kind, state: c.state, label: CHECK_DETAIL_LABEL[c.kind], detail: c.detail ?? rawDetail(c.kind) }}
+              <CheckRow key={c.kind} c={{ kind: c.kind, state: c.state, label: CHECK_DETAIL_LABEL[c.kind], detail: pageDetail(c) }}
                 partnerId={p.id} editable back={back} />
             ))}
           </section>

@@ -11,7 +11,7 @@ import { getSetting } from '@/lib/domain/settings';
 import { now } from '@/lib/clock';
 import { dateShort, money, moneyShort, monthName, sofiaDate } from '@/lib/format';
 import { requireTeam } from './_ops/guard';
-import { Badge, Num, initials, n, pct, wait } from './_ops/fmt';
+import { Badge, Dots, Num, initials, n, pct, wait } from './_ops/fmt';
 import { ActionForm, FilterMenu, RowLink, Submit } from './_ops/ui';
 import { requestDashboardExportAction } from './actions';
 
@@ -57,7 +57,7 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
         <span className="cat-ico"><CatIcon /></span>
         <span>
           <span className="rec-n">{n(att.approvals, 'изпълнител чака', 'изпълнители чакат')} одобрение</span>
-          <span className="rec-s">{att.approvals === 1 ? 'Чака' : 'Най-старата чака'} от {att.oldestSubmittedAt ? wait(att.oldestSubmittedAt, at) : ''} · целта е {n(target, 'час', 'часа')}</span>
+          <span className="rec-s"><Dots parts={[`${att.approvals === 1 ? 'Чака' : 'Най-старата чака'} от ${att.oldestSubmittedAt ? wait(att.oldestSubmittedAt, at) : ''}`, `целта е ${n(target, 'час', 'часа')}`]} /></span>
         </span>
         <span></span>
         <span className="rec-end">{att.oldestSubmittedAt && <Badge tone="warning">{wait(att.oldestSubmittedAt, at)}</Badge>}<span className="btn btn--primary btn--sm">Прегледай</span></span>
@@ -193,10 +193,10 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
                   <tbody>
                     {latest.map(b => (
                       <RowLink key={b.number} href={`/admin/rezervacii/${encodeURIComponent(b.number)}`}>
-                        <td><Link className="tbl-event ops-link" href={`/admin/rezervacii/${encodeURIComponent(b.number)}`}>{b.number}</Link><div className="tbl-sub">{b.clientName} · {dateShort(b.eventDate)}</div></td>
+                        <td><Link className="tbl-event ops-link" href={`/admin/rezervacii/${encodeURIComponent(b.number)}`}>{b.number}</Link><div className="tbl-sub"><Dots parts={[b.clientName, dateShort(b.eventDate)]} /></div></td>
                         <td><div className="tbl-event">{b.partnerName}</div><div className="tbl-sub">{b.categoryName}</div></td>
-                        <td className="num">{money(b.amountCents)}</td>
-                        {finance && <td className="num strong">{money(b.commissionCents)}</td>}
+                        <td className="num" data-l="Сума">{money(b.amountCents)}</td>
+                        {finance && <td className="num strong" data-l="Комисиона">{money(b.commissionCents)}</td>}
                         <td><Badge tone={BOOKING_ADMIN[b.status]?.tone ?? ''}>{BOOKING_ADMIN[b.status]?.label}</Badge></td>
                       </RowLink>
                     ))}
@@ -234,10 +234,11 @@ export default async function AdminDashboard({ searchParams }: { searchParams: P
           {can(actor, 'approve_partners') && (
             <section className="dcard">
               <div className="dcard-head"><h2 className="dcard-title" style={{ fontSize: 17 }}>Нови регистрации</h2></div>
-              {regs.length ? regs.map(r => (
+              {/* the four newest applications, in queue order (oldest first) as admin/dashboard.html lists them */}
+              {regs.length ? [...regs].reverse().map(r => (
                 <Link key={r.id} className="mini ops-mini-link" href={`/admin/partnyori/${r.id}`}>
                   <span className="avatar avatar--sm">{initials(r.name)}</span>
-                  <span><span className="mini-n">{r.name}</span><span className="mini-s">{[r.categoryName, r.cityName].filter(Boolean).join(' · ')}</span></span>
+                  <span><span className="mini-n">{r.name}</span><span className="mini-s"><Dots parts={[r.categoryName, r.cityName]} /></span></span>
                   <span className="mini-end"><span className="badge badge--warning">Чака</span></span>
                 </Link>
               )) : <div className="ui-empty">Няма записи в този изглед.</div>}

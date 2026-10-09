@@ -78,6 +78,17 @@ describe('exports and lists', () => {
     expect(await failure(adminPartnerList(support, { tab: 'chakat' }))).toContain('ForbiddenError');
   });
 
+  it('filters ‹Наскоро одобрени› with the queue: a search shows no unrelated partners', async () => {
+    const { actor } = await createAdmin('admin');
+    const a = await listedPartner({ businessName: 'Звездна Сцена Тест' });
+    await listedPartner({ businessName: 'Друга Фирма Тест' });
+    const all = await adminPartnerList(actor, { tab: 'chakat' });
+    expect(all.recent.length).toBeGreaterThan(1);
+    const found = await adminPartnerList(actor, { tab: 'chakat', q: 'звездна сцена' });
+    expect(found.recent.map(r => r.id)).toEqual([a.partner.id]);
+    expect((await adminPartnerList(actor, { tab: 'chakat', q: 'няма такъв изпълнител' })).recent).toEqual([]);
+  });
+
   it('flags clients as Блокиран > Отворен спор > Активен and filters the business tab', async () => {
     expect(clientBadge({ banned: true, openDisputes: 1 }).label).toBe('Блокиран');
     expect(clientBadge({ banned: false, openDisputes: 1 }).label).toBe('Отворен спор');

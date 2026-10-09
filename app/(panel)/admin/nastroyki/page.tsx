@@ -3,6 +3,8 @@
 // in demo environments only, the platform clock.
 import Link from 'next/link';
 import '@/styles/m-admin-ops.css';
+import { AdminSearch } from '../_ops/AdminSearch';
+import { Suspense } from 'react';
 import { getSettings } from '@/lib/domain/settings';
 import { listTeam } from '@/lib/domain/team';
 import { commissionEffectiveFrom, matches, settingsCategories, timeTravelAllowed } from '@/lib/domain/views-admin-ops';
@@ -69,6 +71,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           <div className="page-head-right"><SettingsButtons /></div>
         </div>
 
+        <Suspense><AdminSearch inPage /></Suspense>
         <div className="adm-grid">
           <div>
             <section className={`dcard${visibleCats.length || !q ? '' : ' ops-hidden-row'}`}>
