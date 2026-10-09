@@ -73,18 +73,22 @@ export function WizardChrome({ steps, elapsedMs, savedLongLabel, children }: {
               {steps.map(s => {
                 const isCurrent = s.step === current;
                 const clickable = s.reachable && !isCurrent;
+                // The spaces keep the words apart in the text (‹2 Профил и галерия …›, not ‹2Профил и галерия…›); the
+                // layout drops them (grid and block boxes).
                 const inner = (
                   <>
-                    <span className="wiz-step-bullet">{s.done && !isCurrent ? <Check /> : s.step}</span>
-                    <span className="wiz-step-label">{s.title}<span className="wiz-step-meta" id={`wiz-step-${s.step}-m`}>{s.meta}</span></span>
+                    <span className="wiz-step-bullet">{s.done && !isCurrent ? <Check /> : s.step}</span>{' '}
+                    <span className="wiz-step-label">{s.title}{' '}<span className="wiz-step-meta">{s.meta}</span></span>
                   </>
                 );
                 return (
                   <li key={s.step} className={`wiz-step${s.done ? ' wiz-step--done' : ''}${isCurrent ? ' wiz-step--current' : ''}${clickable ? ' ui-click' : ''}`}
                     aria-current={isCurrent ? 'step' : undefined}>
                     {clickable
+                      // Named for 390 px, where only the bullet shows: the number, the title and the meta, i.e. everything the
+                      // button shows at full width, in the same order (WCAG 2.5.3).
                       ? <button type="submit" form="wiz-form" name="intent" value={`goto:${s.step}`} className="m-step-btn"
-                          aria-label={`${s.step}. ${s.title}`} aria-describedby={`wiz-step-${s.step}-m`}>{inner}</button>
+                          aria-label={`${s.step}. ${s.title} · ${s.meta}`}>{inner}</button>
                       : inner}
                   </li>
                 );

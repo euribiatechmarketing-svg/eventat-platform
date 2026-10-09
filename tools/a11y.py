@@ -20,7 +20,7 @@ from playwright.sync_api import sync_playwright
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 AXE = os.path.join(ROOT, 'node_modules/axe-core/axe.min.js')
-TAGS = ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']
+TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']
 ENV = {**os.environ, 'PATH': os.path.expanduser('~/nodejs22/bin') + ':' + os.environ.get('PATH', '')}
 PASSWORD = 'eventat-demo'
 
@@ -97,6 +97,15 @@ def partner_area():
             page.locator(panel).first.wait_for(timeout=5000)
         return go
 
+    def refused_save(field, button):
+        """Empties a required field and saves: the server refuses it and the errors are shown (nothing is stored)."""
+        def go(page):
+            page.locator(field).first.fill('')
+            page.locator(button).first.click()
+            page.locator('.form-error').first.wait_for(timeout=10000)
+            page.wait_for_timeout(500)  # the error toast fades in; measured mid-fade its contrast is wrong
+        return go
+
     panel = [
         Check('/partner'),
         Check('/partner/zayavki'),
@@ -124,13 +133,24 @@ def partner_area():
         Check('/partner/ne-sashtestvuva'),
         Check('/partner', 'bell open', open_menu('button[aria-label="Известия"]', '.ui-menu')),
         Check('/partner', 'account menu open', open_menu('.side-user', '.ui-menu'), widths=[1440]),
+        Check('/partner', 'rail drawer open', open_menu('.ui-burger', '.shell.is-open'), widths=[390]),
+        Check('/partner/zayavki', 'filter menu open', open_menu('.po-filter .filter-btn', '.po-filter .ui-menu')),
+        Check('/partner/kalendar', 'block period dialog', open_menu('button:has-text("Блокирай период")', '[role="dialog"]')),
+        Check('/partner/kalendar', 'block date dialog', open_menu('button:has-text("Блокирай дата")', '[role="dialog"]')),
+        Check('/partner/uslugi', 'sorting', open_menu('button:has-text("Подреди")', '.svc-grid.is-sorting')),
+        Check(lambda: '/partner/uslugi/' + lookup()['svc'], 'errors shown',
+              refused_save('input[name="name"]', 'button[form="svc-form"][value="change"], button[form="svc-form"][value="draft"]')),
+        Check('/partner/profil', 'add menu open', open_menu('button.chip-add', '.pc-add-menu')),
+        Check('/partner/nastroyki', 'errors shown', refused_save('input[name="contactName"]', 'button[form="settings-form"]')),
+        Check('/partner/revyuta', 'reply open', open_menu('.pc-reply button:has-text("Отговори")', '.pc-reply textarea')),
     ]
     return [
         Session('fresh partner (sign-up)', fresh('draft'), [
             Check(R + '/1'),
             Check(R + '/1', 'errors shown', wizard_errors),
         ]),
-        Session('partner with steps 1–5', fresh('complete'), [Check(f'{R}/{n}') for n in range(1, 7)]),
+        Session('partner with steps 1–5', fresh('complete'), [Check(f'{R}/{n}') for n in range(1, 7)]
+                + [Check(R + '/6', 'consents missing', wizard_errors)]),
         Session('submitted partner', fresh('submitted'), [Check(R + '/podadeno')]),
         Session('partner (Студио Мелодия)', melodia, panel),
     ]
