@@ -98,7 +98,7 @@ export default async function RequestPage({ params }: { params: Promise<{ nomer:
 
   return (
     <div className="po">
-      <TopbarTitleText text={`Заявка · №\u00a0${r.number}`} />
+      <TopbarTitleText text={`Заявка · №\u00a0${r.number}`} short={`№\u00a0${r.number}`} />
       <Link className="crumb" href="/partner/zayavki">{I.back}Назад към заявките</Link>
       <div className="page-head">
         <div>

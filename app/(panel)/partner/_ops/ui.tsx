@@ -27,6 +27,17 @@ export function TopbarSearch() {
   );
 }
 
+/* ---------- topbar ‹BG› / ‹EN› (SCREENS §1; English is not published yet, D36) ---------- */
+export function TopbarLang() {
+  const en = () => toast('Английската версия идва скоро');
+  return (
+    <span className="lang po-lang" role="group" aria-label="Език">
+      <b aria-current="true">BG</b>
+      <span role="button" tabIndex={0} onClick={en} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); en(); } }}>EN</span>
+    </span>
+  );
+}
+
 /* ---------- filter dropdown (‹Филтри›, ‹Период›): options are links, so the view is shareable ---------- */
 export function FilterMenu({ label, icon, options }: {
   label: string; icon: 'filter' | 'download'; options: { label: string; href: string; active: boolean }[];
@@ -207,14 +218,21 @@ export function FlashAgain({ message, kind = 'ok', nonce }: { message: string | 
    The shared TopbarTitle picks titles by path prefix only, so a record number cannot be passed
    to it. Until it takes per-record titles, this swaps the text of its node while the page is
    shown and puts the rail label back when the page goes (only if nothing else changed it). */
-export function TopbarTitleText({ text }: { text: string }) {
+export function TopbarTitleText({ text, short }: { text: string; short: string }) {
   useEffect(() => {
     const node = document.querySelector('.shell .topbar .topbar-title')?.firstChild;
     if (!node || node.nodeType !== Node.TEXT_NODE) return;
     const before = node.nodeValue;
-    node.nodeValue = text;
-    return () => { if (node.nodeValue === text) node.nodeValue = before; };
-  }, [text]);
+    // a phone topbar has room for the number only (‹№ 2026-0614-ЕА›); the full title would be cut
+    const phone = window.matchMedia('(max-width: 640px)');
+    const set = () => { node.nodeValue = phone.matches ? short : text; };
+    set();
+    phone.addEventListener('change', set);
+    return () => {
+      phone.removeEventListener('change', set);
+      if (node.nodeValue === text || node.nodeValue === short) node.nodeValue = before;
+    };
+  }, [text, short]);
   return null;
 }
 

@@ -39,9 +39,9 @@ export function MiniCalendar({ cal, back }: {
         <input type="hidden" name="back" value={back} />
         {cal.cells.map(c => {
           const s = c.info?.state;
-          const cls = ['cal-day', c.out && 'is-out', s === 'booked' && 'is-booked', s === 'held' && 'is-hold', s === 'blocked' && 'is-blocked',
-            s === 'closed' && c.info?.reason === 'not_opened' && 'po-closed', c.today && 'is-today'].filter(Boolean).join(' ');
           const how = clickOf(c);
+          const cls = ['cal-day', c.out && 'is-out', s === 'booked' && 'is-booked', s === 'held' && 'is-hold', s === 'blocked' && 'is-blocked',
+            s === 'closed' && c.info?.reason === 'not_opened' && 'po-closed', c.today && 'is-today', !c.out && !how && 'po-still'].filter(Boolean).join(' ');
           if (how === 'link') return <Link key={c.date} className={cls} href={c.href!} title={c.info?.label}>{c.n}</Link>;
           if (how === 'toggle') return <button key={c.date} className={cls} type="submit" name="date" value={c.date} title={c.info?.label}>{c.n}</button>;
           if (how === 'open') return <button key={c.date} className={cls} type="submit" name="date" value={`open:${c.date}`}>{c.n}</button>;
@@ -57,6 +57,16 @@ export function MiniCalendar({ cal, back }: {
   );
 }
 
+/**
+ * A chip's text in two parts — ‹Сватба› + ‹ · 120 гости›, ‹Запазена› + ‹ до 11:06› — so a narrow
+ * day cell drops the second part (container query in m-partner-ops.css) instead of cutting the text.
+ */
+function ChipText({ text }: { text: string }) {
+  const i = text.search(/ · | до /);
+  if (i < 0) return <>{text}</>;
+  return <>{text.slice(0, i)}<span className="chip-more">{text.slice(i)}</span></>;
+}
+
 export function MonthGrid({ cells, back }: { cells: MiniDay[]; back: string }) {
   return (
     <>
@@ -65,13 +75,13 @@ export function MonthGrid({ cells, back }: { cells: MiniDay[]; back: string }) {
         <input type="hidden" name="back" value={back} />
         {cells.map(c => {
           const s = c.info?.state;
+          const how = clickOf(c);
           const cls = ['mday', c.out && 'is-out', c.today && 'is-today', s === 'blocked' && 'is-blocked',
-            s === 'closed' && c.info?.reason === 'not_opened' && 'po-closed'].filter(Boolean).join(' ');
+            s === 'closed' && c.info?.reason === 'not_opened' && 'po-closed', !c.out && !how && 'po-still'].filter(Boolean).join(' ');
           const chip = c.info?.chip
-            ? <span className={`chip ${s === 'booked' ? 'chip--booked' : s === 'held' ? 'chip--hold' : 'chip--blocked'}`} title={c.info.chip}>{c.info.chip}</span>
+            ? <span className={`chip ${s === 'booked' ? 'chip--booked' : s === 'held' ? 'chip--hold' : 'chip--blocked'}`} title={c.info.chip}><ChipText text={c.info.chip} /></span>
             : null;
           const inner = <><span className="mday-n">{c.n}</span>{chip}</>;
-          const how = clickOf(c);
           if (how === 'link') return <Link key={c.date} className={cls} href={c.href!} aria-label={`${c.n} · ${c.info?.label}`}>{inner}</Link>;
           if (how === 'toggle') return <button key={c.date} className={cls} type="submit" name="date" value={c.date} aria-label={`${c.n} · ${c.info?.label}`}>{inner}</button>;
           if (how === 'open') return <button key={c.date} className={cls} type="submit" name="date" value={`open:${c.date}`} aria-label={`${c.n}`}>{inner}</button>;

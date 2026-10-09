@@ -8,7 +8,7 @@ import { partnerChrome, partnerRailCount } from '@/lib/domain/views-panel';
 import { bellItems } from '@/lib/bell';
 import { PanelShell, type RailGroup } from '@/components/panel/PanelShell';
 import { readFlash } from '@/lib/flash';
-import { FlashAgain, TopbarSearch } from './_ops/ui';
+import { FlashAgain, TopbarLang, TopbarSearch } from './_ops/ui';
 import '@/styles/m-partner-ops.css';
 
 export default async function PartnerLayout({ children }: { children: React.ReactNode }) {
@@ -45,7 +45,7 @@ export default async function PartnerLayout({ children }: { children: React.Reac
         { label: 'Настройки', href: '/partner/nastroyki' },
         { label: 'Виж профила като клиент', href: `/partnyori/${p.slug}` },
       ]}
-      topbarExtra={<Suspense fallback={null}><TopbarSearch /></Suspense>}
+      topbarExtra={<><Suspense fallback={null}><TopbarSearch /></Suspense><TopbarLang /></>}
       bell={await bellItems(user.id)}>
       {children}
       <FlashAgain message={flash?.message ?? null} kind={flash?.kind} nonce={randomUUID()} />

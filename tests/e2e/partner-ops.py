@@ -58,6 +58,34 @@ def reset_db():
     time.sleep(6)  # the server's clock offset cache lives 5 s
 
 
+LAYOUT_JS = """() => {
+  const W = document.documentElement.clientWidth, out = [];
+  if (document.documentElement.scrollWidth > W) out.push('page scrolls sideways: ' + document.documentElement.scrollWidth);
+  const vis = e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== 'hidden'; };
+  const name = e => e.tagName + '.' + String(e.className).trim().split(/\\s+/).slice(0, 2).join('.') + ' «' + (e.innerText || '').trim().replace(/\\s+/g, ' ').slice(0, 40) + '»';
+  for (const e of document.querySelectorAll('.shell *')) {
+    if (!vis(e) || !(e.innerText || '').trim()) continue;
+    const cs = getComputedStyle(e);
+    if ((cs.overflowX !== 'visible' || cs.textOverflow === 'ellipsis') && e.scrollWidth > e.clientWidth + 1) out.push('cut: ' + name(e));
+    if (e.getBoundingClientRect().right > W + 0.5) out.push('off screen: ' + name(e));
+    if (e.matches('.btn, .badge, .tab-bar-item, .filter-btn, .chip, .pill-timer, .kv-label, .req-meta-label, .crumb, .link-more, .topbar-title, .rule-name, .po-pick-n')) {
+      const tops = []; const tw = document.createTreeWalker(e, NodeFilter.SHOW_TEXT); let n;
+      while ((n = tw.nextNode())) { if (!n.nodeValue.trim()) continue; const rg = document.createRange(); rg.selectNodeContents(n);
+        for (const rc of rg.getClientRects()) if (rc.width > 0) tops.push(rc.top + rc.height / 2); }
+      tops.sort((a, b) => a - b); let lines = tops.length ? 1 : 0;
+      for (let i = 1; i < tops.length; i++) if (tops[i] - tops[i - 1] > parseFloat(cs.fontSize) * 0.8) lines++;
+      if (lines > 1) out.push('wraps: ' + name(e));
+    }
+  }
+  return [...new Set(out)];
+}"""
+
+
+def layout_issues(page):
+    """Text cut off, controls/labels wrapping to a second line, or anything past the right edge."""
+    return page.evaluate(LAYOUT_JS)
+
+
 PASSED = []
 
 
@@ -114,12 +142,67 @@ def main():
         assert r.status == 404, r.status
         step("another partner's booking and request are 404")
 
+        # ── layout at phone, laptop and desktop widths (before the flows change the records) ──
+        routes = ['/partner', '/partner?mesec=2026-06', '/partner/zayavki', '/partner/zayavki?tab=otkazani',
+                  '/partner/zayavki/' + quote('2026-0628-ЛШ'), '/partner/zayavki/' + quote('2026-0621-ПД'), '/partner/zayavki/' + quote('2026-0905-ПХ'),
+                  '/partner/rezervacii', '/partner/rezervacii?tab=priklyuchili', '/partner/rezervacii/' + quote('2026-0614-ЕА'),
+                  '/partner/kalendar?mesec=2026-06', '/partner/kalendar?mesec=2026-09', '/partner/tarsene', '/partner/tarsene?q=' + quote('Мария')]
+        for width in (390, 1024, 1280, 1366, 1440):
+            lc = b.new_context(viewport={'width': width, 'height': 900}, locale='bg-BG', timezone_id='Europe/Sofia')
+            sign_in(lc, base, PARTNER)
+            lp = lc.new_page()
+            for path in routes:
+                lp.goto(base + path)
+                lp.wait_for_load_state('networkidle')
+                bad = layout_issues(lp)
+                assert not bad, (width, path, bad)
+            if width == 390:
+                lp.goto(base + '/partner/rezervacii/' + quote('2026-0614-ЕА'))
+                expect(lp.locator('.topbar-title')).to_have_text('№\u00a02026-0614-ЕА')
+                lp.goto(base + '/partner/zayavki/' + quote('2026-0628-ЛШ'))
+                expect(lp.locator('.topbar-title')).to_have_text('№\u00a02026-0628-ЛШ')
+                lp.goto(base + '/partner/kalendar?mesec=2026-06')
+                small = lp.evaluate("""[...document.querySelectorAll('.po .btn, .po .blk-x, .po .stepper button, .po .month-nav a, .po .filter-btn')]
+                    .filter(e => e.offsetParent).map(e => [e.innerText || e.getAttribute('aria-label'), Math.round(e.getBoundingClientRect().height)]).filter(x => x[1] < 34)""")
+                assert not small, ('tap targets under 34 px at 390', small)
+                lp.goto(base + '/partner/rezervacii')
+                tabs = lp.evaluate("[...document.querySelectorAll('.tab-bar-item')].map(t => t.getBoundingClientRect().right <= document.documentElement.clientWidth)")
+                assert tabs and all(tabs), tabs
+                expect(lp.locator('.po-tbl tbody tr').first.locator('td[data-label="Получавате"]')).to_be_visible()
+                for path, label in (('/partner/rezervacii', 'Период'), ('/partner/zayavki', 'Филтри')):
+                    lp.goto(base + path)
+                    lp.click(f'.filter-btn:has-text("{label}")')
+                    box = lp.locator('.ui-menu').bounding_box()
+                    assert box['x'] >= 0 and box['x'] + box['width'] <= 390, (label, box)
+                lp.goto(base + '/partner/kalendar?mesec=2026-06')
+                lp.click('.page-head button:has-text("Блокирай период")')
+                widths = [lp.locator(f'.modal input[name="{n}"]').bounding_box()['width'] for n in ('from', 'to')]
+                assert min(widths) >= 250, widths
+            if width == 1024:
+                lp.goto(base + '/partner/rezervacii/' + quote('2026-0614-ЕА'))
+                expect(lp.locator('.topbar .po-search')).to_be_hidden()
+                lp.click('.topbar .po-search-ico')
+                lp.wait_for_url(re.compile(r'/partner/tarsene$'))
+                expect(lp.locator('.po .po-search--start input[name="q"]')).to_be_visible()
+            lc.close()
+        step('390 / 1024 / 1280 / 1366 / 1440 px: nothing cut, wrapped or past the edge on any screen')
+        step('390 px: record pages title with their number; every tab and the ledger amounts stay in view; tap targets ≥ 34 px')
+        step('390 px: ‹Период› / ‹Филтри› menus open inside the screen; the period dialog stacks its date fields')
+        step('1024 px: the topbar search folds into its icon so the record title keeps one line')
+
         # ── dashboard ───────────────────────────────────────────────────
         page.goto(base + '/partner')
         expect(page.locator('h1.page-title')).to_have_text('Добре дошли, Студио Мелодия')
         expect(page.locator('.kpi').first.locator('.kpi-value')).to_have_text('2')
         expect(page.locator('.mini-req')).to_have_count(2)
         step('dashboard shows the live counts and the two new requests')
+        expect(page.locator('.topbar .po-lang b')).to_have_text('BG')
+        lang_x = page.locator('.topbar .po-lang').bounding_box()['x']
+        bell_x = page.locator('.topbar button[aria-label="Известия"], .topbar [aria-label="Известия"]').first.bounding_box()['x']
+        assert lang_x > bell_x, (lang_x, bell_x)
+        page.click('.topbar .po-lang [role="button"]:has-text("EN")')
+        toast(page, 'Английската версия идва скоро')
+        step('topbar ‹BG› / ‹EN› after the bell, as in the prototype; ‹EN› says the English version is coming')
 
         page.click('.cal-nav a[aria-label="Следващ месец"]')
         expect(page.locator('.cal-month')).to_have_text('Септември 2025')
@@ -168,7 +251,11 @@ def main():
 
         # ── request page: ask, approve, remind, withdraw ────────────────
         page.goto(base + '/partner/zayavki')
-        page.click('.req:has-text("Ивелина Тодорова") a:has-text("Разгледай")')
+        page.click('.req:has-text("Технолинк ЕООД") .req-meta')
+        page.wait_for_url(re.compile(r'/partner/zayavki/2026-0621'))
+        page.go_back()
+        step('a new request row opens as a whole, not only through ‹Разгледай›')
+        page.click('.req:has-text("Ивелина Тодорова") .btn:has-text("Разгледай")')
         page.wait_for_url(re.compile(r'/partner/zayavki/2026-0628'))
         expect(page.locator('h1.page-title')).to_have_text('Заявка от Ивелина Тодорова')
         expect(page.locator('.page-head .badge')).to_have_text('Нова заявка')
@@ -271,6 +358,9 @@ def main():
             .map(c => [c.textContent, c.scrollWidth > c.clientWidth + 1])""")
         assert len(cut) == 2 and not any(x[1] for x in cut), ('calendar chips cut at 1440', cut)
         step('1440 px: the calendar chips are readable (‹Сватба · 120 гости›, ‹Блокирана›)')
+        expect(page.locator('.mdays a[href*="2026-0630"] .chip')).to_have_text('Бал · 70 гости')
+        assert page.evaluate("(() => { const c = document.querySelector('.mdays a[href*=\"2026-0630\"] .chip'); return c.scrollWidth <= c.clientWidth + 1; })()")
+        step('1440 px: the prom reads ‹Бал · 70 гости› like the prototype, not ‹Абитуриентски б…›')
         page.click('.page-head button:has-text("Блокирай дата")')
         page.fill('.modal input[name="date"]', '2026-06-23')
         page.fill('.modal input[name="reason"]', 'Ремонт на техниката')
@@ -302,14 +392,30 @@ def main():
         assert one("select 1 as x from availability_block where partner_id = $1 and start_date <= '2026-06-03' and end_date >= '2026-06-03'", pid)
         step('a free day in the month is blocked with a click (the same toast shows again)')
 
-        page.click('button[role="switch"][aria-label="Само едно събитие на ден"]')
-        expect(page.locator('button[role="switch"][aria-label="Само едно събитие на ден"]')).to_have_attribute('aria-checked', 'false')
+        sw1 = 'button[role="switch"][aria-label="Само едно събитие на ден"]'
+        expect(page.locator('.stepper button[aria-label="+"]')).to_be_enabled()
         page.click('.stepper button[aria-label="+"]')
+        expect(page.locator(sw1)).to_have_attribute('aria-checked', 'false')
         expect(page.locator('.stepper span')).to_have_text('2')
         r = one("select bookings_per_day_mode, max_bookings_per_date from partner where id = $1", pid)
         assert r['bookings_per_day_mode'] == 'limit' and r['max_bookings_per_date'] == 2, r
-        page.click('button[role="switch"][aria-label="Само едно събитие на ден"]')
-        expect(page.locator('button[role="switch"][aria-label="Само едно събитие на ден"]')).to_have_attribute('aria-checked', 'true')
+        step('‹+› works while ‹Само едно събитие на ден› is on: two a day, the switch turns off')
+        page.click('.stepper button[aria-label="+"]')
+        expect(page.locator('.stepper span')).to_have_text('3')
+        page.click('.stepper button[aria-label="−"]')
+        expect(page.locator('.stepper span')).to_have_text('2')
+        page.click('.stepper button[aria-label="−"]')
+        expect(page.locator(sw1)).to_have_attribute('aria-checked', 'true')
+        expect(page.locator('.stepper span')).to_have_text('1')
+        expect(page.locator('.stepper button[aria-label="−"]')).to_be_disabled()
+        assert one("select bookings_per_day_mode from partner where id = $1", pid)['bookings_per_day_mode'] == 'one'
+        page.click(sw1)
+        expect(page.locator(sw1)).to_have_attribute('aria-checked', 'false')
+        expect(page.locator('.stepper span')).to_have_text('2')
+        r = one("select bookings_per_day_mode, max_bookings_per_date from partner where id = $1", pid)
+        assert r['bookings_per_day_mode'] == 'limit' and r['max_bookings_per_date'] == 2, r
+        page.click(sw1)
+        expect(page.locator(sw1)).to_have_attribute('aria-checked', 'true')
         assert one("select bookings_per_day_mode from partner where id = $1", pid)['bookings_per_day_mode'] == 'one'
         step('availability rules: switch and stepper')
 
@@ -329,6 +435,12 @@ def main():
         toast(page, 'Показваме текущия месец')
         page.wait_for_url(re.compile(r'mesec=2025-08'))
         step('booked day opens the booking; ‹Днес› returns to the current month')
+        expect(page.locator('.mdays .mday.po-still')).to_have_count(30)
+        assert page.locator('.mdays button[value="2025-08-10"]').count() == 0
+        expect(page.locator('.mdays button[value="2025-08-31"]')).to_have_count(1)
+        page.goto(base + '/partner')
+        expect(page.locator('.cal-days .cal-day.po-still')).to_have_count(30)
+        step('past days (they cannot be blocked) are muted in both calendars; today stays clickable')
 
         # ── topbar search ───────────────────────────────────────────────
         page.goto(base + '/partner/tarsene')

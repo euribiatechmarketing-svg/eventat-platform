@@ -88,7 +88,8 @@ export async function setRulesAction(fd: FormData) {
   try {
     await setRules(actor, {
       ...(r.onePerDay ? { bookingsPerDayMode: r.onePerDay === 'on' ? 'one' as const : 'limit' as const } : {}),
-      ...(r.max !== undefined ? { bookingsPerDayMode: 'limit' as const, maxBookingsPerDate: r.max } : {}),
+      // the stepper: 2–9 allows that many (the switch turns off); back to 1 is ‹Само едно събитие на ден› again
+      ...(r.max !== undefined ? { bookingsPerDayMode: r.max === 1 ? 'one' as const : 'limit' as const, maxBookingsPerDate: r.max } : {}),
       ...(r.onlySelected ? { onlySelectedDates: r.onlySelected === 'on' } : {}),
     });
   } catch (e) { return refuse(e, back); }

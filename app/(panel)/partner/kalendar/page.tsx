@@ -25,6 +25,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const [grid, view] = await Promise.all([monthGrid(actor, { month }), calendarCells(actor, { month })]);
   const back = `/partner/kalendar?mesec=${month}`;
   const r = grid.rules;
+  const max = r.onePerDay ? 1 : r.maxBookingsPerDate;
   const title = monthTitle(month);
 
   return (
@@ -67,6 +68,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
 
             <form className="rule-row" action={setRulesAction}>
               <input type="hidden" name="back" value={back} />
+              {/* switching it off allows more than one: the stepper starts at 2 */}
+              {r.onePerDay && <input type="hidden" name="max" value={Math.max(2, r.maxBookingsPerDate)} />}
               <div className="rule-text">
                 <div className="rule-name">Само едно събитие на ден</div>
                 <div className="rule-desc">След потвърдена резервация датата се затваря автоматично.</div>
@@ -81,10 +84,11 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
                 <div className="rule-name">Максимум резервации за дата</div>
                 <div className="rule-desc">Важи само ако допускате повече от едно събитие.</div>
               </div>
+              {/* ‹+› from ‹Само едно събитие на ден› allows two (the switch turns off); ‹−› down to 1 keeps the limit mode. */}
               <span className="stepper">
-                <button type="submit" name="max" value={Math.max(1, r.maxBookingsPerDate - 1)} disabled={r.onePerDay || r.maxBookingsPerDate <= 1} aria-label="−">−</button>
-                <span>{r.onePerDay ? 1 : r.maxBookingsPerDate}</span>
-                <button type="submit" name="max" value={Math.min(9, r.maxBookingsPerDate + 1)} disabled={r.onePerDay || r.maxBookingsPerDate >= 9} aria-label="+">+</button>
+                <button type="submit" name="max" value={Math.max(1, max - 1)} disabled={max <= 1} aria-label="−">−</button>
+                <span>{max}</span>
+                <button type="submit" name="max" value={Math.min(9, max + 1)} disabled={max >= 9} aria-label="+">+</button>
               </span>
             </form>
 

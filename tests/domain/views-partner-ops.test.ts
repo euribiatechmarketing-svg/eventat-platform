@@ -8,7 +8,7 @@ import { sofiaInstant } from '@/lib/format';
 import { declineRequest } from '@/lib/domain/requests';
 import { withdrawApproval } from '@/lib/domain/bookings';
 import {
-  ago, attachmentsText, bookingsLedger, dashboardView, hhmm, parseDateQuery, partnerReportCsv, partnerSearch, policyLine, rangeText, requestPartnerReport, requestsInbox,
+  ago, attachmentsText, bookedChip, bookingsLedger, dashboardView, hhmm, parseDateQuery, partnerReportCsv, partnerSearch, policyLine, rangeText, requestPartnerReport, requestsInbox,
 } from '@/lib/domain/views-partner-ops';
 import { createClient, createPartner } from '../helpers/factories';
 import { NOW, approvedBooking, emails, paidBooking, sendFor } from '../helpers/lifecycle';
@@ -34,6 +34,12 @@ describe('formats', () => {
     expect(policyLine('moderate')).toBe('Умерена — безплатно анулиране до 30 дни преди събитието.');
     expect(policyLine('strict')).toMatch(/^Строга — депозитът не се връща; остатъкът се възстановява до 14 дни преди събитието\.$/);
     expect(attachmentsText('Мария Димитрова', 3)).toBe('Мария прикачи три референции към заявката — показват стила и атмосферата, които търси.');
+  });
+  it('calendar chips are written like the prototype (vendor/calendar.html)', () => {
+    expect(bookedChip('Сватба', 120)).toBe('Сватба · 120 гости');
+    expect(bookedChip('Абитуриентски бал', 70)).toBe('Бал · 70 гости');
+    expect(bookedChip('Рожден ден', 40)).toBe('Рожден ден · 40 г.');
+    expect(bookedChip('Фирмено събитие', 250)).toBe('Фирмено · 250 г.');
   });
   it('reads dates typed into the search', () => {
     expect(parseDateQuery('14.06.2026')).toEqual({ day: 14, month: 6, year: 2026 });

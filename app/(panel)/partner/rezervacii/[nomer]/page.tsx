@@ -56,7 +56,7 @@ export default async function BookingPage({ params }: { params: Promise<{ nomer:
 
   return (
     <div className="po">
-      <TopbarTitleText text={`Резервация\u00a0·\u00a0№\u00a0${b.number}`} />
+      <TopbarTitleText text={`Резервация\u00a0·\u00a0№\u00a0${b.number}`} short={`№\u00a0${b.number}`} />
       <Link className="crumb" href="/partner/rezervacii">{I.back}Назад към резервациите</Link>
 
       <div className="page-head">
@@ -141,7 +141,7 @@ export default async function BookingPage({ params }: { params: Promise<{ nomer:
                 <div className="split"><span>Сума</span><b>{money(b.money.amountCents)}</b></div>
                 <div className="split is-total"><span>Получавате</span><b>{money(partnerCents)}</b></div>
               </div>
-              <div className="kv" style={{ gridTemplateColumns: '1fr 1fr' }}>
+              <div className="kv">
                 <div className="kv-item"><div className="kv-label">Платено от клиента</div><div className="kv-value">{b.paidAt ? <>{date(b.paidAt)} <small>през платформата</small></> : '—'}</div></div>
                 <div className="kv-item"><div className="kv-label">Изплащане</div><div className="kv-value">{partnerCents > 0 ? <>{date(b.money.payoutDate)} <small>първата партида след събитието</small></> : '—'}</div></div>
                 <div className="kv-item"><div className="kv-label">Състояние</div><div className="kv-value">{x.line?.state ? <>{x.line.state.label} {x.line.state.note && <small>{x.line.state.note}</small>}</> : '—'}</div></div>

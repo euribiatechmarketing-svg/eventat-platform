@@ -232,6 +232,19 @@ export async function requestsInbox(actor: AnyActor, a: { tab: RequestTab; filte
 
 export type MiniDay = { date: DateStr; n: number; out: boolean; today: boolean; past: boolean; info: DayInfo | null; href: string | null };
 
+/** The prototype's short event-type names on calendar chips (vendor/calendar.html: ‹Бал · 70 гости›, ‹Фирмено · 250 г.›). */
+const CHIP_TYPE: Record<string, string> = { 'Фирмено събитие': 'Фирмено', 'Абитуриентски бал': 'Бал' };
+
+/**
+ * A booked day's chip as the prototype writes it: short type, then ‹N гости›, or ‹N г.› when the
+ * label would run past 18 characters (‹Сватба · 120 гости›, ‹Рожден ден · 40 г.›, ‹Фирмено · 250 г.›).
+ */
+export function bookedChip(eventType: string, guests: number): string {
+  const type = CHIP_TYPE[eventType] ?? eventType;
+  const full = `${type} · ${guests} гости`;
+  return full.length <= 18 ? full : `${type} · ${guests} г.`;
+}
+
 /** Calendar cells for a month: full weeks from Monday, days of other months marked `out`. */
 async function monthCells(partnerId: string, ym: string, today: DateStr, q: Queryable): Promise<MiniDay[]> {
   const first = `${ym}-01`;
@@ -244,8 +257,9 @@ async function monthCells(partnerId: string, ym: string, today: DateStr, q: Quer
   const cells: MiniDay[] = [];
   for (let d = start; d <= end; d = addDays(d, 1)) {
     const out = d < first || d > last;
-    const info = out ? null : infos.find(i => i.date === d) ?? null;
-    const bk = info?.bookings.find(b => (info.state === 'booked' ? BOOKED.includes(b.status) : b.status === 'awaiting_payment'));
+    const day = out ? null : infos.find(i => i.date === d) ?? null;
+    const bk = day?.bookings.find(b => (day.state === 'booked' ? BOOKED.includes(b.status) : b.status === 'awaiting_payment'));
+    const info = day && day.state === 'booked' && bk ? { ...day, chip: bookedChip(bk.eventType, bk.guests) } : day;
     const href = info && bk && (info.state === 'booked' || info.state === 'held')
       ? (info.state === 'booked' ? `/partner/rezervacii/${encodeURIComponent(bk.number)}` : `/partner/zayavki/${encodeURIComponent(bk.number)}`)
       : null;
