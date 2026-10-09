@@ -99,15 +99,17 @@ export function Burger({ target }: { target: 'nav' | 'shell' }) {
   }, [target]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!open) return;
+    // On window, so it runs after a menu, the bell or the search suggestions inside the drawer have
+    // handled the same Escape: one Escape closes only the innermost layer.
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
       const h = host();
       const inside = !!h?.contains(document.activeElement);
       h?.classList.remove('is-open');
       if (inside) btn.current?.focus();
     };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <button ref={btn} type="button" className="ui-burger" aria-label="Меню" aria-expanded={open}

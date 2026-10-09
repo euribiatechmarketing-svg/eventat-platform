@@ -45,7 +45,8 @@ export function useDropdown({ open, setOpen, wrap, trigger, panel, menu = false 
     const close = (back: boolean) => { set.current(false); if (back) trigger.current?.focus({ preventScroll: true }); };
     const onDown = (e: MouseEvent) => { if (!w?.contains(e.target as Node)) close(false); };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { close(!!w?.contains(document.activeElement)); return; }
+      // preventDefault marks the Escape as used, so an outer layer (the phone drawer) stays open.
+      if (e.key === 'Escape') { e.preventDefault(); close(!!w?.contains(document.activeElement)); return; }
       if (menu && e.key === 'Tab' && panel.current?.contains(document.activeElement)) close(false);
     };
     const onFocusOut = (e: FocusEvent) => {
