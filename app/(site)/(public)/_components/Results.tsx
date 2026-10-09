@@ -10,8 +10,11 @@ import { Num } from './text';
 
 export type Viewer = { kind: 'guest' | 'client' | 'other'; signIn: string; register: (href: string) => string };
 
-/** `a.v-card` (client/catalog.html). A card busy on the chosen date is greyed and offers ‹Уведоми ме›. */
-export function VCard({ c, date, sabitieId, viewer }: { c: Card; date: string | null; sabitieId: string | null; viewer: Viewer }) {
+/**
+ * `a.v-card` (client/catalog.html). A card busy on the chosen date is greyed and offers ‹Уведоми ме›,
+ * unless the date is held by the client's own booking with that partner (`ownBooking`).
+ */
+export function VCard({ c, date, sabitieId, viewer, ownBooking = false }: { c: Card; date: string | null; sabitieId: string | null; viewer: Viewer; ownBooking?: boolean }) {
   // The profile's widget opens on the date (and the event) the search is for.
   const q = new URLSearchParams();
   if (date) q.set('data', date);
@@ -35,7 +38,7 @@ export function VCard({ c, date, sabitieId, viewer }: { c: Card; date: string | 
         {c.busy && date && (
           <span className="v-busy">
             <span className="badge badge--danger badge--dot">{c.busyLabel}</span>
-            {viewer.kind !== 'other' && (
+            {viewer.kind !== 'other' && !ownBooking && (
               <NotifyButton partnerId={c.partnerId} date={date} sabitieId={sabitieId} signIn={viewer.kind === 'guest' ? viewer.signIn : null} />
             )}
           </span>
@@ -101,7 +104,7 @@ export function Facets({ r, basePath, baseQuery }: { r: SearchResult; basePath: 
 }
 
 /** The zero state (§13.6): what emptied the list, and buttons that undo just that. */
-export function Zero({ r, qs, back, viewer }: { r: SearchResult; qs: string; back: string; viewer: Viewer }) {
+export function Zero({ r, qs, back, viewer, watchable = true }: { r: SearchResult; qs: string; back: string; viewer: Viewer; watchable?: boolean }) {
   const z = r.zero!;
   return (
     <div className="empty">
@@ -115,6 +118,8 @@ export function Zero({ r, qs, back, viewer }: { r: SearchResult; qs: string; bac
           if (b.kind === 'brief') return viewer.kind === 'other' ? null : <Link key={b.kind} className={cls} href={viewer.kind === 'guest' ? viewer.register(b.href!) : b.href!}>{b.label}</Link>;
           if (viewer.kind === 'other') return null;
           if (viewer.kind === 'guest') return <Link key={b.kind} className={cls} href={viewer.signIn}>{b.label}</Link>;
+          // Only the client's own bookings hold the date: there is nothing to be told about.
+          if (!watchable) return null;
           return (
             <form key={b.kind} action={watchDatesAction}>
               <input type="hidden" name="qs" value={qs} />

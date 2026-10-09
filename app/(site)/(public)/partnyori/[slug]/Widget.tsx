@@ -8,13 +8,16 @@ import { date as fmtDate, weekdayName } from '@/lib/format';
 import { NotifyButton } from '../../_components/client';
 import { checkDateAction } from './actions';
 
+/** The client's own live request or booking with this partner on the chosen date. */
+type Own = { label: string; href: string } | null;
+
 export type WidgetProps = {
   partnerId: string; slug: string;
   fromPrice: { text: string; unitLabel: string } | null;
   types: { slug: string; name: string }[];
   events: { id: string; date: string; guests: number | null; typeSlug: string }[];
   services: { id: string; label: string }[];
-  initial: { date: string | null; typeSlug: string | null; guests: number | null; serviceId: string | null; eventId: string | null; busy: boolean };
+  initial: { date: string | null; typeSlug: string | null; guests: number | null; serviceId: string | null; eventId: string | null; busy: boolean; own: Own };
   today: string;
   /** client: requests and watches; guest: sent to sign up / sign in first; none: no request controls. */
   mode: 'client' | 'guest' | 'none';
@@ -31,6 +34,7 @@ export function Widget(w: WidgetProps) {
   const [guests, setGuests] = useState(w.initial.guests ? String(w.initial.guests) : '');
   const [svc, setSvc] = useState(w.initial.serviceId ?? w.services[0]?.id ?? '');
   const [busy, setBusy] = useState(w.initial.busy);
+  const [own, setOwn] = useState<Own>(w.initial.own);
   const [checking, start] = useTransition();
   const dateInput = useRef<HTMLInputElement>(null);
 
@@ -40,6 +44,7 @@ export function Widget(w: WidgetProps) {
     start(async () => {
       const r = await checkDateAction({ partnerId: w.partnerId, date: v });
       setBusy(!!r?.busy);
+      setOwn(r?.own ?? null);
     });
   };
 
@@ -81,7 +86,7 @@ export function Widget(w: WidgetProps) {
             <div className="book-f-row">
               <label className="book-f-l" htmlFor="w-guests">Гости</label>
               <div className="book-f-guests">
-                <input id="w-guests" className="book-f-v" inputMode="numeric" value={guests} placeholder="—" style={{ width: `calc(${Math.max(guests.length, 1)}ch + 2px)` }}
+                <input id="w-guests" className="book-f-v" inputMode="numeric" value={guests} placeholder="—" style={{ width: `${Math.max(guests.length, 1) + 0.15}ch` }}
                   onChange={e => setGuests(e.target.value.replace(/\D/g, '').slice(0, 5))} />
                 {guests && <span className="book-f-v">души</span>}
               </div>
@@ -98,7 +103,11 @@ export function Widget(w: WidgetProps) {
               </div>
             )}
           </div>
-          {busy && d ? (
+          {own && d ? (
+            <div className="panel-actions" style={{ marginTop: 16 }}>
+              <Link className="btn btn--primary btn--block" href={own.href}>{own.label}</Link>
+            </div>
+          ) : busy && d ? (
             <div aria-live="polite">
               <div className="book-rule"><strong style={{ color: 'var(--text)' }}>Заета дата:</strong> изпълнителят вече има ангажимент на {fmtDate(d)} г. Ще ви известим, ако датата се освободи.</div>
               <div className="panel-actions" style={{ marginTop: 12 }}>
@@ -111,10 +120,10 @@ export function Widget(w: WidgetProps) {
               <Link className="btn btn--primary btn--block" href={ctaHref} aria-disabled={checking}>Изпрати запитване</Link>
             </div>
           )}
-          <div className="book-note">
+          {!own && <div className="book-note">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
             <span>Не плащате сега. Изпълнителят потвърждава до&nbsp;{w.responseHours}&nbsp;{w.responseHours === 1 ? 'час' : 'часа'}, след което плащате през платформата.</span>
-          </div>
+          </div>}
         </>
       )}
       {w.policyLine && <div className="book-rule"><strong style={{ color: 'var(--text)' }}>{w.policyLine.label}</strong>{w.policyLine.text}</div>}

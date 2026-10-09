@@ -37,6 +37,13 @@ export type QueryCell = {
   record: boolean;
 };
 
+/** Two URLs describe the same view: same path, same parameters in any order. */
+function sameView(a: string, b: string): boolean {
+  const u = new URL(a, 'http://x'), v = new URL(b, 'http://x');
+  const norm = (x: URL) => [...x.searchParams.entries()].map(([k, val]) => `${k}=${val}`).sort().join('&');
+  return u.pathname === v.pathname && norm(u) === norm(v);
+}
+
 const CHEVRON = <svg className="sb-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>;
 
 function useOutside(open: boolean, close: () => void) {
@@ -93,7 +100,7 @@ function MenuCell({ m }: { m: BarMenu }) {
 type Group = { heading: string; rows: SuggestRow[] };
 
 /** The first cell: free text, the suggestion panel, Enter / blur runs the search. */
-function QueryField({ c, onRun }: { c: QueryCell; onRun: (run: () => Promise<void>) => void }) {
+function QueryField({ c, onRun, again }: { c: QueryCell; onRun: (run: () => Promise<void>) => void; again?: string | null }) {
   const router = useRouter();
   const [text, setText] = useState(c.text);
   const [picked, setPicked] = useState(c.picked);
@@ -135,7 +142,10 @@ function QueryField({ c, onRun }: { c: QueryCell; onRun: (run: () => Promise<voi
     setOpen(false);
     const usesQuery = !(p && (t === p.name || !t.trim()));
     if (c.record && usesQuery && t.trim()) await recordQueryAction(t.trim());
-    router.push(href(t, p), { scroll: false });
+    const target = href(t, p);
+    // ‹Търси› on the view already shown: the results are these; say so instead of doing nothing.
+    if (again && sameView(target, window.location.pathname + window.location.search)) { toast(again); return; }
+    router.push(target, { scroll: false });
   };
   // the Търси button runs this field too
   useEffect(() => { onRun(() => run()); });
@@ -192,8 +202,11 @@ function QueryField({ c, onRun }: { c: QueryCell; onRun: (run: () => Promise<voi
  */
 export function SearchBar({ query, type, menus, submit, style }: {
   query?: QueryCell; type?: BarMenu; menus: BarMenu[];
-  /** ‹Търси› when there is no query cell: where it goes. `toast`: the default-state confirmation. */
-  submit: { href?: string; toast?: string | null };
+  /**
+   * ‹Търси› when there is no query cell: where it goes. `toast`: the default-state confirmation.
+   * `again`: the confirmation when ‹Търси› is pressed on the view already shown.
+   */
+  submit: { href?: string; toast?: string | null; again?: string | null };
   style?: CSSProperties;
 }) {
   const router = useRouter();
@@ -205,7 +218,7 @@ export function SearchBar({ query, type, menus, submit, style }: {
   };
   return (
     <div className="searchbar" style={style} role="search">
-      {query && <QueryField c={query} onRun={r => { runQuery.current = r; }} />}
+      {query && <QueryField c={query} again={submit.again} onRun={r => { runQuery.current = r; }} />}
       {type && <MenuCell m={type} />}
       {menus.map(m => <MenuCell key={m.label} m={m} />)}
       <div className="sb-go"><button type="button" className="btn btn--primary" onClick={go}>Търси</button></div>

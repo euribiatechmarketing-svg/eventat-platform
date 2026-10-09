@@ -3,9 +3,11 @@
 // cards (busy ones with ‹Уведоми ме›), the CTA block and the zero state. Everything is a GET
 // parameter, so a view is a shareable URL.
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { SiteHeader } from '@/components/site/SiteHeader';
-import { parseSearchParams, search, toQuery } from '@/lib/domain/search';
-import { searchChoices } from '@/lib/domain/views-public';
+import { parseSearchParams, search, searchHref, toQuery } from '@/lib/domain/search';
+import { ownOnDate } from '@/lib/domain/saved';
+import { searchChoices, zeroWatchable } from '@/lib/domain/views-public';
 import { SearchBar } from '../_components/SearchBar';
 import { barMenus, searchPageHref, withoutQuery } from '../_components/bar';
 import { Chips, Cta, Facets, Sort, VCard, Zero } from '../_components/Results';
@@ -24,7 +26,13 @@ export default async function SearchPage({ searchParams }: { searchParams: SP })
   const p = parseSearchParams(sp);
   const here = hereUrl('/tarsene', sp);
   const { viewer, clientId } = await viewerFor(here);
-  const [r, choices] = await Promise.all([search(p, { clientId, basePath: '/tarsene' }), searchChoices(clientId)]);
+  const choices = await searchChoices(clientId);
+  // A date that has passed (an old link or saved search) is dropped: nothing can be booked on it.
+  if (p.data && p.data < choices.today) redirect(searchHref({ ...p, data: null, drugaData: false }, '/tarsene'));
+  const r = await search(p, { clientId, basePath: '/tarsene' });
+  // A busy card that is the client's own booking offers no ‹Уведоми ме›.
+  const own = clientId && p.data ? await ownOnDate(clientId, r.cards.filter(c => c.busy).map(c => c.partnerId), p.data) : new Map<string, { holdsDate: boolean }>();
+  const watchable = clientId && r.zero?.dateCaused ? await zeroWatchable(p, clientId) : true;
   const href = searchPageHref('/tarsene');
   const canonical = toQuery(p);
   const brief = r.cta?.briefHref ?? r.zero?.buttons.find(b => b.kind === 'brief')?.href ?? '/zayavka/otvorena';
@@ -54,7 +62,7 @@ export default async function SearchPage({ searchParams }: { searchParams: SP })
               briefHref: viewer.kind === 'guest' ? viewer.register(brief) : brief, record: viewer.kind === 'client',
             }}
             menus={barMenus(p, choices, href, '/tarsene', false)}
-            submit={{ toast: r.blank ? 'Показваме намерените изпълнители' : null }} />
+            submit={{ toast: r.blank ? 'Показваме намерените изпълнители' : null, again: r.blank ? null : 'Показваме намерените изпълнители' }} />
 
           {r.blank && r.defaultState ? (
             <div className="search-default">
@@ -107,11 +115,12 @@ export default async function SearchPage({ searchParams }: { searchParams: SP })
                   <Chips chips={r.chips} clearHref={r.clearHref} />
                   {r.cards.length > 0 && (
                     <div className="v-grid">
-                      {r.cards.map(c => <VCard key={c.partnerId} c={c} date={p.data} sabitieId={p.sabitieId} viewer={viewer} />)}
+                      {r.cards.map(c => <VCard key={c.partnerId} c={c} date={p.data} sabitieId={p.sabitieId} viewer={viewer} ownBooking={!!own.get(c.partnerId)?.holdsDate} />)}
                     </div>
                   )}
-                  {r.zero && <Zero r={r} qs={canonical} back={here} viewer={viewer} />}
-                  {r.cta && <Cta r={r} viewer={viewer} />}
+                  {r.zero && <Zero r={r} qs={canonical} back={here} viewer={viewer} watchable={watchable} />}
+                  {/* The open-request invitation is for clients and guests; a partner or the team has nothing to send. */}
+                  {r.cta && viewer.kind !== 'other' && <Cta r={r} viewer={viewer} />}
                 </div>
               </div>
             </div>

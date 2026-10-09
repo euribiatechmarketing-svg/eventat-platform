@@ -135,7 +135,7 @@ export default async function EventTypePage({ params, searchParams }: Props) {
                   <div key={m.categorySlug} className="set-row">
                     <div className="set-t">
                       <div className="set-n">{m.label}</div>
-                      <div className="set-d">{m.line}</div>
+                      <div className="set-d">{m.line.slice(0, m.line.lastIndexOf(' · ') + 3)}<span className="pub-nw">{m.line.slice(m.line.lastIndexOf(' · ') + 3)}</span></div>
                     </div>
                     <Link className="btn btn--outline btn--sm" href={m.href}>Виж изпълнители</Link>
                   </div>

@@ -2,10 +2,11 @@
 // computed count and from-price, the sub-type pills, the bar, the results with sorting and chips,
 // the zero state, and the tips.
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { SiteHeader } from '@/components/site/SiteHeader';
-import { parseSearchParams, toQuery } from '@/lib/domain/search';
-import { categoryView, searchChoices, publicTitle } from '@/lib/domain/views-public';
+import { parseSearchParams, searchHref, toQuery } from '@/lib/domain/search';
+import { ownOnDate } from '@/lib/domain/saved';
+import { categoryView, searchChoices, publicTitle, zeroWatchable } from '@/lib/domain/views-public';
 import { SearchBar } from '../../_components/SearchBar';
 import { barMenus, searchPageHref, withoutQuery } from '../../_components/bar';
 import { Chips, Sort, VCard, Zero } from '../../_components/Results';
@@ -30,11 +31,16 @@ export default async function CategoryPage({ params, searchParams }: Props) {
   const here = hereUrl(basePath, sp);
   const { viewer, clientId } = await viewerFor(here);
   const p = parseSearchParams(sp);
-  const [v, choices] = await Promise.all([categoryView(slug, p, { clientId }), searchChoices(clientId)]);
+  const choices = await searchChoices(clientId);
+  // A date that has passed (an old link) is dropped: nothing can be booked on it.
+  if (p.data && p.data < choices.today) redirect(searchHref({ ...p, kategoriya: slug, data: null, drugaData: false }, basePath));
+  const v = await categoryView(slug, p, { clientId });
   if (!v) notFound();
   const { hero, result: r } = v;
   const pc = { ...p, kategoriya: slug };
   const href = searchPageHref(basePath);
+  const own = clientId && p.data ? await ownOnDate(clientId, r.cards.filter(c => c.busy).map(c => c.partnerId), p.data) : new Map<string, { holdsDate: boolean }>();
+  const watchable = clientId && r.zero?.dateCaused ? await zeroWatchable(pc, clientId) : true;
   const brief = r.zero?.buttons.find(b => b.kind === 'brief')?.href ?? `/zayavka/otvorena?cat=${slug}`;
 
   return (
@@ -77,10 +83,10 @@ export default async function CategoryPage({ params, searchParams }: Props) {
           <Chips chips={r.chips} clearHref={r.clearHref} />
           {r.cards.length > 0 && (
             <div className="v-grid">
-              {r.cards.map(c => <VCard key={c.partnerId} c={c} date={p.data} sabitieId={p.sabitieId} viewer={viewer} />)}
+              {r.cards.map(c => <VCard key={c.partnerId} c={c} date={p.data} sabitieId={p.sabitieId} viewer={viewer} ownBooking={!!own.get(c.partnerId)?.holdsDate} />)}
             </div>
           )}
-          {r.zero && <Zero r={r} qs={toQuery(pc)} back={here} viewer={viewer} />}
+          {r.zero && <Zero r={r} qs={toQuery(pc)} back={here} viewer={viewer} watchable={watchable} />}
 
           {hero.tips.length > 0 && (
             <div style={{ marginTop: 44 }}>

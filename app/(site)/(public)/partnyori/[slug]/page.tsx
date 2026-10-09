@@ -33,16 +33,16 @@ export default async function PartnerPage({ params, searchParams }: Props) {
   const { user, viewer, clientId } = await viewerFor(sp.toString() ? `${path}?${sp}` : path);
   const actor = user ? await actorFromUser(user) : null;
   const preview = sp.get('preview') === '1';
-  const v = await partnerView(slug, { preview, data: sp.get('data'), sabitieId: sp.get('sabitie-id'), reviewPages: Number(sp.get('revyuta')) || 1 }, actor);
+  const choices = await searchChoices(null);
+  // A date from the link counts only from today on (an old shared link opens on no date).
+  const urlDate = sp.get('data');
+  const askedDate = isDate(urlDate) && urlDate >= choices.today ? urlDate : null;
+  const v = await partnerView(slug, { preview, data: askedDate, sabitieId: sp.get('sabitie-id'), reviewPages: Number(sp.get('revyuta')) || 1 }, actor);
   if (!v) notFound();
   const p = v.partner;
   const w = v.widget;
-  const urlDate = sp.get('data');
-  const initialDate = w?.date ?? (isDate(urlDate) ? urlDate : null);
-  const [avail, choices] = await Promise.all([
-    initialDate && !p.preview ? widgetAvailability(p.id, initialDate, clientId) : Promise.resolve(null),
-    searchChoices(null),
-  ]);
+  const initialDate = w?.date ?? askedDate;
+  const avail = initialDate && !p.preview ? await widgetAvailability(p.id, initialDate, clientId) : null;
   const canRequest = p.acceptingRequests && !p.preview && viewer.kind !== 'other';
   const mode = !canRequest ? 'none' : viewer.kind === 'guest' ? 'guest' : 'client';
   const choose = (serviceId: string) => {
@@ -52,6 +52,10 @@ export default async function PartnerPage({ params, searchParams }: Props) {
     return viewer.kind === 'guest' ? viewer.register(href) : href;
   };
   const location = p.location.replace(' · до ', ' · работи до ');
+  // ‹Тип събитие› offers the types this partner serves (its specialisations), else every public type.
+  const served = new Set(v.eventTypes.map(t => t.href.replace('/sabitiya/', '')));
+  const widgetTypes = choices.types.some(t => served.has(t.slug)) ? choices.types.filter(t => served.has(t.slug)) : choices.types;
+  const widgetType = w?.typeSlug && widgetTypes.some(t => t.slug === w.typeSlug) ? w.typeSlug : null;
   const photos = v.photos.filter(ph => ph.url);
   const more = new URLSearchParams(sp);
   more.set('revyuta', String(v.reviewPages + 1));
@@ -63,7 +67,7 @@ export default async function PartnerPage({ params, searchParams }: Props) {
       <main className="wrap" id="main">
         <div className="hold">
           <div className="crumbs">
-            <Link href="/tarsene">Каталог</Link><CrumbChevron />
+            <Link href="/tarsene?q=">Каталог</Link><CrumbChevron />
             {p.categorySlug && <><Link href={`/kategorii/${p.categorySlug}`}>{p.categoryName}</Link><CrumbChevron /></>}
             <span>{p.name}</span>
           </div>
@@ -159,10 +163,10 @@ export default async function PartnerPage({ params, searchParams }: Props) {
             <aside>
               <Widget
                 partnerId={p.id} slug={p.slug} fromPrice={p.fromPrice ? { text: p.fromPrice.text, unitLabel: p.fromPrice.unitLabel } : null}
-                types={choices.types}
+                types={widgetTypes}
                 events={(w?.events ?? []).map(e => ({ id: e.id, date: e.date, guests: e.guests, typeSlug: e.typeSlug }))}
                 services={v.services.filter(s => s.acceptingRequests).map(s => ({ id: s.id, label: `${s.name} · ${s.price ? (s.price.unitLabel === 'на гост' ? `${s.price.text} на гост` : s.price.text) : 'По запитване'}` }))}
-                initial={{ date: initialDate, typeSlug: w?.typeSlug ?? null, guests: w?.guests ?? null, serviceId: w?.serviceId ?? null, eventId: w?.eventId ?? null, busy: !!avail?.busy }}
+                initial={{ date: initialDate, typeSlug: widgetType, guests: w?.guests ?? null, serviceId: w?.serviceId ?? null, eventId: w?.eventId ?? null, busy: !!avail?.busy, own: avail?.own ?? null }}
                 today={choices.today} mode={mode} signIn={viewer.signIn} responseHours={v.responseHours} policyLine={v.policyLine} />
             </aside>
           </div>

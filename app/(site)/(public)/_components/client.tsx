@@ -36,16 +36,8 @@ export function NotifyButton({ partnerId, date, sabitieId, signIn, label = 'Ув
   return <button type="button" className={className} onClick={click} disabled={pending} aria-busy={pending}>{label}</button>;
 }
 
-/** ‹BG› / ‹EN›: English is not published yet (⚙ locale.en_enabled = false, D36). */
-export function Lang() {
-  return (
-    <span className="lang ui-click" role="group" aria-label="Език">
-      <b>BG</b>
-      <span role="button" tabIndex={0} onClick={() => toast('Английската версия идва скоро')}
-        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toast('Английската версия идва скоро'); } }}>EN</span>
-    </span>
-  );
-}
+/** ‹BG› / ‹EN› lives with the site header. */
+export { Lang } from '@/components/site/Lang';
 
 /** The facet column; below 960 px it folds behind a ‹Филтри› button. */
 export function FiltersPanel({ children, activeCount }: { children: ReactNode; activeCount: number }) {
@@ -84,7 +76,8 @@ export function PriceRange({ from, to, baseQuery, basePath }: { from: number; to
   };
   const field = (v: string, set: (s: string) => void, label: string) => (
     <label className="f-pill">
-      <input inputMode="numeric" aria-label={label} value={v} style={{ width: `${Math.max(v.length, 1) + 0.5}ch` }}
+      <input inputMode="numeric" aria-label={label} value={v}
+        style={{ width: `${Math.max(v.replace(/\D/g, '').length, 1) + (v.match(/[\s\u00a0]/g)?.length ?? 0) * 0.4 + 0.1}ch` }}
         onChange={e => set(e.target.value.replace(/[^\d\s\u00a0]/g, ''))}
         onBlur={apply} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur(); } }} />
       <span>€</span>

@@ -870,7 +870,7 @@ export async function eventTypePage(a: { slug: string; grad?: string | null; dat
     const missing = cards.filter(cd => !activeCats.has(cd.categoryId)).map(cd => {
       const latest = reqs.find(x => x.categoryId === cd.categoryId);
       const head = latest && latest.r.status === 'declined' ? `${latest.partnerName} отказа` : 'Няма изпратена заявка';
-      return { categorySlug: cd.categorySlug, label: cd.label, line: `${head} · ${cd.count === 1 ? '1 партньор е свободен' : `${cd.count} партньори са свободни`}`, href: cd.href };
+      return { categorySlug: cd.categorySlug, label: cd.label, line: `${head} · ${cd.count === 0 ? cd.countLabel : cd.count === 1 ? '1 партньор е свободен' : `${cd.count} партньори са свободни`}`, href: cd.href };
     });
     panels = { event, arranged, missing };
   }

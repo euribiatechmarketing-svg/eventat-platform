@@ -18,7 +18,7 @@ export default async function BecomePartner() {
   const partnerEuros = moneyShort(ex.partnerCents).replace(/\s?€$/, '');
   return (
     <>
-      <SiteHeader active="/stani-partnyor" />
+      <SiteHeader active="/stani-partnyor" guestAs="partner" />
       <main className="wrap" id="main">
         <div className="hold">
           <div className="band" style={{ backgroundImage: "url('/photos/thumbs/v1-dj-mod.jpg')", height: 340, marginTop: 30 }}>

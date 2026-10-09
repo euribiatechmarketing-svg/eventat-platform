@@ -46,7 +46,7 @@ a.set-row:hover .set-n { color: var(--primary-700); }
 .f-item:hover .f-box:not(.is-on) { border-color: var(--primary-400); }
 label.f-pill { gap: 4px; background: #fff; cursor: text; }
 label.f-pill:focus-within { border-color: var(--primary-500); box-shadow: var(--shadow-focus); }
-.f-pill input { flex: 0 1 auto; min-width: 1ch; border: 0; padding: 0; background: transparent; font: inherit; color: inherit; outline: none; }
+.f-pill input { flex: 0 1 auto; min-width: 1ch; border: 0; padding: 0; background: transparent; font: inherit; color: inherit; outline: none; font-variant-numeric: lining-nums tabular-nums; font-feature-settings: "lnum" 1, "tnum" 1, "locl" 0; }
 .pub-filters-btn { display: none; }
 .pub-filters-n { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--primary-600); color: #fff; font-size: 11px; font-weight: var(--fw-bold); }
 .pub-sort { margin-left: auto; }
@@ -75,6 +75,12 @@ a.cat-pill.is-on:hover { color: #fff; }
   font-feature-settings: "lnum" 1, "locl" 0;
 }
 
+/* running text never leaves a single word on its last line (copy rule: no orphan words) */
+.hero-d, .sec-d, .h-sub, .cta-d, .band-d, .feat-d, .empty-text, .st-desc, .st-lead, .pv-text, .rev-text, .faq-a, .doc-d, .set-d, .book-rule, .book-note span { text-wrap: pretty; }
+
+/* event-type.html ‹Още липсва›: the partner count stays in one piece when the line wraps */
+.set-d .pub-nw { white-space: nowrap; }
+
 /* ---------- start (index) ---------- */
 .st-split { flex: 1 0 auto; min-height: 560px; }
 .site > .st-split { min-height: max(560px, calc(100dvh - 76px - 160px)); }
@@ -99,12 +105,14 @@ a.cat-pill.is-on:hover { color: #fff; }
 .book-f-row:focus-within { background: var(--primary-50); }
 .book-f-sel { position: relative; }
 .book-f-sel .sb-caret { right: 0; }
-.book-f-row select.book-f-v { padding-right: 22px; cursor: pointer; text-overflow: ellipsis; }
+.book-f-row select.book-f-v { padding: 8px 22px 8px 0; margin: -5px 0 -8px; cursor: pointer; text-overflow: ellipsis; }
 .book .panel-actions .btn { white-space: nowrap; }
+.book > .book-rule:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
 .book-f-row.ui-click:hover .book-f-v { color: var(--primary-700); }
 .book-f-date { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; pointer-events: none; border: 0; padding: 0; }
-.book-f-guests { display: flex; align-items: baseline; gap: 5px; }
-.book-f-guests input.book-f-v { flex: 0 0 auto; min-width: 2ch; }
+.book-f-guests { display: flex; align-items: baseline; gap: 4px; }
+.book-f-guests input.book-f-v { flex: 0 0 auto; min-width: 1ch; font-variant-numeric: lining-nums tabular-nums; font-feature-settings: "lnum" 1, "tnum" 1, "locl" 0; }
+.book-f-guests input.book-f-v:placeholder-shown { min-width: 2ch; }
 .book-f-guests span.book-f-v { margin-top: 3px; }
 
 /* the gallery with fewer than five photos */
@@ -148,7 +156,7 @@ a.cat-pill.is-on:hover { color: #fff; }
   .hero-t { font-size: 40px !important; }
   .steps3 { grid-template-columns: minmax(0, 1fr); }
   .earn-split, .cta, .doc { grid-template-columns: minmax(0, 1fr); }
-  .doc-nav { position: static; display: flex; overflow-x: auto; gap: 6px; scrollbar-width: none; }
+  .doc-nav { position: static; display: flex; flex-wrap: wrap; gap: 6px; }
   .doc-nav .doc-nav-t { display: none; }
   .doc-link { white-space: nowrap; flex-shrink: 0; }
   .cta { padding: 36px 32px; }
@@ -192,14 +200,14 @@ a.cat-pill.is-on:hover { color: #fff; }
   .band-in { position: relative; padding: 32px 20px; }
   .band-t { font-size: 28px; }
   .band-t br { display: none; }
-  .sec-t { font-size: 26px; }
+  .sec-t { font-size: 26px; line-height: 1.2; }
+  .band-scrim { background: linear-gradient(180deg, rgba(42,35,64,.78) 0%, rgba(42,35,64,.7) 100%); }
   .doc-body { padding: 24px 18px; }
   .money { padding: 22px 20px; }
   .cta { padding: 28px 20px; }
   .cta-t { font-size: 25px; }
-  .cat-pills { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
-  .cat-pills::-webkit-scrollbar { display: none; }
-  .search-default .cat-pills { flex-wrap: wrap; justify-content: center; overflow: visible; }
+  .cat-pills { flex-wrap: wrap; gap: 8px; }
+  .search-default .cat-pills { justify-content: center; }
   .pub-types { flex-wrap: wrap; }
   .pub-types .cat-pills { width: 100%; }
 
@@ -221,6 +229,10 @@ a.cat-pill.is-on:hover { color: #fff; }
   .st-cta { min-width: 0; }
   .st-body { left: 20px; right: 20px; bottom: 28px; }
   .nav.st-nav .lang { display: inline-flex; }
+
+  /* fingers: small buttons and the breadcrumbs get a taller hit area */
+  .wrap .btn--sm { padding-top: 10px; padding-bottom: 10px; }
+  .crumbs a { padding: 10px 0; margin: -10px 0; }
 }
 
 /* legal: a section without its sub-line keeps the gap before the list */

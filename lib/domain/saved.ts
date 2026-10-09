@@ -4,9 +4,9 @@
 // K9, K11, a block removed — `client-date-freed` at once) → closed (a new request to that
 // partner for that date); also expired (T21, the date passed) and removed (the stop control).
 // Saved search: notify on / off, deleted; T20 scans daily at ⚙ saved_search.scan_time.
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db, type Queryable, type Tx } from '@/db';
-import { category, city, clientEvent, dateWatch, eventType, partner, savedSearch, user } from '@/db/schema';
+import { booking, category, city, clientEvent, dateWatch, eventType, partner, request, savedSearch, user } from '@/db/schema';
 import { now } from '@/lib/clock';
 import { cancelJobs, scheduleJob } from '@/lib/jobs';
 import { addDays, date as fmtDate, dateShort, moneyShort, sofiaDate, sofiaInstant, type DateStr } from '@/lib/format';
@@ -78,9 +78,14 @@ export async function saveSearch(actor: AnyActor, a: { params: SearchParams }, t
   assertClient(actor);
   return withTx(tx, async t => {
     const at = await now();
+    // Saving the same search again (a second click) keeps the one already saved.
+    const json = paramsJson(a.params);
+    const [same] = await t.select().from(savedSearch)
+      .where(and(eq(savedSearch.clientId, actor.userId), sql`${savedSearch.params} = ${JSON.stringify(json)}::jsonb`)).limit(1);
+    if (same) return same;
     const texts = savedTexts(a.params, await names(t, a.params));
     const [row] = await t.insert(savedSearch).values({
-      clientId: actor.userId, title: texts.title, filtersSummary: texts.summary, params: paramsJson(a.params), notify: true,
+      clientId: actor.userId, title: texts.title, filtersSummary: texts.summary, params: json, notify: true,
       seenAt: at, lastCheckedAt: at, lastAlertedAt: at, createdAt: at,
     }).returning();
     await audit(t, { actor, action: 'saved_search.created', entity: 'saved_search', entityId: row.id });
@@ -164,6 +169,38 @@ export async function listSaved(actor: AnyActor, q: Queryable = db) {
 
 // ── Date watches ─────────────────────────────────────────────────────────
 
+/** Booking states in which the client's own booking holds the partner's date. */
+const HOLDING = ['awaiting_payment', 'confirmed', 'cancellation_requested'] as const;
+const OPEN_REQUEST = ['pending', 'offer_sent', 'awaiting_confirmation'] as const;
+
+export type OwnOnDate = { number: string; holdsDate: boolean; label: 'Виж резервацията' | 'Виж заявката'; href: string };
+
+/**
+ * The client's own live request or booking with each of these partners for date *d*: a busy date
+ * that is the client's own booking is not one to watch, and a second request for it is refused
+ * (R1). ‹Виж резервацията› for a paid booking, ‹Виж заявката› before that (the event panels' rule).
+ */
+export async function ownOnDate(clientId: string, partnerIds: string[], d: DateStr, q: Queryable = db): Promise<Map<string, OwnOnDate>> {
+  const out = new Map<string, OwnOnDate>();
+  if (!partnerIds.length || !isDate(d)) return out;
+  const rows = await q.select({ partnerId: request.partnerId, number: request.number, rStatus: request.status, bStatus: booking.status })
+    .from(request).leftJoin(booking, eq(booking.requestId, request.id))
+    .where(and(eq(request.clientId, clientId), eq(request.eventDate, d), inArray(request.partnerId, partnerIds)))
+    .orderBy(desc(request.sentAt));
+  for (const r of rows) {
+    if (out.has(r.partnerId)) continue;
+    const holds = !!r.bStatus && (HOLDING as readonly string[]).includes(r.bStatus);
+    const open = !r.bStatus && (OPEN_REQUEST as readonly string[]).includes(r.rStatus);
+    if (!holds && !open) continue;
+    const paid = !!r.bStatus && r.bStatus !== 'awaiting_payment';
+    out.set(r.partnerId, {
+      number: r.number, holdsDate: holds, label: paid ? 'Виж резервацията' : 'Виж заявката',
+      href: paid ? `/akaunt/rezervacii/${encodeURIComponent(r.number)}` : `/akaunt/zayavki/${encodeURIComponent(r.number)}`,
+    });
+  }
+  return out;
+}
+
 async function insertWatch(t: Tx, clientId: string, partnerId: string, d: DateStr, clientEventId: string | null, at: Date): Promise<{ watch: DateWatch; created: boolean }> {
   const [existing] = await t.select().from(dateWatch)
     .where(and(eq(dateWatch.clientId, clientId), eq(dateWatch.partnerId, partnerId), eq(dateWatch.date, d), eq(dateWatch.status, 'watching'))).limit(1);
@@ -198,6 +235,8 @@ export async function watchDate(actor: AnyActor, a: { partnerId: string; date: D
       if (!ev) throw new NotFoundError('client_event');
     }
     if (!(await isBusy(p.id, a.date, t))) throw new DomainError('date_free');
+    // The client's own booking is what holds the date: nothing to wait for.
+    if ((await ownOnDate(actor.userId, [p.id], a.date, t)).get(p.id)?.holdsDate) throw new DomainError('own_booking');
     const { watch: w, created } = await insertWatch(t, actor.userId, p.id, a.date, a.clientEventId ?? null, at);
     if (created) await audit(t, { actor, action: 'date_watch.created', entity: 'date_watch', entityId: w.id, data: { partnerId: p.id, date: a.date } });
     return w;
@@ -217,8 +256,10 @@ export async function watchDates(actor: AnyActor, a: { params: SearchParams }, t
     const [ev] = a.params.sabitieId && /^[0-9a-f-]{36}$/i.test(a.params.sabitieId)
       ? await t.select({ id: clientEvent.id }).from(clientEvent).where(and(eq(clientEvent.id, a.params.sabitieId), eq(clientEvent.clientId, actor.userId)))
       : [];
+    const busy = matches.filter(x => x.busyOnDate);
+    const own = await ownOnDate(actor.userId, busy.map(x => x.id), d, t);
     let created = 0;
-    for (const m of matches.filter(x => x.busyOnDate)) {
+    for (const m of busy.filter(x => !own.get(x.id)?.holdsDate)) {
       if ((await insertWatch(t, actor.userId, m.id, d, ev?.id ?? null, at)).created) created++;
     }
     await audit(t, { actor, action: 'date_watch.created_many', entity: 'user', entityId: actor.userId, data: { date: d, created } });

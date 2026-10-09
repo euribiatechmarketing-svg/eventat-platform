@@ -8,7 +8,7 @@ import { blockDate } from '@/lib/domain/availability';
 import { parseSearchParams, richText, search } from '@/lib/domain/search';
 import {
   becomePartnerView, categoryView, eventTypeView, holdText, howItWorksView, legalView, numberWord, ordinal, partnerView, payoutDaysText,
-  publicTitle, respondsWithin24, searchChoices, widgetAvailability,
+  publicTitle, respondsWithin24, searchChoices, widgetAvailability, zeroWatchable,
 } from '@/lib/domain/views-public';
 import { createBookingRow, createClient } from '../helpers/factories';
 import { NOW, expectLedgerClean, listedPartner, plain } from '../helpers/catalogue';
@@ -150,6 +150,28 @@ describe('/partnyori/[slug]', () => {
     await db.update(s.partner).set({ isListed: false }).where(eq(s.partner.id, F.vkusna.partner.id));
     expect(await widgetAvailability(F.vkusna.partner.id, '2026-06-14', null)).toBeNull();
     await db.update(s.partner).set({ isListed: true }).where(eq(s.partner.id, F.vkusna.partner.id));
+  });
+
+  it('ignores a date that has passed', async () => {
+    expect(await widgetAvailability(F.ana.partner.id, '2025-08-01', null)).toBeNull();
+  });
+
+  it('points the client to their own request or booking on that date instead of a watch or a second request', async () => {
+    const { user } = await createClient();
+    expect((await widgetAvailability(F.trapeza.partner.id, '2026-07-04', user.id))!.own).toBeNull();
+    const b = await createBookingRow({ client: user, partner: F.trapeza, eventDate: '2026-07-04', status: 'confirmed' });
+    expect(await widgetAvailability(F.trapeza.partner.id, '2026-07-04', user.id)).toMatchObject({
+      busy: true, own: { label: 'Виж резервацията', href: `/akaunt/rezervacii/${encodeURIComponent(b.request.number)}` },
+    });
+    await db.update(s.booking).set({ status: 'awaiting_payment' }).where(eq(s.booking.id, b.booking.id));
+    expect((await widgetAvailability(F.trapeza.partner.id, '2026-07-04', user.id))!.own).toMatchObject({ label: 'Виж заявката' });
+    expect((await widgetAvailability(F.trapeza.partner.id, '2026-07-04', null))!.own).toBeNull();
+    const { user: other } = await createClient();
+    expect((await widgetAvailability(F.trapeza.partner.id, '2026-07-04', other.id))!.own).toBeNull();
+    // the zero state's ‹Уведоми ме при свободна дата›: nothing to wait for when only her own booking holds the date
+    const zp = parseSearchParams(new URLSearchParams('kategoriya=ketaring&data=2026-07-04'));
+    expect(await zeroWatchable(zp, user.id)).toBe(false);
+    expect(await zeroWatchable(zp, other.id)).toBe(true);
   });
 });
 

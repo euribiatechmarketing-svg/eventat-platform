@@ -14,8 +14,9 @@ import { mediaUrl } from './catalogue-kit';
 import { requestLapsedSql } from './partners';
 import { partnerReviews } from './reviews';
 import {
-  categoryHero, eventTypePage, partnerPage, publicNumbers, search, toQuery, type Rich, type SearchParams,
+  categoryHero, eventTypePage, matchPartners, partnerPage, publicNumbers, search, toQuery, type Rich, type SearchParams,
 } from './search';
+import { ownOnDate } from './saved';
 import { getSetting, getSettings } from './settings';
 
 // ── Small text helpers (Bulgarian numerals and plurals) ───────────────────
@@ -141,7 +142,8 @@ export async function eventTypeView(slug: string, a: { grad?: string | null; dat
   ctx: { clientId?: string | null }, q: Queryable = db) {
   const eventId = a.sabitieId && /^[0-9a-f-]{36}$/i.test(a.sabitieId) ? a.sabitieId : null;
   // An empty value (`?grad=`) means "chosen: none", so the client's event does not fill it back in.
-  const data = a.data === '' ? '' : isDate(a.data) ? a.data : null;
+  // A date that has passed (an old link) is not a choice: the event's own date applies instead.
+  const data = a.data === '' ? '' : isDate(a.data) && a.data >= sofiaDate(await now()) ? a.data : null;
   const page = await eventTypePage({ slug, grad: a.grad ?? null, data, gosti: a.gosti ?? null, clientEventId: eventId }, { clientId: ctx.clientId ?? null }, q);
   if (!page) return null;
   const types = await q.select({ slug: eventType.slug, name: eventType.name }).from(eventType).where(eq(eventType.isPublic, true)).orderBy(asc(eventType.sortOrder));
@@ -239,21 +241,37 @@ export async function partnerView(slug: string, a: { preview?: boolean; data?: s
 }
 
 /**
- * The widget's date check (‹Дата на събитието› changed): busy or free, and whether this client
- * already watches it. Only for publicly visible partners (§4.2); null otherwise.
+ * The widget's date check (‹Дата на събитието› changed): busy or free, whether this client
+ * already watches it, and the client's own live request or booking with the partner for that day
+ * (‹Виж заявката› / ‹Виж резервацията› instead of a second request or a watch on their own date).
+ * Only for publicly visible partners (§4.2) and dates from today on; null otherwise.
  */
 export async function widgetAvailability(partnerId: string, d: DateStr, clientId: string | null, q: Queryable = db) {
   const [p] = await q.select({ id: partner.id }).from(partner)
     .where(and(eq(partner.id, partnerId), eq(partner.status, 'approved'), eq(partner.isListed, true))).limit(1);
-  if (!p || !isDate(d)) return null;
+  if (!p || !isDate(d) || d < sofiaDate(await now())) return null;
   const info = await check(partnerId, d, q);
   let watching = false;
+  let own: { label: string; href: string } | null = null;
   if (clientId) {
     const rows = await q.execute<{ id: string }>(sql`select id from date_watch where client_id = ${clientId} and partner_id = ${partnerId}
       and date = ${d}::date and status = 'watching' limit 1`);
     watching = rows.length > 0;
+    const mine = (await ownOnDate(clientId, [partnerId], d, q)).get(partnerId);
+    own = mine ? { label: mine.label, href: mine.href } : null;
   }
-  return { date: d, dateText: fmtDate(d), busy: info.busy, requestable: info.requestable, watching };
+  return { date: d, dateText: fmtDate(d), busy: info.busy, requestable: info.requestable, watching, own };
+}
+
+/**
+ * The zero state's ‹Уведоми ме при свободна дата› has something to wait for: a matching partner
+ * busy on the date whose day is not held by the client's own booking (saved.watchDates skips those).
+ */
+export async function zeroWatchable(params: SearchParams, clientId: string, q: Queryable = db): Promise<boolean> {
+  if (!params.data) return false;
+  const busy = (await matchPartners(params, { clientId }, { ignoreDate: true }, q)).filter(m => m.busyOnDate).map(m => m.id);
+  const mine = await ownOnDate(clientId, busy, params.data, q);
+  return busy.some(id => !mine.get(id)?.holdsDate);
 }
 
 // ── /stani-partnyor ───────────────────────────────────────────────────────

@@ -66,8 +66,15 @@ def path(page: Page) -> str:
     return urllib.parse.urlparse(page.url).path
 
 
+TEXT_WIDTH = '''() => { window.textWidth = e => { const cs = getComputedStyle(e), m = document.createElement('span');
+  for (const k of ['fontFamily', 'fontSize', 'fontWeight', 'fontFeatureSettings', 'fontVariantNumeric', 'letterSpacing']) m.style[k] = cs[k];
+  m.style.position = 'absolute'; m.style.whiteSpace = 'pre'; m.textContent = e.value; document.body.appendChild(m);
+  const w = m.getBoundingClientRect().width; m.remove(); return w; }; }'''
+
+
 def go(page: Page, url: str):
     page.goto(BASE + url, wait_until='networkidle')
+    page.evaluate(TEXT_WIDTH)
 
 
 def guest(page: Page):
@@ -168,6 +175,48 @@ def guest(page: Page):
     assert page.title() == 'Студио Мелодия · EventAT', page.title()
     ok('profile: the page title is the partner\'s name')
 
+    # header (SCREENS §1): BG/EN for guests too; ‹Вход› outlined; partner sign-up from /stani-partnyor
+    go(page, '/kategorii')
+    expect(page.locator('.nav .lang')).to_be_visible()
+    assert page.locator('.nav .lang b').evaluate('e => getComputedStyle(e).cursor') != 'pointer'
+    page.click('.nav .lang >> text=EN')
+    toast(page, 'Английската версия идва скоро')
+    expect(page.locator('.nav a.btn:has-text("Вход")')).to_have_class(re.compile(r'btn--outline'))
+    expect(page.locator('.nav a.btn:has-text("Вход")')).to_have_attribute('href', '/vhod')
+    ok('header: guest ‹BG›/‹EN› (EN → toast, BG not a fake button); ‹Вход› outlined')
+    go(page, '/stani-partnyor')
+    expect(page.locator('.nav a.btn:has-text("Вход")')).to_have_attribute('href', '/vhod?as=partner')
+    expect(page.locator('.nav a.btn:has-text("Регистрация")')).to_have_attribute('href', '/registratsiya?as=partner')
+    ok('header: on /stani-partnyor ‹Вход› / ‹Регистрация› open the partner side')
+
+    # the widget's ‹Тип събитие› lists what this partner serves
+    go(page, '/partnyori/ana-petrova-photography')
+    assert page.locator('#w-type option').all_inner_texts() == ['Сватба', 'Рожден ден'], page.locator('#w-type option').all_inner_texts()
+    ok('profile: ‹Тип събитие› offers only the partner\'s own event types')
+
+    # a date that has passed (old link) is not offered as a choice
+    go(page, '/partnyori/studio-melodiya?data=1999-01-01')
+    expect(page.locator('.book')).not_to_contain_text('Заета дата')
+    expect(page.locator('.book button:has-text("Уведоми ме")')).to_have_count(0)
+    expect(page.locator('.book .book-f-v').first).to_have_text('—')
+    go(page, '/tarsene?kategoriya=fotografiya&data=1999-01-01')
+    assert 'data' not in qs(page) and qs(page).get('kategoriya') == ['fotografiya'], page.url
+    go(page, '/kategorii/ketaring?data=1999-01-01&grad=sofia')
+    assert path(page) == '/kategorii/ketaring' and 'data' not in qs(page) and qs(page).get('grad') == ['sofia'], page.url
+    ok('past date in a link: the widget opens on no date; search and category drop it')
+
+    # running text never ends on a single word (start page desc, 1440 px)
+    go(page, '/')
+    wrap = page.locator('.st-desc').first.evaluate("e => [getComputedStyle(e).textWrapStyle, getComputedStyle(e).textWrap].join(' ')")
+    assert 'pretty' in wrap, wrap
+    ok('start: the halves\' text wraps without an orphan word')
+
+    # ‹Търси› on the results already shown confirms instead of doing nothing
+    go(page, '/tarsene?q=')
+    page.click('.sb-go button:has-text("Търси")')
+    toast(page, 'Показваме намерените изпълнители')
+    ok('search: ‹Търси› on the same results → toast')
+
 
 def client(page: Page):
     print('client')
@@ -242,6 +291,10 @@ def client(page: Page):
     page.fill('.ui-bar-menu:visible input.sb-date', '2026-07-18')
     page.wait_for_url(re.compile(r'data=2026-07-18'))
     ok('bar: the calendar in ‹Дата› picks any day')
+    # the price pills read ‹400 €›: the field is as wide as its digits, nothing clipped, no double gap
+    slack = page.locator('.f-pill input').evaluate_all('''els => els.map(e => [e.clientWidth - textWidth(e), e.scrollWidth - e.clientWidth])''')
+    assert all(-1 <= a < 6 and b <= 1 for a, b in slack), slack
+    ok('price: ‹400 €› / ‹2 000 €› without a double gap or clipping')
     n_before = page.locator('a.v-card').count()
     page.click('.sort')
     page.click('.ui-menu a:has-text("Подреди: Най-ниска цена")')
@@ -268,6 +321,11 @@ def client(page: Page):
     toast(page, 'Търсенето е запазено в профила ви')
     assert db(f"select count(*)::int n from saved_search where client_id = '{uid}'")[0]['n'] == saved + 1
     ok('‹Запази търсенето› → toast; saved_search +1')
+    page.click('button:has-text("Запази търсенето")')
+    toast(page, 'Търсенето е запазено в профила ви')
+    page.wait_for_timeout(300)
+    assert db(f"select count(*)::int n from saved_search where client_id = '{uid}'")[0]['n'] == saved + 1
+    ok('‹Запази търсенето› twice keeps one saved search')
     page.click('a.ui-chip-clear:has-text("Изчисти филтрите")')
     page.wait_for_url(re.compile(r'/tarsene\?q=$'))
     expect(page.locator('a.ui-chip')).to_have_count(0)
@@ -295,19 +353,45 @@ def client(page: Page):
     page.wait_for_url(lambda u: 'grad=' not in u)
     ok('zero state: ‹Търси в друг град› drops the city')
 
-    # a busy card's ‹Уведоми ме› does not open the card
+    # a busy card's ‹Уведоми ме› does not open the card (28 юни: Snap360 is booked by another client)
     snap = partner_id('snap360')
-    go(page, '/tarsene?data=2026-06-14&druga-data=1')
+    go(page, '/tarsene?data=2026-06-28&druga-data=1')
     url = page.url
     page.locator('a.v-card:has-text("Snap360") button:has-text("Уведоми ме")').click()
     toast(page, 'Ще ви известим, ако датата се освободи')
     assert page.url == url
-    assert db(f"select count(*)::int n from date_watch where client_id = '{uid}' and partner_id = '{snap}' and date = '2026-06-14' and status = 'watching'")[0]['n'] == 1
+    assert db(f"select count(*)::int n from date_watch where client_id = '{uid}' and partner_id = '{snap}' and date = '2026-06-28' and status = 'watching'")[0]['n'] == 1
     ok('busy card ‹Уведоми ме› → toast, watch saved, card not opened')
     page.click('a.v-card:has-text("Snap360") .v-name')
-    page.wait_for_url(re.compile(r'/partnyori/snap360\?data=2026-06-14$'))
-    expect(page.locator('.book .book-f-v').first).to_have_text('14 юни 2026 · неделя')
+    page.wait_for_url(re.compile(r'/partnyori/snap360\?data=2026-06-28$'))
+    expect(page.locator('.book .book-f-v').first).to_have_text('28 юни 2026 · неделя')
     ok('card → /partnyori/snap360, the widget on the searched date')
+
+    # 14 юни is held by Мария's own bookings (Snap360, Студио Мелодия): nothing to watch, her booking instead
+    go(page, '/tarsene?data=2026-06-14&druga-data=1')
+    own_card = page.locator('a.v-card:has-text("Snap360")')
+    expect(own_card.locator('.badge')).to_have_text('Зает на 14 юни')
+    expect(own_card.locator('button:has-text("Уведоми ме")')).to_have_count(0)
+    expect(page.locator('a.v-card:has-text("Ана Петрова Photography") button:has-text("Уведоми ме")')).to_have_count(1)
+    ok('own booking: the busy card of her own booked partner offers no ‹Уведоми ме›')
+    go(page, '/partnyori/studio-melodiya')
+    expect(page.locator('.book')).not_to_contain_text('Заета дата')
+    expect(page.locator('.book button:has-text("Уведоми ме")')).to_have_count(0)
+    mine = page.locator('.book a:has-text("Виж резервацията")')
+    expect(mine).to_have_attribute('href', re.compile(r'^/akaunt/rezervacii/2026-0614-'))
+    page.fill('#w-date', '2026-07-18')
+    expect(page.locator('.book a:has-text("Изпрати запитване")')).to_be_visible()
+    expect(mine).to_have_count(0)
+    page.fill('#w-date', '2026-06-14')
+    expect(page.locator('.book a:has-text("Виж резервацията")')).to_be_visible()
+    melodia = partner_id('studio-melodiya')
+    assert db(f"select count(*)::int n from date_watch where client_id = '{uid}' and partner_id = '{melodia}'")[0]['n'] == 0
+    ok('own booking: the profile widget shows ‹Виж резервацията› on her date (re-checked on date change), never a watch')
+    go(page, '/tarsene?kategoriya=dj-i-ozvuchavane&data=2026-06-14')
+    expect(page.locator('.empty-text')).to_have_text('С избраните филтри никой изпълнител не е свободен на 14 юни 2026 г.')
+    expect(page.locator('a.btn:has-text("Разшири датата")')).to_be_visible()
+    expect(page.locator('button:has-text("Уведоми ме при свободна дата")')).to_have_count(0)
+    ok('own booking: no ‹Уведоми ме при свободна дата› when only her own booking holds the date')
 
     # category page as a client
     go(page, '/kategorii/ketaring')
@@ -328,6 +412,16 @@ def client(page: Page):
     page.wait_for_url(re.compile(r'grad=(&|$)'))
     expect(count_line).not_to_contain_text('в София')
     ok('event type: client panels; ‹Всички градове› clears the event\'s city')
+    go(page, '/sabitiya/svatba')
+    missing = page.locator('.dcard:has(.dcard-title:has-text("Още липсва"))')
+    expect(missing).not_to_contain_text('0 партньори')
+    expect(missing.locator('.set-row:has-text("Видеозаснемане") .set-d')).to_have_text('Няма изпратена заявка · Няма партньори')
+    expect(missing.locator('.set-row:has-text("Торта и десерти") .set-d .pub-nw')).to_have_text('1 партньор е свободен')
+    ok('event type: ‹Още липсва› says ‹Няма партньори› (the cards\' zero), never ‹0 партньори›')
+    page.click('.nav .nav-user')
+    expect(page.locator('.ui-menu a:has-text("Запазени търсения")')).to_have_attribute('href', '/akaunt/zapazeni')
+    page.keyboard.press('Escape')
+    ok('header: the account menu says ‹Запазени търсения›')
     page.click('a:has-text("Отвори каталога")')
     page.wait_for_url(re.compile(r'/tarsene\?sabitie=svatba'))
     ok('event type: ‹Отвори каталога› → /tarsene with the type')
@@ -352,6 +446,10 @@ def client(page: Page):
     href = page.locator('.book a:has-text("Изпрати запитване")').get_attribute('href')
     assert href.startswith('/zayavka/ana-petrova-photography?') and 'data=2026-07-18' in href, href
     ok('profile: changing the date re-checks availability; the request link carries it')
+    gap = page.evaluate('''() => { const i = document.querySelector('#w-guests'), sp = i.nextElementSibling;
+      return sp.getBoundingClientRect().left - i.getBoundingClientRect().left - textWidth(i); }''')
+    assert gap < 8, gap
+    ok('profile: ‹120 души› with a single space')
     page.fill('#w-guests', '80')
     href = page.locator('.book a:has-text("Изпрати запитване")').get_attribute('href')
     assert 'gosti=80' in href, href
@@ -361,6 +459,11 @@ def client(page: Page):
     page.click('a.chip-tag:has-text("Сватби")')
     page.wait_for_url('**/sabitiya/svatba')
     ok('profile: specialisation chip → /sabitiya/svatba')
+    go(page, '/partnyori/studio-melodiya')
+    page.click('.crumbs a:has-text("Каталог")')
+    page.wait_for_url(re.compile(r'/tarsene\?q=$'))
+    expect(page.locator('a.v-card').first).to_be_visible()
+    ok('profile: breadcrumb ‹Каталог› → the catalogue with every partner (not the empty search)')
     go(page, '/partnyori/studio-melodiya')
     page.click('.crumbs a:has-text("DJ и озвучаване")')
     page.wait_for_url('**/kategorii/dj-i-ozvuchavane')
@@ -397,6 +500,28 @@ def phone(page: Page):
     assert page.evaluate('document.documentElement.scrollWidth') <= 390
     ok('phone: the city menu stays inside the screen')
 
+    # header: the logo keeps its proportions, everything fits one row
+    for url in ('/kategorii', '/stani-partnyor'):
+        go(page, url)
+        box = page.locator('.nav-logo').bounding_box()
+        assert abs(box['width'] / box['height'] - 559 / 143) < 0.05, box
+        right = page.locator('.nav .ui-guest a').last.bounding_box()
+        assert right['x'] + right['width'] <= 390 and abs(right['y'] - page.locator('.ui-burger').bounding_box()['y']) < 12, right
+    ok('phone: header logo undistorted; ‹Вход› / ‹Регистрация› on the same row, inside the screen')
+
+    # pills and the legal page's section links wrap instead of running off the screen
+    def inside(sel: str):
+        rights = page.locator(sel).evaluate_all('els => els.map(e => e.getBoundingClientRect().right)')
+        assert rights and max(rights) <= 390, (sel, rights)
+    go(page, '/kategorii/ketaring')
+    inside('.cat-hero .cat-pill')
+    go(page, '/sabitiya/svatba')
+    inside('.pub-types .cat-pill')
+    go(page, '/pravila')
+    inside('.doc-nav .doc-link')
+    assert page.evaluate('document.documentElement.scrollWidth') <= 390
+    ok('phone: sub-type pills, event-type pills and legal section links all inside the screen')
+
 
 def others(page: Page, role: str, home: str):
     print(role)
@@ -405,9 +530,20 @@ def others(page: Page, role: str, home: str):
     assert path(page) == home, page.url
     go(page, '/tarsene?q=')
     expect(page.locator('text=Запази търсенето')).to_have_count(0)
+    expect(page.locator('text=Не намирате точно това, което търсите?')).to_have_count(0)
+    expect(page.locator('.nav .nav-user')).to_have_count(0)
+    page.click('.nav a.btn:has-text("Към таблото")')
+    page.wait_for_url(f'**{home}')
     go(page, '/partnyori/ana-petrova-photography')
     expect(page.locator('.book a:has-text("Изпрати запитване")')).to_have_count(0)
-    ok(f'{role}: / → {home}; no client-only controls')
+    ok(f'{role}: / → {home}; ‹Към таблото› in the header; no client-only controls or open-request invitation')
+    if role == 'admin':
+        go(page, '/partnyori/dj-zhivko?preview=1')
+        expect(page.locator('h1.pv-name')).to_have_text('DJ Живко')
+        rule = page.locator('.book > .book-rule')
+        expect(rule).to_contain_text('Анулиране:')
+        assert rule.evaluate('e => getComputedStyle(e).borderTopWidth') == '0px'
+        ok('admin: preview of a submitted profile; the booking box has no stray divider above the policy')
 
 
 def main():
