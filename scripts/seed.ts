@@ -13,10 +13,10 @@ if (existsSync(envFile)) process.loadEnvFile(envFile);
 const force = process.argv.includes('--force');
 
 // Imported after the environment is loaded: db/index.ts reads DATABASE_URL at import time.
-const { DEFAULT_URL, isLocalUrl, redact } = await import('./lib/schema-sync');
+const { DEFAULT_URL, isResettableUrl, redact } = await import('./lib/schema-sync');
 const url = process.env.DATABASE_URL ?? DEFAULT_URL;
-if (!isLocalUrl(url)) {
-  console.error(`Refusing to seed a non-local database: ${redact(url)}`);
+if (!isResettableUrl(url)) {
+  console.error(`Refusing to seed a non-local database: ${redact(url)} (staging: set STAGING_DB_HOST to its host)`);
   process.exit(1);
 }
 if (process.env.ALLOW_TIME_TRAVEL !== 'true') {

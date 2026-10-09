@@ -23,6 +23,12 @@ const connect = (url: string): Sql => postgres(url, { max: 1, onnotice: () => {}
 
 export const redact = (url: string) => url.replace(/:[^:@/]+@/, ':***@');
 export const isLocalUrl = (url: string) => ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(new URL(url).hostname);
+/**
+ * A database the destructive scripts (reset, seed) may touch: this machine, or the one staging host named
+ * explicitly in STAGING_DB_HOST (docs/DEPLOY.md, demo/staging). Production never sets it.
+ */
+export const isResettableUrl = (url: string) =>
+  isLocalUrl(url) || (!!process.env.STAGING_DB_HOST && new URL(url).hostname === process.env.STAGING_DB_HOST);
 
 /** The URL of another database on the same server (e.g. 'postgres' for admin work). */
 export function withDatabase(url: string, name: string): string {
@@ -87,7 +93,7 @@ export async function syncSchema(url: string): Promise<{ tables: number; sqlFile
 
 /** Drop everything in `url` and apply the current schema. Local databases only. */
 export async function resetDatabase(url: string) {
-  if (!isLocalUrl(url)) throw new Error(`Refusing to reset a non-local database: ${redact(url)}`);
+  if (!isResettableUrl(url)) throw new Error(`Refusing to reset a non-local database: ${redact(url)} (staging: set STAGING_DB_HOST to its host)`);
   const sql = connect(url);
   try {
     await sql.unsafe('drop schema if exists public cascade; drop schema if exists drizzle cascade; create schema public;');

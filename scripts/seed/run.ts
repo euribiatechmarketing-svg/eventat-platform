@@ -20,7 +20,7 @@ import { allocateNumber, reserveNumber } from '@/lib/domain/numbers';
 import { CATEGORIES, EVENT_TYPES, ensureReferenceData } from '@/lib/domain/reference';
 import { getSettings } from '@/lib/domain/settings';
 import { scheduleJob } from '@/lib/jobs';
-import { DEFAULT_URL, isLocalUrl, redact } from '../lib/schema-sync';
+import { DEFAULT_URL, isResettableUrl, redact } from '../lib/schema-sync';
 import * as D from './data';
 import { planJobs, type PlannedJob } from './jobs';
 import { photo } from './photos';
@@ -48,7 +48,7 @@ export type SeedResult = {
  * this machine (the same hosts isLocalUrl accepts). A unix-socket path is refused too.
  */
 export function isLocalPool(options: { host: readonly string[] }): boolean {
-  const local = ['127.0.0.1', 'localhost', '::1', '[::1]'];
+  const local = ['127.0.0.1', 'localhost', '::1', '[::1]', ...(process.env.STAGING_DB_HOST ? [process.env.STAGING_DB_HOST] : [])];
   return options.host.length > 0 && options.host.every(h => local.includes(h));
 }
 
@@ -120,7 +120,7 @@ async function truncateAll() {
 export async function seedDemo(opts: SeedOptions = {}): Promise<SeedResult> {
   const log = opts.log ?? (() => {});
   const url = process.env.DATABASE_URL ?? DEFAULT_URL;
-  if (!isLocalUrl(url)) throw new SeedRefusedError(`Refusing to seed a non-local database: ${redact(url)}`);
+  if (!isResettableUrl(url)) throw new SeedRefusedError(`Refusing to seed a non-local database: ${redact(url)}`);
   if (!isLocalPool(pool.options)) {
     throw new SeedRefusedError(`Refusing to seed a non-local database: the connection goes to ${pool.options.host.join(', ')}`);
   }

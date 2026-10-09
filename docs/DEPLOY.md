@@ -40,6 +40,10 @@ These belong to the operating company, not to Euribia. Each one needs a person t
 
 ## Demo / staging
 
-A staging deployment can run with the seed and the shifted clock:
-`ALLOW_TIME_TRAVEL=true`, `PAYMENT_PROVIDER=simulated`, `EMAIL_TRANSPORT=outbox`, then `npm run db:reset && npm run db:seed`
-against the staging database. Keep staging password-protected (Vercel → Deployment Protection).
+A staging deployment runs the seed and the shifted clock, on its own database (never the production one):
+1. Env vars on the staging environment: `ALLOW_TIME_TRAVEL=true`, `PAYMENT_PROVIDER=simulated`, `EMAIL_TRANSPORT=outbox`
+   (demo data uses real-looking addresses — no mail may leave), plus the usual auth/cron secrets.
+2. From a laptop, once and after each schema change:
+   `STAGING_DB_HOST=<staging db hostname> DATABASE_URL=<staging url> npm run db:reset && npm run db:seed`
+   The reset/seed scripts refuse every non-local host except the one named in `STAGING_DB_HOST`.
+3. Keep staging password-protected (Vercel → Settings → Deployment Protection).
