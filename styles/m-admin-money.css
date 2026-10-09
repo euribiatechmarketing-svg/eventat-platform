@@ -1,0 +1,316 @@
+/* =====================================================================
+   Admin money — Резервации, Спорове, Плащания, Имейли.
+   Per-page <style> blocks of the prototype (admin/booking.html,
+   admin/emails.html) plus the production pieces: links in segmented
+   controls, filter menus, clickable rows, dialogs, phone layouts.
+   ===================================================================== */
+
+/* ---------- admin/booking.html ---------- */
+.bkg-parties { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.bkg-party { border: 1px solid var(--app-line); border-radius: 12px; padding: 16px 18px 12px; background: var(--app-bg); }
+.bkg-party-h { display: flex; align-items: center; gap: 13px; padding-bottom: 14px; margin-bottom: 10px; border-bottom: 1px solid var(--app-line); }
+.bkg-party-n { font-family: var(--font-display); font-weight: var(--fw-bold); font-size: 18px; color: var(--primary-900); }
+.bkg-party-r { font-size: 12.5px; color: var(--neutral-600); margin-top: 3px; }
+.bkg-party-a { margin-left: auto; flex-shrink: 0; }
+.bkg-line { display: flex; align-items: baseline; gap: 14px; padding: 7px 0; }
+.bkg-line-l { width: 116px; flex-shrink: 0; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: var(--fw-bold); color: var(--neutral-400); }
+.bkg-line-v { font-size: 13px; font-weight: var(--fw-medium); color: var(--text); font-variant-numeric: lining-nums tabular-nums; min-width: 0; overflow-wrap: anywhere; }
+
+.bkg-money { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 36px; align-items: start; }
+.bkg-money .split:first-child { padding-top: 0; }
+.bkg-hold { display: flex; gap: 10px; align-items: flex-start; margin-top: 16px; padding: 13px 15px; border-radius: 10px; background: var(--app-bg); }
+.bkg-hold svg { width: 15px; height: 15px; flex-shrink: 0; margin-top: 2px; color: var(--primary-500); }
+.bkg-hold-t { font-size: 13px; line-height: 1.55; color: var(--neutral-600); }
+.bkg-hold-t b { color: var(--primary-900); font-weight: var(--fw-semibold); }
+
+/* the partner card opens the partner's record */
+a.bkg-party { display: block; color: inherit; text-decoration: none; transition: border-color .15s; }
+a.bkg-party:hover { border-color: var(--primary-300); }
+a.bkg-party:hover .bkg-party-n { color: var(--primary-700); }
+
+/* ---------- admin/emails.html ---------- */
+.em-list .em-g { font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; font-weight: 700; color: var(--neutral-400); margin: 22px 0 6px; }
+.em-list .em-g:first-of-type { margin-top: 4px; }
+.em-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 16px; align-items: baseline; padding: 12px 14px; margin: 0 -14px; border-radius: 10px; color: inherit; text-decoration: none; }
+.em-row + .em-row { border-top: 1px solid var(--app-line); }
+.em-row:hover .em-t { color: var(--primary-700); }
+.em-row.is-sel { background: var(--primary-50); border-top-color: transparent; }
+.em-row.is-sel + .em-row { border-top-color: transparent; }
+.em-t { font-size: 14px; font-weight: 600; color: var(--primary-900); }
+.em-t { grid-column: 1; grid-row: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.em-s { grid-column: 1 / -1; font-size: 12.5px; color: var(--neutral-600); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.em-end { grid-column: 2; grid-row: 1; display: flex; align-items: center; }
+.em-when { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12px; color: var(--neutral-500); }
+.em-when span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.em-when svg { width: 13px; height: 13px; flex-shrink: 0; }
+.em-kind { display: inline-flex; align-items: center; gap: 5px; min-width: 104px; justify-content: flex-end; font-size: 12px; font-weight: 600; color: var(--neutral-500); white-space: nowrap; }
+.em-kind.is-req { color: var(--primary-700); }
+.em-kind svg { width: 13px; height: 13px; }
+.em-prev { padding: 0; overflow: hidden; }
+.em-prev-h { padding: 18px 22px; border-bottom: 1px solid var(--app-line); }
+.em-frame { display: block; width: 100%; height: calc(100dvh - 300px); min-height: 560px; max-height: 760px; border: 0; background: #eeecf3; }
+.em-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; padding: 16px 22px 20px; border-top: 1px solid var(--app-line); }
+.em-meta a { color: var(--primary-700); font-weight: var(--fw-semibold); }
+
+/* ---------- production pieces ---------- */
+.seg a { display: inline-flex; align-items: center; padding: 6px 13px; border-radius: 7px; font-size: 12.5px; font-weight: var(--fw-semibold); color: var(--neutral-600); text-decoration: none; white-space: nowrap; }
+.seg a.is-on { background: #fff; color: var(--primary-800); box-shadow: var(--shadow-xs); }
+.seg a:hover:not(.is-on) { color: var(--primary-800); }
+a.tab-bar-item { text-decoration: none; white-space: nowrap; }
+.am-filter .am-caret { width: 14px; height: 14px; margin: 0 -3px 0 2px; }
+.am-filter .filter-btn { white-space: nowrap; }
+.am-menu { max-height: 360px; overflow-y: auto; }
+.am-menu--left { left: 0; right: auto; }
+.am-menu a.is-on { background: var(--primary-50); color: var(--primary-800); font-weight: 600; }
+.am-row { cursor: pointer; }
+.am-row:hover td { background: var(--primary-50); }
+.am-row:focus-visible { outline: 2px solid var(--primary-500); outline-offset: -2px; }
+.tbl td.am-act { text-align: right; }
+.tbl td.am-act form { display: inline; }
+.am-acts { display: flex; flex-direction: column; gap: 9px; }
+.am-acts form { display: block; }
+.btn.am-danger { color: var(--danger-600); }
+.am-only { margin-top: 10px; }
+.am-note-form { margin-top: 16px; }
+.rev + .am-note-form { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--app-line); }
+.am-select { position: relative; display: block; }
+.am-select select.fld-i { appearance: none; -webkit-appearance: none; padding-right: 36px; cursor: pointer; }
+.am-select .select-chevron { position: absolute; right: 12px; top: 50%; width: 16px; height: 16px; transform: translateY(-50%); color: var(--neutral-500); pointer-events: none; }
+textarea.fld-i:focus, input.fld-i:focus, select.fld-i:focus { outline: none; border-color: var(--primary-500); box-shadow: var(--shadow-focus); }
+
+/* dialogs */
+.am-dialog { border: 0; padding: 0; border-radius: 16px; width: min(480px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); box-shadow: 0 32px 64px rgba(31, 22, 51, .28); color: var(--text); font-family: var(--font-ui); }
+.am-dialog::backdrop { background: rgba(31, 22, 51, .55); }
+.am-dialog-h { display: flex; align-items: center; gap: 12px; padding: 18px 22px; border-bottom: 1px solid var(--app-line); }
+.am-dialog-h .dcard-title { font-size: 19px; }
+.am-dialog-x { margin-left: auto; width: 34px; height: 34px; border: 1px solid var(--app-line); border-radius: 9px; background: #fff; color: var(--neutral-600); display: grid; place-items: center; cursor: pointer; }
+.am-dialog-x svg { width: 16px; height: 16px; }
+.am-dialog-b { padding: 18px 22px 22px; }
+.am-form { display: flex; flex-direction: column; gap: 16px; }
+.am-dialog-acts { display: flex; gap: 10px; flex-wrap: wrap; }
+.am-dialog-acts .btn { flex: 1 1 auto; }
+.am-refund { align-items: center; }
+.am-refund .rate-in { width: 120px; }
+
+@media (max-width: 1500px) {
+  .bkg-parties { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+}
+
+/* case page */
+.am-case-acts { margin-top: 9px; }
+.am-case-acts form { display: block; }
+.am-hold { display: flex; align-items: center; gap: 11px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--app-line); }
+button.toggle { border: 0; padding: 0; cursor: pointer; flex-shrink: 0; font: inherit; }
+.am-hold-t { font-size: 12.5px; line-height: 1.45; color: var(--neutral-700); }
+.am-booking-link { display: inline-flex; margin: 14px 0 0; }
+a.cs-att-i { display: block; }
+a.cs-att-i:hover { border-color: var(--primary-300); }
+.cs-doc { height: auto; min-height: 36px; padding: 8px 12px; line-height: 1.35; }
+
+/* payouts */
+.am-link { color: inherit; text-decoration: none; }
+.am-link:hover { color: var(--primary-700); text-decoration: underline; text-underline-offset: 3px; }
+.gmv-d.am-down { color: var(--danger-600); }
+.am-acct { grid-template-columns: minmax(0, 1fr) auto; }
+.am-acct .batch-s + .batch-s { margin-top: 2px; }
+.am-acct-acts { display: flex; gap: 8px; align-items: center; }
+.dcard-head .batch-amt { min-width: 0; }
+.dcard-head .badge + .batch-amt { margin-left: 14px; }
+.am-hold-hint { margin: -4px 0 10px; }
+.am-filter-note { display: flex; align-items: center; gap: 12px; margin: 0 0 14px; font-size: 13.5px; font-weight: 600; color: var(--primary-900); }
+.am-filter-note .link-more { margin-left: 0; }
+
+/* emails */
+.am-mail-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin: -6px 0 6px; padding-bottom: 12px; border-bottom: 1px solid var(--app-line); }
+.am-mail-tabs { border-bottom: none; gap: 22px; }
+.am-mail-tabs .tab-bar-item { padding-top: 8px; padding-bottom: 8px; }
+.am-search { margin-left: auto; width: min(320px, 100%); }
+.am-search input { flex: 1; min-width: 0; border: 0; background: transparent; font: inherit; font-size: 13px; color: var(--text); outline: none; }
+.am-search input::placeholder { color: var(--neutral-500); }
+.am-search:focus-within { border-color: var(--primary-500); box-shadow: var(--shadow-focus); background: #fff; }
+.em-sent { grid-column: 1 / -1; font-size: 12px; font-weight: 600; color: var(--success-700); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.em-row .badge { white-space: nowrap; }
+.em-meta .kv-value small { display: block; }
+.em-list > div > .em-g:first-child { margin-top: 14px; }
+
+/* =====================================================================
+   Smaller screens (the prototype had none; DESIGN-PORT §6)
+   ===================================================================== */
+@media (max-width: 1280px) {
+  .am .adm-grid { grid-template-columns: minmax(0, 1fr) 360px; }
+  .am .adm-grid--mail { grid-template-columns: minmax(0, 1fr) 520px; }
+  .am .gmv { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .am .gmv-cell:nth-child(2n) { border-right: none; }
+  .am .gmv-cell:nth-child(-n+2) { border-bottom: 1px solid var(--app-line); }
+}
+
+@media (max-width: 960px) {
+  .am .adm-grid, .am .adm-grid--mail { grid-template-columns: minmax(0, 1fr); }
+  .am .adm-grid > aside { min-width: 0; }
+  .am .adm-grid > * + aside { margin-top: 0; }
+  .am .page-head { align-items: flex-start; }
+  .am .page-head-right { flex-wrap: wrap; }
+  .am .toolbar { flex-wrap: wrap; row-gap: 8px; }
+  .am .toolbar .tab-bar { overflow-x: auto; scrollbar-width: none; max-width: 100%; }
+  .am .toolbar .tab-bar::-webkit-scrollbar { display: none; }
+  .am .toolbar-right { margin-left: 0; padding-bottom: 10px; flex-wrap: wrap; }
+  .am .bkg-money { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .am .cs-vs { grid-template-columns: minmax(0, 1fr); }
+  .am .kv { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .am .batch { grid-template-columns: minmax(0, 1fr) auto; gap: 8px 14px; }
+  .am .batch > :nth-child(2) { grid-column: 1; grid-row: 2; justify-self: start; }
+  .am .batch > :nth-child(3) { grid-column: 2; grid-row: 1; }
+  .am .batch > :nth-child(4) { grid-column: 2; grid-row: 2; justify-self: end; }
+  .am .am-acct > :nth-child(2) { grid-column: 1 / -1; grid-row: 2; }
+  /* emails: the selected email first; the list alone until one is picked */
+  .am .am-mail.is-picked > aside { order: -1; }
+  .am .am-mail:not(.is-picked) > aside { display: none; }
+  .am .em-frame { height: 70vh; min-height: 480px; }
+  .am .am-search { width: 100%; margin-left: 0; }
+}
+
+@media (max-width: 640px) {
+  .am .page-head { flex-direction: column; gap: 12px; }
+  .am .page-head-right { margin-left: 0; }
+  .am .gmv { grid-template-columns: minmax(0, 1fr); }
+  .am .gmv-cell { border-right: none; border-bottom: 1px solid var(--app-line); padding: 18px 20px; }
+  .am .gmv-cell:last-child { border-bottom: none; }
+  .am .gmv-cell--lead .gmv-v { font-size: 38px; }
+  .am .gmv-v { font-size: 30px; }
+  .am .cs-facts { grid-template-columns: minmax(0, 1fr); }
+  .am .cs-fact { border-right: none; border-bottom: 1px solid var(--app-line); }
+  .am .cs-fact:last-child { border-bottom: none; }
+  .am .cs-cmp { grid-template-columns: minmax(0, 1fr); }
+  .am .cs-party { padding: 16px; }
+  .am .cs-party-h { flex-wrap: wrap; }
+  .am .cs-filer { margin-left: 50px; }
+  .am .case { grid-template-columns: 4px minmax(0, 1fr); }
+  .am .case-end { grid-column: 2; justify-content: space-between; }
+  .am .case-amt { min-width: 0; }
+  .am .dcard { padding-left: 16px; padding-right: 16px; }
+  .am .bkg-party-h { flex-wrap: wrap; }
+  .am .bkg-line { flex-direction: column; gap: 2px; padding: 6px 0; }
+  .am .bkg-line-l { width: auto; }
+  .am .month-div { flex-wrap: wrap; row-gap: 2px; }
+  .am .month-div::after { display: none; }
+  .am .em-meta { grid-template-columns: minmax(0, 1fr); }
+  .am .am-mail-tabs { gap: 16px; }
+}
+@media (max-width: 640px) { .am .dcard.em-prev { padding: 0; } .am .em-prev-h { padding: 16px; } .am .em-meta { padding: 14px 16px 18px; } }
+@container (min-width: 601px) { .am .am-hist td.c-main .tbl-event, .am .am-hist td.c-main .tbl-sub, .am .am-hist td.c-date { white-space: nowrap; } }
+.am-tbl-wrap { overflow-x: auto; }
+.am .am-lines td.c-main .tbl-event, .am .am-lines td.c-date { white-space: nowrap; }
+@media (max-width: 640px) { .am-tbl-wrap { overflow: visible; } }
+@media (max-width: 1280px) {
+  .am .am-toolbar { flex-wrap: wrap; row-gap: 8px; }
+  .am .am-toolbar .tab-bar { overflow-x: auto; scrollbar-width: none; max-width: 100%; }
+  .am .am-toolbar .toolbar-right { margin-left: 0; padding-bottom: 10px; flex-wrap: wrap; }
+}
+
+/* =====================================================================
+   Review fixes: real form controls drawn like the prototype's fields,
+   layouts between phone and the 1920 frame, phone tap targets.
+   ===================================================================== */
+
+/* platform.css gives real controls `font: inherit`; the prototype's fields are 13.5px with a light hint */
+.am input.fld-i, .am textarea.fld-i, .am select.fld-i, .am-dialog input.fld-i, .am-dialog textarea.fld-i, .am-dialog select.fld-i { font-size: 13.5px; }
+.am .fld-i::placeholder { color: var(--neutral-400); opacity: 1; }
+
+/* the payout-hold switch: the switch and its words are one control */
+.am-hold-btn { display: flex; align-items: center; gap: 11px; width: 100%; min-height: 40px; padding: 0; border: 0; background: none; font: inherit; text-align: left; cursor: pointer; }
+.am-hold-btn .toggle { display: block; margin-top: 0; }
+.am-hold-btn:hover .am-hold-t { color: var(--primary-900); }
+.am-hold-btn:focus-visible { outline: 2px solid var(--primary-500); outline-offset: 4px; border-radius: 8px; }
+
+/* both statements side by side only where each keeps a readable width (the 1920 frame) */
+@media (max-width: 1500px) {
+  .am .cs-vs { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* the side column at the 1920 frame's proportion (424 of 1588px ≈ 27%) on laptop screens */
+@media (max-width: 1600px) {
+  .am .adm-grid { grid-template-columns: minmax(0, 1fr) 360px; }
+  .am .adm-grid--mail { grid-template-columns: minmax(0, 1fr) minmax(0, 0.95fr); }
+}
+
+/* the money split and its dates stack when the main column is under ~650px */
+@media (max-width: 1366px) {
+  .am .bkg-money { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+}
+
+/* a batch's lines need the full width below ~1366px: the totals card goes on top */
+@media (max-width: 1366px) {
+  .am .adm-grid.am-batch { grid-template-columns: minmax(0, 1fr); }
+  .am .adm-grid.am-batch > aside { order: -1; min-width: 0; }
+}
+
+/* a two-column page needs ~1260px; below that the side column follows the main one */
+@media (max-width: 1260px) {
+  .am .adm-grid, .am .adm-grid--mail { grid-template-columns: minmax(0, 1fr); }
+  .am .adm-grid > aside { min-width: 0; }
+  .am .am-mail.is-picked > aside { order: -1; }
+  .am .am-mail:not(.is-picked) > aside { display: none; }
+  .am .em-frame { height: 70vh; min-height: 480px; }
+}
+
+/* tables keep every column inside their card: tighter cells when the card is narrower than the table */
+.am .am-tbl-wrap { container-type: inline-size; }
+@container (min-width: 601px) and (max-width: 760px) {
+  .am .am-tbl-wrap .tbl th, .am .am-tbl-wrap .tbl td { padding-left: 8px; padding-right: 8px; }
+  .am .am-tbl-wrap .tbl th:first-child, .am .am-tbl-wrap .tbl td:first-child { padding-left: 0; }
+  .am .am-tbl-wrap .tbl th:last-child, .am .am-tbl-wrap .tbl td:last-child { padding-right: 0; }
+  .am .am-hist td.c-main .tbl-event { white-space: normal; }
+}
+@container (min-width: 601px) and (max-width: 660px) {
+  .am .am-hist th:nth-child(3), .am .am-hist td.c-count { display: none; }
+}
+/* a table in a card narrower than ~600px (phones, the batch page beside its summary) becomes stacked rows:
+   the record and its amount, then the details */
+@container (max-width: 600px) {
+  .am .am-stack, .am .am-stack tbody { display: block; width: 100%; }
+  .am .am-stack thead { display: none; }
+  .am .am-stack tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 14px; padding: 14px 0; border-bottom: 1px solid var(--app-line); }
+  .am .am-stack tr:last-child { border-bottom: none; }
+  .am .am-stack td { display: block; padding: 0; border: none; text-align: left; min-width: 0; }
+  .am .am-stack td.c-main { grid-column: 1; grid-row: 1; }
+  .am .am-stack td.c-amount { grid-column: 2; grid-row: 1; text-align: right; }
+  .am .am-stack td.c-side { grid-column: 1; grid-row: 2; }
+  .am .am-stack td.c-com { grid-column: 2; grid-row: 2; text-align: right; }
+  .am .am-stack td.c-date { grid-column: 1; grid-row: 3; }
+  .am .am-stack td.c-date .tbl-event, .am .am-stack td.c-date .tbl-sub { display: inline; margin: 0; }
+  .am .am-stack td.c-date .tbl-sub::before { content: ' · '; }
+  .am .am-stack td.c-status { grid-column: 2; grid-row: 3; justify-self: end; align-self: center; }
+  .am .am-stack td.c-action { grid-column: 1 / -1; grid-row: 4; text-align: left; }
+  .am .am-att td.c-status { grid-column: 1; justify-self: start; }
+  .am .am-hist td.c-date { grid-row: 2; }
+  .am .am-hist td.c-status { grid-row: 2; }
+  .am .am-hist td.c-count { display: none; }
+  .am .am-lines td.c-date { grid-row: 2; }
+  .am .am-lines td.c-status { grid-row: 2; }
+  .am .am-lines td.c-gross { grid-column: 1; grid-row: 3; text-align: left; }
+  .am .am-lines td.c-com { grid-row: 3; }
+  .am .am-stack .badge { white-space: nowrap; }
+  .am .am-row:hover td { background: none; }
+}
+
+
+/* email rows show their whole text wherever the list is narrower than in the 1920 frame */
+@media (max-width: 1600px) {
+  .am .em-t, .am .em-s, .am .em-when span { white-space: normal; overflow: visible; text-overflow: clip; }
+}
+
+/* phones: tabs wrap instead of running off the card, card heads let the badge drop under the title,
+   email rows show their whole text, controls are at least 36px tall */
+@media (max-width: 640px) {
+  .am .toolbar .tab-bar, .am .am-mail-tabs { flex-wrap: wrap; overflow: visible; gap: 0 18px; max-width: 100%; }
+  .am .dcard-head { flex-wrap: wrap; row-gap: 8px; }
+  .am .btn--sm { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; }
+  .am .crumb { padding: 9px 0; margin-top: -9px; margin-bottom: 5px; }
+  .am .am-booking-link, .am .dcard-head .link-more { min-height: 36px; align-items: center; }
+  .am .am-search { min-height: 40px; }
+  .am .am-search input { min-height: 36px; }
+  /* an email row: the title gets the full width, ‹Задължителен› / ‹По избор› / the status follow the details */
+  .am .em-row { grid-template-columns: minmax(0, 1fr); }
+  .am .em-end { grid-column: 1; grid-row: auto; order: 10; }
+  .am .em-kind { min-width: 0; justify-content: flex-start; }
+}
