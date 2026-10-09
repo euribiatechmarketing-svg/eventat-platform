@@ -32,7 +32,8 @@ export function BriefForm(p: BriefFormProps) {
   useEffect(() => {
     try {
       const ref = document.referrer && new URL(document.referrer);
-      if (ref && ref.origin === location.origin && ref.pathname !== location.pathname) setBack(ref.pathname + ref.search);
+      // history.back() needs an entry to go back to (a new tab opened from our page has none).
+      if (ref && ref.origin === location.origin && ref.pathname !== location.pathname && history.length > 1) setBack(ref.pathname + ref.search);
     } catch { /* no referrer */ }
   }, []);
   const toggle = (slug: string) => setCats(c => (c.includes(slug) ? c.filter(x => x !== slug) : [...c, slug]));

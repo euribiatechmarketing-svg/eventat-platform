@@ -21,6 +21,13 @@ if '--base' in sys.argv: BASE = sys.argv[sys.argv.index('--base') + 1]
 CLIENT = 'maria.dimitrova@gmail.com'
 PW = 'eventat-demo'
 ENV = dict(os.environ, PATH=os.path.expanduser('~/nodejs22/bin') + ':' + os.environ.get('PATH', ''))
+# The database comes from this worktree's .env.local (as the seed and the helper read it):
+# scripts/reset.ts alone would fall back to the shared main database.
+_envfile = os.path.join(ROOT, '.env.local')
+if 'DATABASE_URL' not in os.environ and os.path.exists(_envfile):
+    for _line in open(_envfile, encoding='utf-8'):
+        _k, _sep, _v = _line.strip().partition('=')
+        if _sep and _k.strip() == 'DATABASE_URL': ENV['DATABASE_URL'] = _v.strip().strip('"')
 
 def run(*cmd):
     r = subprocess.run(cmd, cwd=ROOT, env=ENV, capture_output=True, text=True)
@@ -52,6 +59,9 @@ def path_of(page): return unquote(page.url.replace(BASE, ''))
 
 def main():
     if '--no-reset' not in sys.argv:
+        db_url = ENV.get('DATABASE_URL', '')
+        if not re.match(r'^postgres(ql)?://[^@]+@(127\.0\.0\.1|localhost)(:\d+)?/eventat_[a-z0-9_]+$', db_url):
+            sys.exit(f'refusing to reset {db_url or "the default database"}: set DATABASE_URL to this worktree\'s own local database')
         print('resetting the database…')
         run('npm', 'run', 'db:reset'); run('npm', 'run', 'db:seed', '--', '--force')
     tmp = tempfile.mkdtemp()
@@ -94,10 +104,17 @@ def main():
                       '/plashtane/' + quote(f['confirmed']) + '/potvardena', '/plashtane/test/' + f['chargeId'], '/api/invoices/' + f['invoiceId']):
             r = page.goto(BASE + route)
             assert r.status == 404, (route, r.status)
-        ok("another client's requests, bookings, invoice file and checkout answer 404")
+        # a forged ‹Пиши на изпълнителя› with another client's number answers 404 too
+        page.goto(BASE + '/akaunt/zayavki/' + quote('2026-0614-ДК'))
+        page.evaluate('n => document.querySelector("form input[name=number]").value = n', foreign)
+        page.click('button:has-text("Пиши на изпълнителя")')
+        expect(page.get_by_text('This page could not be found.')).to_be_visible()
+        assert h('threads', CLIENT, foreign) == 0
+        ok("another client's requests, bookings, invoice file, checkout and thread answer 404")
 
         # ── /akaunt/zayavki: groups, countdown, filters, tabs ───────────
         page.goto(BASE + '/akaunt/zayavki')
+        expect(page.locator('.nav-link.is-active')).to_have_text('Моите заявки')
         expect(page.locator('.mine-t')).to_have_text(['Одобрени · чакат плащане', 'Чакат отговор', 'Приключени'])
         expect(page.locator('.mrow')).to_have_count(6)
         badge = ' '.join(page.locator('.mine--pay .badge').first.text_content().split())
@@ -108,6 +125,11 @@ def main():
         page.wait_for_url(re.compile(r'status=otkazani'))
         expect(page.locator('.mrow')).to_have_count(2)
         expect(page.locator('.mrow .badge')).to_have_text(['Датата е заета', 'Датата е заета'])
+        # the chosen option reads dark on its tint (no purple on purple)
+        page.click('button.filter-btn:has-text("Отказани")')
+        expect(page.locator('.cb-filter-menu a.is-active')).to_have_text('Отказани')
+        expect(page.locator('.cb-filter-menu a.is-active')).to_have_css('color', 'rgb(42, 35, 64)')
+        page.keyboard.press('Escape')
         page.click('button.filter-btn:has-text("Всички събития")')
         page.click('.cb-filter-menu a:has-text("Коледно парти")')
         page.wait_for_url(re.compile(r'sabitie-id=.*status=otkazani|status=otkazani.*sabitie-id='))
@@ -123,13 +145,15 @@ def main():
         page.click('.mrow:has-text("2026-0614-ДК")')
         page.wait_for_url(re.compile(r'/akaunt/zayavki/2026-0614-'))
         expect(page.locator('.sh-t')).to_have_text('Запитването е изпратено')
+        # the header marks ‹Категории› here, as client/request-status.html does
+        expect(page.locator('.nav-link.is-active')).to_have_text('Категории')
         expect(page.locator('.clock-v')).to_have_text(re.compile(r'^\d\d:\d\d$'))
         page.click('button:has-text("Пиши на изпълнителя")')
         page.wait_for_url(re.compile(r'/akaunt/saobshteniya/[0-9a-f-]{36}$'))
         page.goto(BASE + '/akaunt/zayavki')
         page.click('.mrow:has-text("Ана Петрова") >> text=Виж подобни')
         page.wait_for_url(re.compile(r'/tarsene\?kategoriya=fotografiya&data=2026-06-14&grad=sofia&gosti=120'))
-        ok('row → request page (countdown), ‹Пиши на изпълнителя› → thread, ‹Виж подобни› → search')
+        ok('row → request page (countdown, header marks ‹Категории›), ‹Пиши на изпълнителя› → thread, ‹Виж подобни› → search')
 
         # ── a declined request: watch the taken date ────────────────────
         assert h('remove-watch', CLIENT, 'snap360', '2026-12-19') == 0
@@ -140,6 +164,25 @@ def main():
         expect(page.locator('button:has-text("Уведоми ме, ако се освободи")')).to_have_count(0)
         assert h('watching', CLIENT, 'snap360', '2026-12-19') == 1
         ok('declined request: ‹Уведоми ме, ако се освободи› → date watch')
+
+        # ── a refused request keeps everything the client typed and picked ──
+        page.goto(BASE + '/zayavka/studio-melodiya')
+        page.select_option('select[name=eventTypeId]', label='Рожден ден')
+        page.fill('input[name=eventDate]', '2026-06-14')
+        page.fill('input[name=startTime]', '19:00')
+        page.fill('input[name=guests]', '80')
+        page.fill('input[name=venueName]', 'Ресторант „Тест“')
+        page.click('label.opt:has-text("На открито")')
+        page.fill('textarea[name=note]', 'Бележка, която не бива да се губи.')
+        page.click('button:has-text("Изпрати заявката")')
+        expect(page.locator('.form-alert')).to_have_text('Датата е заета')
+        assert path_of(page) == '/zayavka/studio-melodiya', path_of(page)
+        expect(page.locator('select[name=eventTypeId] option:checked')).to_have_text('Рожден ден')
+        expect(page.locator('input[name=startTime]')).to_have_value('19:00')
+        expect(page.locator('input[name=venueName]')).to_have_value('Ресторант „Тест“')
+        expect(page.locator('textarea[name=note]')).to_have_value('Бележка, която не бива да се губи.')
+        expect(page.locator('input[name=spaceType][value=outdoor]')).to_be_checked()
+        ok('a refused request (‹Датата е заета›) keeps the type, times, venue, space and note')
 
         # ── a package request: form, photos, send ───────────────────────
         d1 = h('free-date', 'studio-melodiya')
@@ -158,6 +201,7 @@ def main():
         page.fill('textarea[name=note]', 'Здравейте, търсим DJ за рожден ден с музика от 90-те.')
         page.set_input_files('.cb-drop input[type=file]', shots[:2])
         expect(page.locator('input[type=hidden][name=photo]')).to_have_count(2, timeout=15000)
+        toast(page, 'Снимката е прикачена към заявката')
         expect(page.locator('.sum-row:has-text("Прикачени") b')).to_have_text('2 снимки за вдъхновение')
         page.click('.rw-shot >> nth=0 >> button[aria-label="Премахни снимката"]')
         toast(page, 'Снимката е премахната')
@@ -190,6 +234,9 @@ def main():
         page.wait_for_url(re.compile(r'/potvardena$'))
         expect(page.locator('.done-t')).to_have_text('Резервацията е потвърдена')
         expect(page.locator('.done-d')).to_contain_text(CLIENT)
+        # a DJ keeps ‹програмата и плейлиста›; a birthday has no ‹двойки›
+        expect(page.locator('.next-d').nth(0)).to_have_text('Обикновено до седмица преди събитието, за да уточните програмата и плейлиста.')
+        expect(page.locator('.next-d').nth(2)).to_have_text('Ще получите покана за ревю — то помага на следващите клиенти да избират.')
         bk = h('booking', n1)
         assert bk['status'] == 'confirmed' and [c['status'] for c in bk['charges']] == ['failed', 'succeeded'], bk
         page.click('a:has-text("Виж резервацията")')
@@ -209,7 +256,14 @@ def main():
         bk = h('booking', '2026-1219-ДК')
         assert bk['status'] == 'awaiting_payment' and bk['charges'][-1]['method'] == 'bank_transfer' and bk['charges'][-1]['status'] == 'awaiting_transfer', bk
         assert h('outbox', 'client-bank-transfer', CLIENT) == before + 1
-        ok('‹Банков превод› → provider instructions on the page + client-bank-transfer email')
+        expect(page.locator('button:has-text("Плати 460 €")')).to_have_count(0)
+        page.click('label.pay-method:has-text("Карта")')
+        expect(page.locator('button:has-text("Плати 460 €")')).to_be_visible()
+        expect(page.locator('.cb-transfer')).to_have_count(0)
+        page.click('label.pay-method:has-text("Банков превод")')
+        expect(page.locator('.cb-transfer')).to_contain_text('2026-1219-ДК')
+        expect(page.locator('button:has-text("Плати 460 €")')).to_have_count(0)
+        ok('‹Банков превод› → provider instructions + client-bank-transfer email; nothing left to press until ‹Карта›')
 
         # ── invoice: resend and the printable file ──────────────────────
         page.goto(BASE + '/akaunt/rezervacii')
@@ -231,8 +285,23 @@ def main():
         assert '/api/invoices/' in doc.url
         expect(doc.locator('.inv-no')).to_have_text(inv_no)
         expect(doc.locator('.inv-foot')).to_contain_text('валидна без подпис и печат')
+        # the printable file draws the same hairlines as the page
+        expect(doc.locator('.inv-party').first).to_have_css('border-top-color', 'rgb(231, 231, 236)')
         doc.close()
         ok('invoice page: ‹Изпрати по имейл› queues client-invoice; ‹Свали PDF› opens the printable invoice')
+
+        # ── booking pages: ticket line, next steps, ‹Сигнал до екипа› window ──
+        page.goto(BASE + '/akaunt/rezervacii/' + quote('2025-0424-СЛ'))
+        expect(page.locator('.ticket-c')).to_have_text('Торта и десерти')
+        expect(page.locator('a:has-text("Сигнал до екипа")')).to_have_count(0)
+        page.goto(BASE + '/akaunt/rezervacii/' + quote('2026-0614-МЗ'))
+        expect(page.locator('.next-d').nth(0)).to_have_text('Обикновено до седмица преди събитието, за да уточните програмата.')
+        expect(page.locator('.next-d').nth(2)).to_have_text('Ще получите покана за ревю — то помага на следващите двойки да избират.')
+        page.click('a:has-text("Сигнал до екипа")')
+        page.wait_for_url(re.compile(r'/akaunt/poddrazhka/nov\?rezervaciya=2026-0614-'))
+        page.goto(BASE + '/akaunt/rezervacii/' + quote('2026-1219-ТД'))
+        expect(page.locator('.ticket-c')).to_have_text('Торти и десерти · Коледна торта за 40 гости')
+        ok('booking page: one ticket line, next steps worded for the partner and event, ‹Сигнал до екипа› only within 30 days')
 
         # ── cancel a booking with the exact quote ───────────────────────
         page.goto(BASE + '/akaunt/rezervacii')
@@ -256,6 +325,14 @@ def main():
         ok('cancel page: quote 420 € back, ‹Друга причина› + text → cancelled, full refund')
 
         # ── review ──────────────────────────────────────────────────────
+        # on a phone the criteria stars are finger-sized
+        rp = b.new_context(viewport={'width': 390, 'height': 844}, locale='bg-BG', timezone_id='Europe/Sofia')
+        sign_in(rp, CLIENT)
+        rpg = rp.new_page()
+        rpg.goto(BASE + '/akaunt/rezervacii/' + quote('2025-0424-СЛ') + '/revyu', wait_until='networkidle')
+        star = rpg.locator('.rw-mini button[aria-label="Точност: 3"]').bounding_box()
+        assert star['width'] >= 28 and star['height'] >= 28, star
+        rp.close()
         page.click('a:has-text("Остави ревю")')
         page.wait_for_url(re.compile(r'/revyu$'))
         expect(page.locator('button:has-text("Публикувай ревюто")')).to_be_disabled()
@@ -300,6 +377,16 @@ def main():
         assert h('outbox', 'client-brief-sent', CLIENT) == 1
         ok(f"brief: 2 categories, budget, photo → sent to {br['invited']} partner(s), T3 jobs scheduled")
 
+        nb = ctx.new_page()
+        nb.goto(BASE + '/zayavka/otvorena', referer=BASE + '/akaunt/zayavki')
+        expect(nb.locator('a.bf-back')).to_have_attribute('href', '/tarsene')
+        nb.close()
+        page.goto(BASE + '/akaunt/zayavki')
+        page.goto(BASE + '/zayavka/otvorena', referer=BASE + '/akaunt/zayavki')
+        page.click('button.bf-back')
+        page.wait_for_url(BASE + '/akaunt/zayavki')
+        ok('brief ‹Назад›: back to our previous page; a tab without history gets the catalogue link')
+
         # ── quote request → the partner's offer → the client chooses ────
         d2 = h('free-date', 'studio-melodiya')
         page.goto(BASE + '/zayavka/studio-melodiya')
@@ -316,6 +403,7 @@ def main():
         page.goto(BASE + '/akaunt/zayavki')
         expect(page.locator('.mine-t')).to_have_text(['Одобрени · чакат плащане', 'Нова оферта', 'Чакат отговор', 'Приключени'])
         expect(page.locator('.mine:has(.mine-t:text-is("Нова оферта")) .mrow')).to_contain_text(n2)
+        expect(page.locator('.mine:has(.mine-t:text-is("Нова оферта")) .mine-hint')).to_have_text('Плащате едва след като изберете оферта и изпълнителят я потвърди')
         page.click(f'.mrow:has-text("{n2}") >> text=Виж офертата')
         page.wait_for_url(re.compile(r'/akaunt/zayavki/'))
         expect(page.locator('.sh-t')).to_have_text('Получихте оферта от Студио Мелодия')
@@ -349,8 +437,53 @@ def main():
             assert path_of(pg) == unquote(route), (route, path_of(pg))
             wide = pg.evaluate('document.documentElement.scrollWidth')
             assert wide <= 390, (route, wide)
+        # the filter options open inside the screen
+        pg.goto(BASE + '/akaunt/zayavki', wait_until='networkidle')
+        for label in ('Всички събития', 'Всички статуси'):
+            pg.click(f'button.filter-btn:has-text("{label}")')
+            m = pg.locator('.cb-filter-menu').bounding_box()
+            assert m['x'] >= 0 and m['x'] + m['width'] <= 390, (label, m)
+            pg.keyboard.press('Escape')
+        # every row puts its columns on the same grid
+        for route in ('/akaunt/zayavki', '/akaunt/rezervacii'):
+            pg.goto(BASE + route, wait_until='networkidle')
+            xs = pg.evaluate('[...document.querySelectorAll(".mrow")].map(r => [...r.querySelectorAll(".mrow-col")].map(c => Math.round(c.getBoundingClientRect().left)))')
+            assert len({tuple(x[:2]) for x in xs}) == 1, (route, xs)
+            assert len({x[2] for x in xs if len(x) > 2}) <= 1, (route, xs)
+        # the steps stay on one row
+        pg.goto(BASE + '/zayavka/studio-melodiya', wait_until='networkidle')
+        tops = pg.evaluate('[...document.querySelectorAll(".step-n")].map(e => Math.round(e.getBoundingClientRect().top))')
+        assert len(set(tops)) == 1, tops
+        # the ticket keeps the photo and the name side by side
+        pg.goto(BASE + '/akaunt/rezervacii/' + quote(n1), wait_until='networkidle')
+        img, name = pg.locator('.ticket-img').bounding_box(), pg.locator('.ticket-n').bounding_box()
+        assert name['x'] > img['x'] + img['width'] and name['y'] < img['y'] + img['height'], (img, name)
+        # invoice lines: every figure and its column name inside the document
+        pg.goto(BASE + '/akaunt/rezervacii/' + quote(n1) + '/faktura', wait_until='networkidle')
+        doc = pg.locator('.inv-doc').bounding_box()
+        for sel in ('.inv-c-q', '.inv-c-p', '.inv-c-s'):
+            c = pg.locator('tbody ' + sel).first.bounding_box()
+            assert c['x'] >= doc['x'] and c['x'] + c['width'] <= doc['x'] + doc['width'], (sel, c, doc)
+        expect(pg.locator('tbody .inv-c-s')).to_have_attribute('data-l', 'Сума')
+        # six photos: square thumbnails inside the card; the full area says so
+        pg.goto(BASE + '/zayavka/otvorena', wait_until='networkidle')
+        six = [os.path.join(tmp, f's{i}.png') for i in range(6)]
+        for i, x in enumerate(six): png(x, (20 * i, 120, 90))
+        pg.set_input_files('.cb-drop input[type=file]', six)
+        expect(pg.locator('input[type=hidden][name=photo]')).to_have_count(6, timeout=20000)
+        boxes = [pg.locator('.rw-shots--att .rw-shot').nth(i).bounding_box() for i in range(6)]
+        card = pg.locator('.form-card').bounding_box()
+        assert all(abs(x['width'] - x['height']) < 1 and x['x'] + x['width'] <= card['x'] + card['width'] for x in boxes), boxes
+        pg.click('.cb-drop .rw-drop-t')
+        toast(pg, 'Може да прикачите до 6 снимки')
+        assert pg.evaluate('document.documentElement.scrollWidth') <= 390
+        # the printable invoice also fits a phone
+        pg.add_init_script('window.print = () => {}')
+        pg.goto(BASE + '/akaunt/rezervacii/' + quote(n1) + '/faktura', wait_until='networkidle')
+        pg.goto(BASE + pg.get_attribute('a:has-text("Свали PDF")', 'href'), wait_until='networkidle')
+        assert pg.evaluate('document.documentElement.scrollWidth') <= 390
         phone.close()
-        ok('every screen fits 390 px without horizontal scroll')
+        ok('390 px: no horizontal scroll; filters open on screen; rows share one grid; steps on one row; ticket, invoice lines and photos fit')
 
         # ── the simulated provider reports the bank transfer received ───
         ctx = b.new_context(viewport={'width': 1440, 'height': 900}, locale='bg-BG', timezone_id='Europe/Sofia')

@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation';
 import { ActionForm } from '@/components/client-booking/ActionForm';
 import { Crumbs, Num, PartnerSum } from '@/components/client-booking/parts';
 import { SubmitButton } from '@/components/client-booking/SubmitButton';
-import { cancelPageData, numericDate } from '@/lib/domain/views-client-booking';
+import { cancelPageData, numericDate, subtitleOf } from '@/lib/domain/views-client-booking';
 import { date, dateShort } from '@/lib/format';
 import { numberParam, orNotFound, requireClient } from '@/lib/client-booking/guard';
 import { cancelBookingAction } from './actions';
@@ -48,7 +48,7 @@ export default async function CancelPage({ params }: { params: Promise<{ nomer: 
             <span className="cx-top-img" style={p.thumb ? { backgroundImage: `url('${p.thumb}')` } : undefined} />
             <div>
               <div className="cx-top-n"><Num>{p.name}</Num></div>
-              <div className="cx-top-s">{[p.category, b.serviceTitle, when].filter(Boolean).join(' · ')}</div>
+              <div className="cx-top-s">{[subtitleOf(p.category, b.serviceTitle), when].filter(Boolean).join(' · ')}</div>
             </div>
           </div>
 

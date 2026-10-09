@@ -2,7 +2,9 @@
 // ‹Прикачете снимки за вдъхновение› / ‹Добавете снимки от събитието›: the drop
 // area opens the file picker (or takes dropped files); each photo is uploaded
 // at once through the page's server action (media.upload) and the form then
-// carries only its id. The × takes a photo off again (‹Снимката е премахната›).
+// carries only its id, with the prototype's toast ‹Снимката е прикачена към
+// заявката› (or ‹…към ревюто›). The × takes a photo off again (‹Снимката е
+// премахната›); a full area answers ‹Може да прикачите до 6 снимки›.
 import { useEffect, useRef, useState } from 'react';
 import { toast } from '@/components/ui/client';
 
@@ -19,6 +21,9 @@ export function PhotoPicker({ name, title, max, maxMb, upload, inline = false, o
   const [shots, setShots] = useState<Shot[]>([]);
   const input = useRef<HTMLInputElement>(null);
   const hint = `До ${max} снимки · JPG или PNG, до ${maxMb} MB всяка`;
+  // What the photos are attached to, worded as in the prototype (proto.js, drop areas).
+  const what = /вдъхновение/.test(title) ? 'заявката' : 'ревюто';
+  const full = shots.length >= max;
 
   useEffect(() => { onCount?.(shots.filter(s => s.id).length); }, [shots, onCount]);
   useEffect(() => () => shots.forEach(s => URL.revokeObjectURL(s.preview)), []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -26,9 +31,8 @@ export function PhotoPicker({ name, title, max, maxMb, upload, inline = false, o
   async function add(files: FileList | File[]) {
     const list = [...files];
     const room = max - shots.length;
-    if (list.length > room || list.some(f => !['image/jpeg', 'image/png'].includes(f.type) || f.size > maxMb * 1024 * 1024)) {
-      toast(hint, 'error');
-    }
+    if (list.length > room) toast(`Може да прикачите до ${max} снимки`);
+    else if (list.some(f => !['image/jpeg', 'image/png'].includes(f.type) || f.size > maxMb * 1024 * 1024)) toast(hint, 'error');
     for (const f of list.slice(0, Math.max(0, room))) {
       if (!['image/jpeg', 'image/png'].includes(f.type) || f.size > maxMb * 1024 * 1024) continue;
       const key = `${f.name}-${f.size}-${Math.random()}`;
@@ -37,7 +41,10 @@ export function PhotoPicker({ name, title, max, maxMb, upload, inline = false, o
       const fd = new FormData();
       fd.set('file', f);
       const r = await upload(fd).catch(() => ({ error: hint }) as UploadResult);
-      if (r.id) setShots(s => s.map(x => (x.key === key ? { ...x, id: r.id! } : x)));
+      if (r.id) {
+        setShots(s => s.map(x => (x.key === key ? { ...x, id: r.id! } : x)));
+        toast(`Снимката е прикачена към ${what}`);
+      }
       else {
         setShots(s => s.filter(x => x.key !== key));
         URL.revokeObjectURL(preview);
@@ -68,10 +75,11 @@ export function PhotoPicker({ name, title, max, maxMb, upload, inline = false, o
   return (
     <>
       <label className={`rw-drop cb-drop${inline ? ' cb-drop--inline' : ''}`}
+        onClick={e => { if (full && !(e.target as HTMLElement).closest('.rw-shot-x')) { e.preventDefault(); toast(`Може да прикачите до ${max} снимки`); } }}
         onDragOver={e => e.preventDefault()}
-        onDrop={e => { e.preventDefault(); if (e.dataTransfer.files.length) void add(e.dataTransfer.files); }}>
+        onDrop={e => { e.preventDefault(); if (full) toast(`Може да прикачите до ${max} снимки`); else if (e.dataTransfer.files.length) void add(e.dataTransfer.files); }}>
         <input ref={input} className="sr-only" type="file" accept="image/jpeg,image/png" multiple
-          onChange={e => { if (e.target.files?.length) void add(e.target.files); }} disabled={shots.length >= max} />
+          onChange={e => { if (e.target.files?.length) void add(e.target.files); }} />
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="9" cy="10" r="2" /><path d="M21 16l-5-5-6 8" /></svg>
         <div>
           <div className="rw-drop-t">{title}</div>

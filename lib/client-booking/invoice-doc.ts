@@ -41,9 +41,9 @@ export function invoiceDocHtml(inv: InvoiceView): string {
                 <div class="inv-item-n">${esc(l.description)}</div>
                 ${l.detail ? `<div class="inv-item-d">${esc(l.detail)}</div>` : ''}
               </td>
-              <td class="inv-c-q"><span class="inv-fig">${l.quantity}</span></td>
-              <td class="inv-c-p"><span class="inv-fig">${esc(moneyShort(l.unitPriceCents))}</span></td>
-              <td class="inv-c-s"><span class="inv-fig">${esc(moneyShort(l.totalCents))}</span></td>
+              <td class="inv-c-q" data-l="Количество"><span class="inv-fig">${l.quantity}</span></td>
+              <td class="inv-c-p" data-l="Ед. цена"><span class="inv-fig">${esc(moneyShort(l.unitPriceCents))}</span></td>
+              <td class="inv-c-s" data-l="Сума"><span class="inv-fig">${esc(moneyShort(l.totalCents))}</span></td>
             </tr>`).join('');
   const paid = inv.type === 'invoice' && inv.paidOn;
   return `
@@ -110,12 +110,17 @@ export function invoiceDocHtml(inv: InvoiceView): string {
       </article>`;
 }
 
+/** The `:root { … }` custom properties of a stylesheet (app.css holds --app-line and --app-bg). */
+const rootVars = (css: string) => /:root\s*\{[^}]*\}/.exec(css)?.[0] ?? '';
+
 /** A standalone, printable page around the document (‹Свали PDF›): the browser's print dialog saves it as PDF. */
 export function invoicePrintHtml(inv: InvoiceView, bookingNumber: string): string {
   const root = process.cwd();
   const read = (f: string) => { try { return readFileSync(join(root, 'styles', f), 'utf8'); } catch { return ''; } };
   const css = read('m-client-booking.css');
-  const invCss = css.slice(css.indexOf('/* ---------- client/invoice.html'), css.indexOf('/* ====', css.indexOf('/* ---------- client/invoice.html')));
+  const between = (from: string, to: string) => { const i = css.indexOf(from); return i < 0 ? '' : css.slice(i, css.indexOf(to, i)); };
+  const invCss = between('/* ---------- client/invoice.html', '/* ====')
+    + between('/* ---------- invoice on smaller screens', '/* ---------- end of the invoice');
   const title = `${invoiceKind(inv)} № ${inv.number} · ${bookingNumber}`;
   return `<!doctype html>
 <html lang="bg">
@@ -127,6 +132,7 @@ export function invoicePrintHtml(inv: InvoiceView, bookingNumber: string): strin
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Spectral:wght@500;700&display=swap" rel="stylesheet" />
 <style>
 ${read('tokens.css')}
+${rootVars(read('app.css'))}
 .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
 .badge--dot::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .badge--success { background: var(--success-50); color: var(--success-700); }
@@ -135,6 +141,7 @@ body { margin: 0; padding: 32px; background: #fff; font-family: var(--font-ui); 
 ${invCss}
 .inv-doc { box-shadow: none; max-width: 1000px; margin: 0 auto; }
 @page { size: A4; margin: 12mm; }
+@media (max-width: 640px) { body { padding: 12px; } }
 @media print { body { padding: 0; } .inv-doc { border: none; border-radius: 0; } }
 </style>
 </head>

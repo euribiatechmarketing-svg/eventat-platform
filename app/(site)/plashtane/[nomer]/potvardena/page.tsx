@@ -1,7 +1,7 @@
 // ‹Резервацията е потвърдена› (client/confirmed.html → SCREENS §5 /plashtane/[nomer]/potvardena).
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { NextSteps, Ticket } from '@/components/client-booking/Ticket';
+import { NextStepsFor, Ticket } from '@/components/client-booking/Ticket';
 import { getBookingForClient } from '@/lib/domain/bookings';
 import { bookingExtras } from '@/lib/domain/views-client-booking';
 import { dateShort } from '@/lib/format';
@@ -30,7 +30,7 @@ export default async function ConfirmedPage({ params }: { params: Promise<{ nome
       </div>
 
       <Ticket b={b} partner={x.partner} />
-      <NextSteps />
+      <NextStepsFor b={b} partner={x.partner} />
 
       <div className="cb-actions cb-center-actions" style={{ justifyContent: 'center', marginTop: 30 }}>
         <Link className="btn btn--primary" href={`/akaunt/rezervacii/${n}`}>Виж резервацията</Link>

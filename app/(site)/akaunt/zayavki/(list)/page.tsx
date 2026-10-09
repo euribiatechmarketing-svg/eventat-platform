@@ -37,7 +37,7 @@ export default async function RequestsPage({ searchParams }: { searchParams: SP 
         </MineGroup>
       )}
       {g.offers.length > 0 && (
-        <MineGroup tone="wait" title="Нова оферта" count={g.offers.length} hint="Плащате едва след като изберете оферта и изпълнителят я потвърди.">
+        <MineGroup tone="wait" title="Нова оферта" count={g.offers.length} hint="Плащате едва след като изберете оферта и изпълнителят я потвърди">
           {g.offers.map(r => <Row key={r.number} r={r} now={v.nowIso} />)}
         </MineGroup>
       )}

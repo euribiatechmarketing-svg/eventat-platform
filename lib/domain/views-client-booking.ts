@@ -73,7 +73,7 @@ function thumbOf(url: string | null): string | null {
 }
 
 export type PartnerCard = {
-  id: string; slug: string; name: string; category: string; cityName: string | null;
+  id: string; slug: string; name: string; category: string; categorySlug: string | null; cityName: string | null;
   /** ‹4,9›, or null without reviews (§12.4). */
   rating: string | null; photo: string | null; thumb: string | null;
 };
@@ -83,7 +83,7 @@ export async function partnerCards(q: Queryable, ids: string[]): Promise<Map<str
   const uniq = [...new Set(ids)];
   if (!uniq.length) return out;
   const rows = await q.select({
-    id: partner.id, slug: partner.slug, name: partner.businessName, category: category.name, cityName: city.name,
+    id: partner.id, slug: partner.slug, name: partner.businessName, category: category.name, categorySlug: category.slug, cityName: city.name,
     ratingAvg: partner.ratingAvg, reviewCount: partner.reviewCount,
     photo: sql<string | null>`coalesce(
       (select m.storage_key from partner_photo ph join media m on m.id = ph.media_id where ph.partner_id = ${partner.id} order by ph.position limit 1),
@@ -94,7 +94,7 @@ export async function partnerCards(q: Queryable, ids: string[]): Promise<Map<str
   for (const r of rows) {
     const photo = r.photo ? fileUrl(r.photo) : null;
     out.set(r.id, {
-      id: r.id, slug: r.slug, name: r.name, category: r.category ?? '', cityName: r.cityName,
+      id: r.id, slug: r.slug, name: r.name, category: r.category ?? '', categorySlug: r.categorySlug ?? null, cityName: r.cityName,
       rating: r.ratingAvg != null && r.reviewCount > 0 ? Number(r.ratingAvg).toFixed(1).replace('.', ',') : null,
       photo, thumb: thumbOf(photo),
     });
@@ -381,7 +381,8 @@ export async function clientBookingList(actor: AnyActor, f: { eventId?: string |
       time: b.startTime ? (b.endTime ? `${b.startTime.slice(0, 5)} – ${b.endTime.slice(0, 5)}` : b.startTime.slice(0, 5)) : null,
       guests: b.guests, daysTo: daysBetween(today, b.eventDate),
       freeCancel: b.freeCancelUntil && b.freeCancelUntil >= today ? policyStrings(b.cancellationPolicy, b.eventDate) : null,
-      canCancel: b.status === 'confirmed',
+      // the same guard as the booking page and the cancel page (K7: confirmed, before the event, no open case)
+      canCancel: (await clientCancelEligibility(b.id, q)).allowed,
       hasInvoice: (await q.select({ id: invoice.id }).from(invoice).where(eq(invoice.bookingId, b.id)).limit(1)).length > 0,
     };
   }

@@ -1,11 +1,9 @@
 // ‹Плащане› (client/payment.html → SCREENS §5 /plashtane/[nomer]).
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { ActionForm } from '@/components/client-booking/ActionForm';
 import { Countdown } from '@/components/client-booking/Countdown';
 import { PayMethods } from '@/components/client-booking/PayMethods';
 import { Crumbs, PartnerSum } from '@/components/client-booking/parts';
-import { SubmitButton } from '@/components/client-booking/SubmitButton';
 import { now } from '@/lib/clock';
 import { policyStrings } from '@/lib/domain/cancellation';
 import { getPaymentPage } from '@/lib/domain/charges';
@@ -48,28 +46,22 @@ export default async function PaymentPage({ params }: { params: Promise<{ nomer:
           <input type="hidden" name="number" value={v.number} />
           {v.lastAttemptFailed && <div className="form-alert" role="alert">Плащането не е преминало. Опитайте отново.</div>}
           <h2 className="pv-sec-t" style={{ marginTop: 0 }}>Начин на плащане</h2>
-          <PayMethods bank={v.bankTransferEnabled} initial={method} />
-
-          {t && (
-            <div className="cb-transfer">
-              <h3 className="cx-h" style={{ margin: '12px 0 4px', fontSize: 16 }}>Данни за банковия превод</h3>
-              <div className="sum-row"><span>Сума</span><b>{money(t.amountCents)}</b></div>
-              <div className="sum-row"><span>Получател</span><b>{t.recipient}</b></div>
-              <div className="sum-row"><span>IBAN</span><b>{t.iban}</b></div>
-              <div className="sum-row"><span>Основание</span><b>{t.reference}</b></div>
-              <div className="sum-row"><span>Платете до</span><b>{dateTime(v.paymentDueAt)}</b></div>
+          <PayMethods bank={v.bankTransferEnabled} initial={method} payLabel={`Плати ${moneyShort(v.amountDueCents)}`} backHref={`/akaunt/zayavki/${n}`}
+            transfer={t && (
+              <div className="cb-transfer">
+                <h3 className="cx-h" style={{ margin: '12px 0 4px', fontSize: 16 }}>Данни за банковия превод</h3>
+                <div className="sum-row"><span>Сума</span><b>{money(t.amountCents)}</b></div>
+                <div className="sum-row"><span>Получател</span><b>{t.recipient}</b></div>
+                <div className="sum-row"><span>IBAN</span><b>{t.iban}</b></div>
+                <div className="sum-row"><span>Основание</span><b>{t.reference}</b></div>
+                <div className="sum-row"><span>Платете до</span><b>{dateTime(v.paymentDueAt)}</b></div>
+              </div>
+            )}>
+            <div className="safe">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.4 8.4-8 9-4.6-.6-8-4-8-9V6l8-3z" /><path d="M9 12l2 2 4-4" /></svg>
+              <span><strong>Парите ви са защитени.</strong> Сумата се задържа от платформата и се превежда на изпълнителя чак след като събитието се проведе. При анулиране в срок се възстановява автоматично.</span>
             </div>
-          )}
-
-          <div className="safe">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.4 8.4-8 9-4.6-.6-8-4-8-9V6l8-3z" /><path d="M9 12l2 2 4-4" /></svg>
-            <span><strong>Парите ви са защитени.</strong> Сумата се задържа от платформата и се превежда на изпълнителя чак след като събитието се проведе. При анулиране в срок се възстановява автоматично.</span>
-          </div>
-
-          <div style={{ display: 'flex', gap: 10, marginTop: 26, flexWrap: 'wrap' }}>
-            <SubmitButton className="btn btn--primary">Плати {moneyShort(v.amountDueCents)}</SubmitButton>
-            <Link className="btn btn--ghost" href={`/akaunt/zayavki/${n}`}>Назад</Link>
-          </div>
+          </PayMethods>
         </ActionForm>
 
         <aside>

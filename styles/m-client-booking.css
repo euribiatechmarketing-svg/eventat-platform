@@ -136,7 +136,7 @@
 /* toolbar filter: the open state and the chosen option */
 .cb-filter.is-open > .filter-btn { border-color: var(--primary-500); background: var(--primary-50); }
 .cb-filter-menu { min-width: 260px; }
-.cb-filter-menu a.is-active { color: var(--primary-700); background: var(--primary-50); font-weight: var(--fw-semibold); }
+.cb-filter-menu a.is-active { color: var(--text); background: var(--primary-50); font-weight: var(--fw-semibold); }
 
 /* real controls drawn like the prototype's fields */
 .form-card input.fld-i, .form-card select.fld-i, .form-card textarea.fld-i { outline: none; font-size: 13.5px; color: var(--primary-900); }
@@ -226,16 +226,6 @@ textarea.field-textarea { width: 100%; box-sizing: border-box; }
   .ticket-cell:nth-child(2n) { border-right: none; }
   .ticket-cell:nth-child(n + 3) { border-top: 1px solid var(--app-line); }
   .next { grid-template-columns: minmax(0, 1fr); }
-  .inv-top, .inv-parties, .inv-close, .inv-foot { padding-left: 22px; padding-right: 22px; }
-  .inv-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .inv-meta-cell, .inv-meta-cell + .inv-meta-cell { padding: 12px 22px; }
-  .inv-meta-cell:nth-child(2n) { border-right: none; }
-  .inv-meta-cell:nth-child(n + 3) { border-top: 1px solid var(--app-line); }
-  .inv-close { flex-direction: column; }
-  .inv-sums { width: 100%; }
-  .cb-inv-scroll { overflow-x: auto; }
-  .inv-tbl th:first-child, .inv-tbl td:first-child { padding-left: 22px; }
-  .inv-tbl th:last-child, .inv-tbl td:last-child { padding-right: 22px; }
 }
 
 @media (max-width: 640px) {
@@ -245,8 +235,7 @@ textarea.field-textarea { width: 100%; box-sizing: border-box; }
   .kv-label { white-space: nowrap; }
   .form-grid, .form-grid--3 { grid-template-columns: minmax(0, 1fr); }
   .fld-hint--side { margin: -8px 0 0; }
-  .steps { flex-wrap: wrap; row-gap: 10px; }
-  .step-line { width: 18px; margin: 0 8px; }
+  .step-line { margin: 0 8px; }
   .step-t { font-size: 12.5px; }
   .bf-cats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cx-break { grid-template-columns: minmax(0, 1fr); }
@@ -268,12 +257,6 @@ textarea.field-textarea { width: 100%; box-sizing: border-box; }
   .ticket-top > div:last-child { margin-left: 0 !important; text-align: left !important; flex-basis: 100%; }
   .ticket-img { width: 64px; height: 64px; }
   .ticket-cell { padding: 14px 18px; }
-  .inv-top { flex-direction: column; gap: 16px; }
-  .inv-id { margin-left: 0; text-align: left; }
-  .inv-parties { grid-template-columns: minmax(0, 1fr); gap: 14px; }
-  .inv-meta-v { white-space: normal; }
-  .cb-inv-scroll .inv-tbl { min-width: 600px; }
-  .inv-c-p, .inv-c-s { width: 110px; }
   .cx-top-n, .rw-n { font-size: 19px; }
   .pay-method { flex-wrap: wrap; }
   .pay-method > div { flex: 1 1 0; min-width: 0; }
@@ -289,3 +272,72 @@ h1.sh-t { margin: 0; }
 .cb-pick-other:not(:has(> input:checked)) .cx-free { display: none; }
 select.fld-i:invalid { color: var(--neutral-400); }
 select.fld-i option { color: var(--primary-900); }
+
+/* a long value in a summary row (‹Фотокабина · 3 часа с оператор и реквизит›) stays right-aligned */
+.sum-row b { text-align: right; }
+/* ‹Потвърждението отнема до 2 работни дни› never leaves one word on a line */
+.pay-d, .mrow-s, .next-d, .cx-pol-d, .done-d, .sh-d, .h-sub { text-wrap: pretty; }
+.nx-t, .sh-t, .done-t { text-wrap: balance; }
+
+/* attached photos: square thumbnails in one row (six fit), never squeezed */
+.rw-shots--att { display: grid; grid-template-columns: repeat(6, minmax(0, 84px)); gap: 8px; }
+.rw-shots--att .rw-shot { width: auto; height: auto; aspect-ratio: 1; }
+
+@media (max-width: 960px) {
+  /* the filter options open under the button, inside the screen */
+  .cb-filter-menu { left: 0; right: auto; max-width: calc(100vw - 32px); }
+  /* every row lays its columns out on the same grid */
+  .cb-mrow .mrow-meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 16px; }
+  .cb-mrow .mrow-col { min-width: 0; }
+  .cb-mrow .mrow-v { overflow: hidden; text-overflow: ellipsis; }
+}
+
+@media (max-width: 640px) {
+  .cb-mrow .mrow-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* finger-sized targets for the small buttons and the crumbs */
+  #main .btn--sm { min-height: 36px; }
+  #main .crumbs a { display: inline-block; padding: 8px 0; margin: -8px 0; }
+  /* steps: only the current one keeps its label, so the row never wraps */
+  .steps { flex-wrap: nowrap; }
+  .step:not(.is-on) .step-t { display: none; }
+  .step-line { flex: 1 1 auto; min-width: 12px; max-width: 48px; }
+  /* ticket: photo and name side by side, the price below */
+  .ticket-top > div:nth-child(2) { flex: 1 1 0; min-width: 0; }
+  .rw-shots--att { grid-template-columns: repeat(3, minmax(0, 84px)); gap: 12px; }
+  /* the photo's × keeps a finger-sized hit area */
+  .rw-shot-x::after { content: ''; position: absolute; inset: -10px; }
+  /* criteria stars: finger-sized targets */
+  .rw-mini { gap: 0; margin-right: -6px; }
+  .rw-mini button { padding: 6px 4px; }
+  .rw-mini button svg { width: 20px; height: 20px; }
+}
+
+/* ---------- invoice on smaller screens (the page and the printable file) ---------- */
+@media (max-width: 960px) {
+  .inv-top, .inv-parties, .inv-close, .inv-foot { padding-left: 22px; padding-right: 22px; }
+  .inv-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .inv-meta-cell, .inv-meta-cell + .inv-meta-cell { padding: 12px 22px; }
+  .inv-meta-cell:nth-child(2n) { border-right: none; }
+  .inv-meta-cell:nth-child(n + 3) { border-top: 1px solid var(--app-line); }
+  .inv-close { flex-direction: column; }
+  .inv-sums { width: 100%; }
+  .inv-tbl th:first-child, .inv-tbl td:first-child { padding-left: 22px; }
+  .inv-tbl th:last-child, .inv-tbl td:last-child { padding-right: 22px; }
+}
+@media (max-width: 640px) {
+  .inv-top { flex-direction: column; gap: 16px; }
+  .inv-id { margin-left: 0; text-align: left; }
+  .inv-parties { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .inv-meta-v { white-space: normal; }
+  /* one block per line, the column names above the figures */
+  .inv-tbl thead { display: none; }
+  .inv-tbl, .inv-tbl tbody { display: block; }
+  .inv-tbl tr { display: grid; grid-template-columns: 26px repeat(3, minmax(0, 1fr)); gap: 12px 10px; padding: 16px 22px; border-top: 1px solid var(--app-line); border-bottom: 1px solid var(--app-line); }
+  .inv-tbl tr + tr { border-top: 0; }
+  .inv-doc .inv-tbl td { display: block; width: auto; padding: 0; border: 0; text-align: left; }
+  .inv-tbl td.inv-c-no { grid-column: 1; grid-row: 1; }
+  .inv-tbl td:nth-child(2) { grid-column: 2 / -1; grid-row: 1; }
+  .inv-tbl td.inv-c-q { grid-column: 2; }
+  .inv-tbl td[data-l]::before { content: attr(data-l); display: block; margin-bottom: 4px; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: var(--fw-bold); color: var(--neutral-400); white-space: nowrap; }
+}
+/* ---------- end of the invoice ---------- */

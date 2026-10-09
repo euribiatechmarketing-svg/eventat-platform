@@ -119,6 +119,13 @@ switch (cmd) {
     out = r?.number ?? null;
     break;
   }
+  case 'threads': {
+    // Conversations the client has on a request number (a forged ‹Пиши на изпълнителя› must open none).
+    const [{ n }] = await sql<{ n: number }[]>`select count(*)::int n from conversation c join request r on r.id = c.request_id
+      join "user" u on u.id = c.client_id where u.email = ${args[0]} and r.number = ${args[1]}`;
+    out = n;
+    break;
+  }
   default:
     console.error(`unknown command ${cmd}`);
     process.exit(2);

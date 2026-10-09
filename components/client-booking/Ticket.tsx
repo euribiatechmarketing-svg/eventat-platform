@@ -2,12 +2,13 @@
 // shared by /plashtane/[nomer]/potvardena and /akaunt/rezervacii/[nomer].
 import type { ClientBookingView } from '@/lib/domain/bookings';
 import type { PartnerCard } from '@/lib/domain/views-client-booking';
-import { numericDate } from '@/lib/domain/views-client-booking';
+import { numericDate, subtitleOf } from '@/lib/domain/views-client-booking';
 import { date, moneyShort } from '@/lib/format';
 import { Num, STAR } from './parts';
 
 export function Ticket({ b, partner }: { b: ClientBookingView; partner: PartnerCard }) {
-  const what = [b.serviceTitle, b.serviceSummary ?? partner.category].filter(Boolean).join(' · ');
+  // ‹Пакет „Цял ден“ · DJ, озвучаване и осветление›; without a summary, as on the list rows (‹Торти и десерти · Коледна торта…›).
+  const what = b.serviceSummary ? `${b.serviceTitle} · ${b.serviceSummary}` : subtitleOf(partner.category, b.serviceTitle);
   const venue = b.venueName || b.locality || b.cityName;
   const venueSmall = b.venueName ? (b.locality || b.cityName) : null;
   return (
@@ -33,13 +34,20 @@ export function Ticket({ b, partner }: { b: ClientBookingView; partner: PartnerC
   );
 }
 
-export function NextSteps() {
+/**
+ * The three cards under the ticket (client/confirmed.html). The prototype's lines
+ * speak of a DJ (‹програмата и плейлиста›) at a wedding (‹следващите двойки›);
+ * for other partners and events the same lines take the approved wording of the
+ * `client-booking-confirmed` email (‹за да уточните програмата›) and of
+ * client/bookings.html (‹следващите клиенти да избират›).
+ */
+export function NextSteps({ playlist, wedding }: { playlist: boolean; wedding: boolean }) {
   return (
     <div className="next">
       <div className="next-card">
         <span className="next-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg></span>
         <div className="next-t">Изпълнителят ще се свърже</div>
-        <div className="next-d">Обикновено до седмица преди събитието, за да уточните програмата и плейлиста.</div>
+        <div className="next-d">{playlist ? 'Обикновено до седмица преди събитието, за да уточните програмата и плейлиста.' : 'Обикновено до седмица преди събитието, за да уточните програмата.'}</div>
       </div>
       <div className="next-card">
         <span className="next-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.4 8.4-8 9-4.6-.6-8-4-8-9V6l8-3z" /><path d="M9 12l2 2 4-4" /></svg></span>
@@ -49,8 +57,13 @@ export function NextSteps() {
       <div className="next-card">
         <span className="next-i"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d={STAR} /></svg></span>
         <div className="next-t">Оценете след събитието</div>
-        <div className="next-d">Ще получите покана за ревю — то помага на следващите двойки да избират.</div>
+        <div className="next-d">{wedding ? 'Ще получите покана за ревю — то помага на следващите двойки да избират.' : 'Ще получите покана за ревю — то помага на следващите клиенти да избират.'}</div>
       </div>
     </div>
   );
+}
+
+/** NextSteps for a booking: a DJ's playlist, a wedding's couples. */
+export function NextStepsFor({ b, partner }: { b: ClientBookingView; partner: PartnerCard }) {
+  return <NextSteps playlist={partner.categorySlug === 'dj-i-ozvuchavane'} wedding={b.eventType.slug === 'svatba'} />;
 }
