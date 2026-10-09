@@ -18,7 +18,8 @@ These belong to the operating company, not to Euribia. Each one needs a person t
 ## Steps
 
 1. **Database.** In Vercel → Storage → Create → Neon, region Frankfurt. Vercel adds `DATABASE_URL` to the project.
-   Then run the migrations once from a laptop: `DATABASE_URL=<neon url> npm run db:migrate`.
+   Then run the migrations once from a laptop: `DATABASE_URL=<neon url> npm run db:migrate`
+   (creates the extensions, applies `db/migrations/0000_init.sql`, then the triggers in `db/sql/`).
    Do **not** run `db:seed` against production: the seed is prototype demo data.
 2. **Environment variables** (Vercel → Settings → Environment Variables), production:
    - `BETTER_AUTH_SECRET` (random 32+ bytes), `BETTER_AUTH_URL` and `APP_URL` = the public URL

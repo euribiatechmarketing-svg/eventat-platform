@@ -47,7 +47,7 @@ Look at screenshots at both widths (1440 and 390). Test interactions with real c
 | `app/(panel)/partner/`, `app/(panel)/admin/` | Root layout for the panels (`app.css`, `admin.css`) |
 | `app/(wizard)/` | Partner sign-up wizard (`wizard.css`) |
 | `app/api/` | Auth, cron tick, payment webhooks, private files |
-| `db/schema/*.ts` | Drizzle tables. Until launch there are no incremental migrations: `npm run db:reset` pushes the current schema and runs `db/sql/*.sql` (triggers, constraints). Tests clone a template database built the same way |
+| `db/schema/*.ts` | Drizzle tables. Dev and tests: `npm run db:reset` pushes the current schema and runs `db/sql/*.sql` (triggers, constraints). Production: `npm run db:migrate` applies `db/migrations/0000_init.sql` + `db/sql`. **Until launch, after any schema change regenerate the single init migration** (`rm -rf db/migrations && npx drizzle-kit generate --name init`); after launch, add incremental migrations instead |
 | `lib/domain/*.ts` | **All business rules.** State transitions, money, policies. Pages and actions call these; they never write business tables directly |
 | `lib/email/` | Templates (keys match the prototype's `emails/emails.js`), renderer, outbox, transports |
 | `lib/payments/` | Provider boundary: `simulated` (test checkout) and `stripe` (Connect). EventAT never holds client money itself |
