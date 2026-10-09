@@ -5,6 +5,7 @@ import { initials } from '@/lib/initials';
 import { REVIEWS_TAB_PARAM, reviewsPage, type ReviewsTab } from '@/lib/domain/views-partner-catalogue';
 import { partnerActor } from '../_catalogue/server';
 import { CopyLink, Stars } from '../_catalogue/ui';
+import { Segs } from '../_catalogue/num';
 import { ReplyBox } from './ReplyBox';
 
 export const dynamic = 'force-dynamic';
@@ -39,7 +40,7 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
       <div className="page-head">
         <div>
           <h1 className="page-title">Ревюта</h1>
-          <p className="page-sub">Клиентите оценяват след приключено събитие{v.responsiveness != null ? ` · ${v.responsiveness}% отзивчивост` : ''}</p>
+          <p className="page-sub"><Segs parts={['Клиентите оценяват след приключено събитие', v.responsiveness != null && `${v.responsiveness}% отзивчивост`]} /></p>
         </div>
         <div className="page-head-right">
           <CopyLink path={`/partnyori/${v.slug}`} className="btn btn--outline btn--sm">Сподели профила</CopyLink>
@@ -81,7 +82,7 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
           <div key={r.id} className="rev" data-review={r.id}>
             <div className="rev-head">
               <span className="avatar">{avatar(r.author)}</span>
-              <div><div className="rev-name">{r.author}</div><div className="rev-meta">{r.meta}</div></div>
+              <div><div className="rev-name">{r.author}</div><div className="rev-meta"><Segs parts={r.meta} /></div></div>
               <Stars n={r.rating} />
             </div>
             <p className="rev-text">{r.body}</p>

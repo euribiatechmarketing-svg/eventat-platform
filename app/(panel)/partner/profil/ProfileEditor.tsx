@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from '@/components/ui/client';
-import { Num } from '../_catalogue/num';
+import { Num, Segs } from '../_catalogue/num';
 import { FilePick, Stars, Switch } from '../_catalogue/ui';
 import {
   addGalleryPhotoAction, removeGalleryPhotoAction, reorderGalleryAction, setListingAction, updateProfileAction, type ProfileState,
@@ -19,7 +19,7 @@ export type ProfileData = {
   eventTypes: { id: string; label: string }[]; eventTypeIds: string[]; tags: Tag[]; tagSuggestions: string[];
   gallery: Photo[]; galleryMin: number; galleryMax: number;
   policy: 'flexible' | 'moderate' | 'strict' | null; policyFreeDays: { flexible: number | null; moderate: number | null; strict: number | null };
-  isListed: boolean; acceptingRequests: boolean;
+  isListed: boolean; acceptingRequests: boolean; deactivated: boolean;
   rating: { text: string; rounded: number; countLabel: string } | null;
   fromPrice: { amount: string; unitLabel: string } | null;
 };
@@ -77,7 +77,7 @@ export function ProfileEditor({ d }: { d: ProfileData }) {
       <div className="page-head">
         <div>
           <h1 className="page-title">Публичен профил</h1>
-          <p className="page-sub">Това виждат клиентите, преди да изпратят заявка · последна промяна {d.updatedAgo}</p>
+          <p className="page-sub"><Segs parts={['Това виждат клиентите, преди да изпратят заявка', `последна промяна ${d.updatedAgo}`]} /></p>
         </div>
         <div className="page-head-right">
           <a className="btn btn--outline btn--sm" href={`/partnyori/${d.slug}`}>Виж като клиент</a>
@@ -201,7 +201,8 @@ export function ProfileEditor({ d }: { d: ProfileData }) {
               <h3 className="panel-title">Видимост</h3>
               <div className="set-row" style={{ paddingTop: 0 }}>
                 <div className="set-t"><div className="set-n">Профилът е активен</div><div className="set-d">Виден в каталога и търсенето.</div></div>
-                <Switch on={listed} onChange={v => listing({ isListed: v })} label="Профилът е активен" disabled={busy} />
+                {/* a deactivated profile is hidden whatever this says: it comes back with ‹Активирай› in Настройки (P9) */}
+                <Switch on={listed && !d.deactivated} onChange={v => listing({ isListed: v })} label="Профилът е активен" disabled={busy || d.deactivated} />
               </div>
               <div className="set-row">
                 <div className="set-t"><div className="set-n">Приемам нови заявки</div><div className="set-d">Изключете временно, ако сте заети.</div></div>

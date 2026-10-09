@@ -240,7 +240,7 @@ export function ServiceEditor({ mode, serviceId, options, initial, live, revisio
                       if (!t) return null;
                       return (
                         <span key={id} className="chip-tag">{t.label}
-                          <button type="button" className="pc-chip-x" aria-label={`Премахни ${t.label}`} onClick={() => setEventTypeIds(ids => ids.filter(x => x !== id))}>{X}</button>
+                          {!ro && <button type="button" className="pc-chip-x" aria-label={`Премахни ${t.label}`} onClick={() => setEventTypeIds(ids => ids.filter(x => x !== id))}>{X}</button>}
                         </span>
                       );
                     })}
@@ -253,7 +253,7 @@ export function ServiceEditor({ mode, serviceId, options, initial, live, revisio
                 </div>
               </section>
 
-              <section className="dcard">
+              {(!ro || inclusions.length > 0) && <section className="dcard">
                 <div className="dcard-head"><h2 className="dcard-title">Какво е включено</h2></div>
                 {(inclusions.length > 0 || adding !== null) && (
                   <div className={`${p}-list`}>
@@ -261,7 +261,7 @@ export function ServiceEditor({ mode, serviceId, options, initial, live, revisio
                       <div key={`${i}-${t}`} className={`${p}-li`}>
                         {ok(`${p}-li-ok`)}
                         <span className={`${p}-li-t`}>{t}</span>
-                        <button type="button" className={`${p}-li-x`} aria-label={`Премахни ${t}`} onClick={() => removeInclusion(i)}>{X}</button>
+                        {!ro && <button type="button" className={`${p}-li-x`} aria-label={`Премахни ${t}`} onClick={() => removeInclusion(i)}>{X}</button>}
                       </div>
                     ))}
                     {adding !== null && (
@@ -278,7 +278,7 @@ export function ServiceEditor({ mode, serviceId, options, initial, live, revisio
                   <button type="button" className={`${p}-add`} onClick={() => setAdding('')}>{PLUS}Добави точка</button>
                 )}
                 {f.inclusions && <span className="form-error">{f.inclusions}</span>}
-              </section>
+              </section>}
 
               <section className="dcard">
                 <div className="dcard-head"><h2 className="dcard-title">Цена и продължителност</h2></div>
@@ -302,6 +302,7 @@ export function ServiceEditor({ mode, serviceId, options, initial, live, revisio
                       </span>
                     )}
                     {f.price && <span className="form-error">{f.price}</span>}
+                    <span className="fld-hint">Клиентите виждат тази цена в профила ви.</span>
                   </label>
                   <label className="fld"><span className="fld-l">Продължителност</span>
                     <input className={`fld-i ${p}-nums`} name="durationLabel" value={duration} maxLength={80} onChange={e => setDuration(e.target.value)} />
@@ -315,7 +316,6 @@ export function ServiceEditor({ mode, serviceId, options, initial, live, revisio
                     </label>
                   </div>
                 )}
-                <div className="fld-hint">Клиентите виждат тази цена в профила ви.</div>
                 <div className={`field-row ${p}-addons`}>
                   {kind !== 'on_request' && (
                     <div className="pc-extra">
@@ -335,7 +335,7 @@ export function ServiceEditor({ mode, serviceId, options, initial, live, revisio
                 <div className={`${p}-cover`}>
                   <span className="gal-item is-cover" style={cover.url ? { backgroundImage: `url('${cover.url}')` } : undefined} />
                   <div>
-                    <p className={`${p}-cover-t`}>Изберете снимка от галерията си или качете нова. Тя се показва в картата на услугата, затова е добре да е кадър от подобно събитие.</p>
+                    {!ro && <p className={`${p}-cover-t`}>Изберете снимка от галерията си или качете нова. Тя се показва в картата на услугата, затова е добре да е кадър от подобно събитие.</p>}
                     {!ro && (
                       <div className={`${p}-cover-acts`}>
                         <button type="button" className="btn btn--outline btn--sm" disabled={!options.gallery.length || pending}

@@ -202,8 +202,12 @@ export async function profilePage(actor: AnyActor, q: Queryable = db) {
   const at = await now();
   const [cat] = p.primaryCategoryId ? await q.select({ name: category.name }).from(category).where(eq(category.id, p.primaryCategoryId)) : [];
   const cities = await q.select({ id: city.id, name: city.name }).from(city).where(eq(city.isActive, true)).orderBy(asc(city.sortOrder));
-  const types = await q.select({ id: eventType.id, name: eventType.name, namePluralLower: eventType.namePluralLower }).from(eventType).orderBy(asc(eventType.sortOrder));
+  const types = await q.select({ id: eventType.id, name: eventType.name, namePluralLower: eventType.namePluralLower, isPublic: eventType.isPublic })
+    .from(eventType).orderBy(asc(eventType.sortOrder));
   const own = await q.select({ id: partnerEventType.eventTypeId }).from(partnerEventType).where(eq(partnerEventType.partnerId, p.id));
+  // ‹Умения и специализации› offers the public event types (SPEC §15); the hidden ‹Друго› type is not a
+  // specialisation — ‹Друго› there is the free-text tag.
+  const offered = types.filter(t => t.isPublic || own.some(o => o.id === t.id));
   const tags = await q.select({ label: partnerTag.label, isCustom: partnerTag.isCustom }).from(partnerTag).where(eq(partnerTag.partnerId, p.id)).orderBy(asc(partnerTag.label));
   const gallery = await galleryOf(q, p.id);
   const win = await nameChangeWindow(p, q);
@@ -214,11 +218,11 @@ export async function profilePage(actor: AnyActor, q: Queryable = db) {
     nameWindow: { lastChangedOn: win.lastChangedOn ? date(win.lastChangedOn).replace(/ \d{4}$/, '') : null, nextFrom: win.nextFrom ? date(win.nextFrom).replace(/ \d{4}$/, '') : null },
     description: p.description ?? '', socialHandle: p.socialHandle ?? '',
     cityId: p.cityId, cities, radius: p.servesNationwide ? 'nationwide' as const : (p.serviceRadiusKm ?? 150) as 50 | 100 | 150,
-    eventTypes: types.map(t => ({ id: t.id, label: eventTypeChip(t) })), eventTypeIds: own.map(o => o.id),
+    eventTypes: offered.map(t => ({ id: t.id, label: eventTypeChip(t) })), eventTypeIds: own.map(o => o.id),
     tags: tags.map(t => ({ label: t.label, isCustom: t.isCustom })),
     gallery, galleryMin: await getSetting('partner.gallery_min', undefined, q), galleryMax: await getSetting('partner.gallery_max', undefined, q),
     policy: p.cancellationPolicy, policyFreeDays: POLICY_FREE_DAYS,
-    isListed: p.isListed, acceptingRequests: p.acceptingRequests,
+    isListed: p.isListed, acceptingRequests: p.acceptingRequests, deactivated: p.status === 'deactivated',
     rating: reviews ? { text: reviews.avgText, rounded: Math.round(reviews.avg), countLabel: reviews.countLabel } : null,
     fromPrice: fp ? { amount: euros(fp.cents), unitLabel: fp.unitLabel } : null,
   };
@@ -238,7 +242,7 @@ export async function reviewsPage(actor: AnyActor, a: { tab: ReviewsTab; page: n
     counts: { all: summary?.count ?? 0, unanswered: list.unanswered, five: summary?.distribution.find(d => d.stars === 5)?.count ?? 0 },
     items: list.items.map(r => ({
       id: r.id, author: r.author, rating: r.rating, body: r.body, reply: r.reply,
-      meta: [r.eventType, date(r.eventDate), r.serviceLabel].filter(Boolean).join(' · '),
+      meta: [r.eventType, date(r.eventDate), r.serviceLabel].filter((x): x is string => !!x),
     })),
     hasMore: list.hasMore,
   };
@@ -291,7 +295,7 @@ export async function earningsPage(actor: AnyActor, a: { page: number }, q: Quer
     })),
     toBePaidCents: e.toBePaidCents, paidYear: e.paidYear,
     lines: rows.map(r => ({
-      id: r.id, number: r.number, date: dateNumeric(r.eventDate), event: `${r.typeName} · ${r.hosts?.trim() || shortName(r.clientName)}`,
+      id: r.id, number: r.number, date: dateNumeric(r.eventDate), event: [r.typeName, r.hosts?.trim() || shortName(r.clientName)],
       sub: r.serviceTitle, amount: money(r.amount), badge: LINE_LABEL[r.status]!,
     })),
     page, pages,

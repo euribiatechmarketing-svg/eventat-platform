@@ -89,6 +89,20 @@ def no_hscroll(page, route):
     w = page.evaluate('() => [document.documentElement.scrollWidth, window.innerWidth]')
     ok(w[0] <= w[1], f'{route}: no horizontal page scroll at {w[1]} px ({w[0]})')
 
+
+LINES_JS = """el => { const r = document.createRange(); r.selectNodeContents(el);
+  return new Set([...r.getClientRects()].filter(x => x.width > 1).map(x => Math.round(x.top / 3))).size; }"""
+
+def one_line(page, loc, what):
+    n = page.locator(loc).first.evaluate(LINES_JS)
+    ok(n == 1, f'{what} on one line ({n})')
+
+def menu_on_screen(page, trigger, what, width=390):
+    page.click(trigger)
+    m = page.locator('.ui-menu').first.bounding_box()
+    ok(m['x'] >= 0 and m['x'] + m['width'] <= width, f'{what}: the menu stays on screen ({m["x"]:.0f}–{m["x"] + m["width"]:.0f})')
+    page.keyboard.press('Escape')
+
 PID = None
 def partner_id():
     global PID
@@ -157,6 +171,15 @@ def main():
         page.click('.ui-menu a:has-text("DJ и озвучаване")')
         page.wait_for_url(re.compile(r'kategoriya=dj-i-ozvuchavane'))
         ok('tab=chernovi' in page.url, 'category filter keeps the tab in the URL')
+        page.click('.tab-bar-item:has-text("Активни")')
+        page.wait_for_url(re.compile(r'/partner/uslugi\?kategoriya=dj-i-ozvuchavane$'))
+        # ‹Подреди› then another tab: that tab's own cards, out of reorder mode (was: the previous tab's cards, still sortable)
+        page.click('button:has-text("Подреди")')
+        page.click('.tab-bar-item:has-text("Чернови")')
+        page.wait_for_url(re.compile(r'tab=chernovi'))
+        expect(page.locator('.ui-empty')).to_have_text('Няма записи в този изглед.')   # no DJ drafts (was: the active DJ cards, still sortable)
+        ok(page.locator('.svc-card:not(.svc-add)').count() == 0 and page.locator('button:has-text("Запази промените")').count() == 0
+           and page.locator('.pc-sort').count() == 0, 'reorder mode ends when the tab changes (the new tab shows its own cards)')
         page.click('.tab-bar-item:has-text("Активни")')
         page.wait_for_url(re.compile(r'/partner/uslugi\?kategoriya=dj-i-ozvuchavane$'))
         page.click('button:has-text("Подреди")')
@@ -271,6 +294,11 @@ def main():
         page.wait_for_url(re.compile(r'tab=arhiv'))
         until(lambda: one("select status from service where id = '%s'" % firm)['status'] == 'archived', 'DB: archived')
         expect(page.locator('.svc-card .svc-title')).to_have_text(['Фирмени събития'])
+        page.goto(BASE + '/partner/uslugi/' + firm)
+        expect(page.locator('.se-live .badge')).to_have_text('Архив')
+        ok(page.locator('.pc-chip-x, .se-li-x, .se-add, .chip-add').count() == 0 and page.locator('.se-cover-t').count() == 0
+           and page.locator('.dcard-title:has-text("Какво е включено")').count() == 0,
+           'archived service: no × / add controls, no cover instruction, no empty ‹Какво е включено›')
 
         # ── /partner/profil ──
         print('/partner/profil')
@@ -282,6 +310,9 @@ def main():
         expect(page.locator('.svc-card .svc-text')).to_have_text('DJ и озвучаване · Пловдив')
         page.click('button[aria-label="Премахни Годежи"]')
         page.click('.chip-add:has-text("+ Добави")')
+        ok(page.locator('.pc-add-menu button.ui-menu-item', has_text=re.compile('^Друго$')).count() == 0
+           and page.locator('.pc-add-menu input[aria-label="Друго"]').count() == 1,
+           'skills menu: ‹Друго› only as the free-text field (the hidden event type is not offered)')
         page.click('.pc-add-menu button:has-text("Кръщенета")')
         page.click('.chip-add:has-text("+ Добави")')
         page.fill('.pc-add-menu input[aria-label="Друго"]', 'Караоке')
@@ -356,6 +387,14 @@ def main():
             link.click()
         csv = open(dl.value.path(), encoding='utf-8-sig').read()
         ok('Получавате' in csv and '2026-0614-ЕА' in csv, 'report CSV downloads with the payout lines')
+        report_href = link.get_attribute('href')
+        octx = b.new_context()
+        sign_in(octx, 'gradina-i-masa@example.invalid')
+        ok(octx.request.get(BASE + report_href).status == 404, "another partner's report CSV → 404")
+        octx.close()
+        gctx = b.new_context()
+        ok(gctx.request.get(BASE + report_href).status == 404, 'report CSV for a guest → 404')
+        gctx.close()
         page.click('.tbl tbody tr:has-text("19.12.2026")')
         page.wait_for_url(re.compile(r'/partner/rezervacii/'))
         ok(path(page) == '/partner/rezervacii/2026-1219-ЕА', 'payout row → the booking')
@@ -418,6 +457,10 @@ def main():
         toast(page, 'Профилът е деактивиран — можете да го върнете по всяко време')
         until(lambda: one("select status from partner where id = '%s'" % pid)['status'] == 'deactivated', 'DB: deactivated')
         until(lambda: len(emails('vendor-deactivated', start)) >= 1, 'email vendor-deactivated queued')
+        page.goto(BASE + '/partner/profil')
+        sw = page.locator('button[role="switch"][aria-label="Профилът е активен"]')
+        ok(sw.get_attribute('aria-checked') == 'false' and sw.is_disabled(), 'deactivated: ‹Профилът е активен› shows off and is locked')
+        page.goto(BASE + '/partner/nastroyki')
         page.click('button:has-text("Активирай")')
         toast(page, 'Промените са запазени')
         until(lambda: one("select status from partner where id = '%s'" % pid)['status'] == 'approved', 'DB: active again')
@@ -468,6 +511,7 @@ def main():
         page.goto(BASE + '/partner/revyuta')
         expect(page.locator('.rev:has-text("Петя и Николай") .avatar')).to_have_text('ПН')
         ok(True, 'review avatar of «Петя и Николай» is ПН (as the prototype)')
+        ok(page.locator('.rev:has-text("Мартин Маринов") .rev-stars svg').count() == 4, 'a 4-star review shows four stars (as the prototype), no dimmed fifth')
         page.click('.tab-bar-item:has-text("5 звезди")')
         page.wait_for_url(re.compile(r'tab=5-zvezdi'))
         expect(page.locator('.rev')).to_have_count(2)
@@ -505,6 +549,42 @@ def main():
             row = page.locator(f'.danger-zone .set-row:has(button:has-text("{label}"))')
             t, btn = row.locator('.set-t').bounding_box(), row.locator('button').bounding_box()
             ok(btn['y'] >= t['y'] + t['height'] - 1, f'390 px: ‹{label}› sits under its text')
+        ctx.close()
+
+        # ── 390 px: what the phone review found ──
+        print('390 px details')
+        ctx = b.new_context(viewport={'width': 390, 'height': 844}, locale='bg-BG', timezone_id='Europe/Sofia', is_mobile=True, has_touch=True)
+        sign_in(ctx, PARTNER)
+        page = ctx.new_page()
+        page.goto(BASE + '/partner/uslugi')
+        expect(page.locator('.tab-bar-item:has-text("В преглед")')).to_be_visible()
+        sw = page.locator('.toolbar .tab-bar').evaluate('e => [e.scrollWidth, e.clientWidth, e.getBoundingClientRect().right]')
+        ok(sw[0] <= sw[1] and sw[2] <= 390, f'390 px: the four service tabs fit, none cut off ({sw})')
+        menu_on_screen(page, '.filter-btn', '390 px: ‹Категория›')
+        one_line(page, '.page-sub .pc-seg:has-text("последна промяна")', '390 px: ‹последна промяна …›')
+        page.goto(BASE + '/partner/revyuta')
+        sw = page.locator('.toolbar .tab-bar').evaluate('e => [e.scrollWidth, e.clientWidth]')
+        ok(sw[0] <= sw[1], f'390 px: the review tabs fit, ‹5 звезди› not cut off ({sw})')
+        one_line(page, '.page-sub .pc-seg:has-text("отзивчивост")', '390 px: ‹78% отзивчивост›')
+        one_line(page, '.rev:has-text("Мартин Маринов") .rev-meta .pc-seg:has-text("По запитване")', '390 px: ‹По запитване› in the review line')
+        page.goto(BASE + '/partner/prihodi')
+        one_line(page, '.dcard-title:has-text("Движение по плащания")', '390 px: ‹Движение по плащания›')
+        one_line(page, '.tbl-event .pc-seg:has-text("Мария Д.")', '390 px: ‹Мария Д.› in a payout line')
+        page.goto(BASE + '/partner/uslugi/' + vecher)
+        pr, un, hint = (page.locator(x).first.bounding_box() for x in ('input[name="price"]', 'select[aria-label="Единица"]', '.fld-hint:has-text("Клиентите виждат тази цена")'))
+        ok(abs(pr['y'] - un['y']) < 4 and 0 <= hint['y'] - (pr['y'] + pr['height']) < 24, '390 px: price and unit share a row, the price hint sits right under them')
+        one_line(page, '.se-hintrow .fld-hint:has-text("Показва се под името")', '390 px: the description hint')
+        x = page.locator('.chips .pc-chip-x').first
+        x.scroll_into_view_if_needed()
+        bb = x.bounding_box()
+        hit = page.evaluate('([x, y]) => document.elementFromPoint(x, y)?.closest("button")?.getAttribute("aria-label")', [bb['x'] + bb['width'] / 2 + 9, bb['y'] + bb['height'] / 2 + 7])
+        ok(hit == x.get_attribute('aria-label'), f'390 px: the chip × answers a finger 9 px off its centre ({hit})')
+        menu_on_screen(page, '.chips .chip-add', '390 px: ‹+ Добави› event types')
+        page.goto(BASE + '/partner/profil')
+        menu_on_screen(page, '.chips .chip-add', '390 px: ‹+ Добави› skills')
+        page.goto(BASE + '/partner/smetka')
+        w = page.locator('.pa-foot .btn').bounding_box()['width']
+        ok(w > 300, f'390 px: the bottom ‹Запази сметката› is full width like the top one ({w:.0f}px)')
         ctx.close()
 
         # ── 390 px: every route fits ──

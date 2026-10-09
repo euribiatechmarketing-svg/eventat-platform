@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { earningsPage, euros } from '@/lib/domain/views-partner-catalogue';
 import { partnerActor } from '../_catalogue/server';
 import { ClickRow } from '../_catalogue/ui';
+import { Segs } from '../_catalogue/num';
 import { ReportButton } from './ReportButton';
 
 export const dynamic = 'force-dynamic';
@@ -23,7 +24,7 @@ export default async function EarningsPage({ searchParams }: { searchParams: Pro
       <div className="page-head">
         <div>
           <h1 className="page-title">Приходи</h1>
-          <p className="page-sub">{cap(v.month.label)} · изплащане на 1-во и 15-то число</p>
+          <p className="page-sub"><Segs parts={[cap(v.month.label), 'изплащане на 1-во и 15-то число']} /></p>
         </div>
         <div className="page-head-right">
           {v.latestReport && <a className="btn btn--ghost btn--sm" href={`/partner/prihodi/spravka/${v.latestReport}`} download>Изтегли справката</a>}
@@ -81,7 +82,7 @@ export default async function EarningsPage({ searchParams }: { searchParams: Pro
                   {v.lines.map(l => (
                     <ClickRow key={l.id} href={`/partner/rezervacii/${encodeURIComponent(l.number)}`}>
                       <td className="muted">{l.date}</td>
-                      <td><div className="tbl-event">{l.event}</div><div className="tbl-sub">{l.sub}</div></td>
+                      <td><div className="tbl-event"><Segs parts={l.event} /></div><div className="tbl-sub">{l.sub}</div></td>
                       <td className="num strong">{l.amount}</td>
                       <td><span className={`badge badge--${l.badge.tone} badge--dot`}>{l.badge.label}</span></td>
                     </ClickRow>

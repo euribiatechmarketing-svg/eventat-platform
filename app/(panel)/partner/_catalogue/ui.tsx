@@ -15,12 +15,13 @@ export function Switch({ on, onChange, label, disabled }: { on: boolean; onChang
 
 const STAR = 'M12 3l2.7 5.8 6.3.8-4.6 4.3 1.2 6.2L12 17.8 6.4 20.1l1.2-6.2L3 9.6l6.3-.8L12 3z';
 
-/** ‹★★★★★› — `n` filled, the rest dimmed. */
+/** ‹★★★★› — `n` stars, as the prototype draws them (a 4-star review shows four, vendor/reviews.html). */
 export function Stars({ n, style }: { n: number; style?: React.CSSProperties }) {
+  const k = Math.max(0, Math.min(5, Math.round(n)));
   return (
-    <span className="rev-stars" style={style} aria-label={`${n} от 5`}>
-      {[1, 2, 3, 4, 5].map(i => (
-        <svg key={i} viewBox="0 0 24 24" fill="currentColor" className={i > n ? 'pc-star-off' : undefined} aria-hidden="true"><path d={STAR} /></svg>
+    <span className="rev-stars" style={style} aria-label={`${k} от 5`}>
+      {Array.from({ length: k }, (_, i) => (
+        <svg key={i} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d={STAR} /></svg>
       ))}
     </span>
   );

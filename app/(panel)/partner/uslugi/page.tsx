@@ -20,7 +20,7 @@ export default async function ServicesPage({ searchParams }: { searchParams: Pro
     v.counts.review ? `${v.counts.review} в преглед` : null,
     v.counts.draft ? (v.counts.draft === 1 ? '1 чернова' : `${v.counts.draft} чернови`) : null,
     v.lastChange ? `последна промяна ${v.lastChange}` : null,
-  ].filter(Boolean).join(' · ');
+  ].filter((x): x is string => !!x);
 
   const href = (t: ServicesTab, cat: string | null) => {
     const q = new URLSearchParams();
@@ -37,9 +37,10 @@ export default async function ServicesPage({ searchParams }: { searchParams: Pro
     ...v.categories.map(c => ({ label: c.name, href: href(tab, c.slug), active: v.category?.id === c.id })),
   ];
 
+  // keyed by the view: another tab or category starts outside ‹Подреди› with that view's cards
   return (
     <div className="pc-page">
-      <ServicesBoard sub={sub} tabs={tabs} categories={categories} categoryLabel={v.category?.name ?? 'Категория'}
+      <ServicesBoard key={`${tab}:${v.category?.slug ?? ''}`} sub={sub} tabs={tabs} categories={categories} categoryLabel={v.category?.name ?? 'Категория'}
         items={v.items} order={v.order} slug={v.slug} />
     </div>
   );

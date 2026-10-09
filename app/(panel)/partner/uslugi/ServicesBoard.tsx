@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Menu, toast } from '@/components/ui/client';
-import { Num } from '../_catalogue/num';
+import { Num, Segs } from '../_catalogue/num';
 import { reorderServicesAction } from './actions';
 
 type Item = {
@@ -17,7 +17,7 @@ const TONE: Record<string, string> = {
 };
 
 export function ServicesBoard({ sub, tabs, categories, categoryLabel, items, order, slug }: {
-  sub: string;
+  sub: string[];
   tabs: { key: string; label: string; count: number; href: string; active: boolean }[];
   categories: { label: string; href: string; active: boolean }[];
   categoryLabel: string;
@@ -59,7 +59,7 @@ export function ServicesBoard({ sub, tabs, categories, categoryLabel, items, ord
       <div className="page-head">
         <div>
           <h1 className="page-title">Услуги и пакети</h1>
-          <p className="page-sub">{sub}</p>
+          <p className="page-sub"><Segs parts={sub} /></p>
         </div>
         <div className="page-head-right">
           {sorting ? (

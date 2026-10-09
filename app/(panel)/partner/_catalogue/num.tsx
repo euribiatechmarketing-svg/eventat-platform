@@ -11,3 +11,18 @@ export function Num({ children }: { children: string | null | undefined }) {
     </>
   );
 }
+
+/**
+ * ‹a · b · c› that breaks only between the parts: a short part never splits (‹78% отзивчивост›,
+ * ‹Мария Д.›, ‹По запитване›) and the dot stays with the part before it.
+ */
+export function Segs({ parts }: { parts: (string | null | undefined | false)[] }) {
+  const list = parts.filter((x): x is string => !!x && !!x.trim());
+  return (
+    <>
+      {list.map((p, i) => (
+        <Fragment key={i}>{i > 0 && ' · '}{p.length <= 32 ? <span className="pc-seg">{p}</span> : p}</Fragment>
+      ))}
+    </>
+  );
+}

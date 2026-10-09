@@ -5,10 +5,10 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/db';
 import * as s from '@/db/schema';
 import { setTestNow } from '@/lib/clock';
-import { requestDeletion } from '@/lib/domain/partners';
+import { deactivate, requestDeletion } from '@/lib/domain/partners';
 import { submitChange } from '@/lib/domain/services';
 import {
-  ago, deletionTokenIsOwn, earningsPage, earningsReportCsv, euros, ibanMask, requestEarningsReport, serviceEditor, servicesPage, setLocale, settingsPage,
+  ago, deletionTokenIsOwn, earningsPage, earningsReportCsv, euros, ibanMask, profilePage, requestEarningsReport, serviceEditor, servicesPage, setLocale, settingsPage,
 } from '@/lib/domain/views-partner-catalogue';
 import { categoryId, createBookingRow, createClient, eventTypeId } from '../helpers/factories';
 import { NOW, emails, expectLedgerClean, failure, listedPartner, plain } from '../helpers/catalogue';
@@ -54,6 +54,19 @@ describe('/partner/uslugi/[id]', () => {
     expect(v.values.priceCents).toBe(160_000);
     expect(plain(v.livePrice)).toBe('1 450 €');
     expect(v.revision).toMatchObject({ status: 'pending', type: 'edit' });
+  });
+});
+
+describe('/partner/profil', () => {
+  it('offers the public event types as specialisations (‹Друго› is the free-text tag) and knows a deactivated profile', async () => {
+    const pr = await listedPartner();
+    const v = await profilePage(pr.actor);
+    const drugo = await eventTypeId('drugo');
+    expect(v.eventTypes.map(t => t.id)).not.toContain(drugo);
+    expect(v.eventTypes.map(t => t.label)).toContain('Сватби');
+    expect(v.deactivated).toBe(false);
+    await deactivate(pr.actor);
+    expect((await profilePage(pr.actor)).deactivated).toBe(true);
   });
 });
 

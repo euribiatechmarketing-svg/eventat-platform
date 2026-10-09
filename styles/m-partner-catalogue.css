@@ -237,7 +237,6 @@
 .pc-page .filter-btn { white-space: nowrap; }
 .pc-page .ui-menu { max-height: 320px; overflow-y: auto; }
 .pc-page .pc-li-input { flex: 1; min-width: 0; border: 0; outline: none; font: inherit; font-size: 13.5px; color: var(--primary-900); background: transparent; }
-.pc-page .pc-star-off { opacity: .25; }
 .pc-page .pc-empty { grid-column: 1 / -1; }
 .pc-page .pc-banner { margin: 0 0 18px; }
 
@@ -365,8 +364,23 @@
   .se-live-i { padding: 0 14px; text-align: left; }
   .se-live-i:nth-child(3) { border-left: 1px solid var(--app-line); }
   .se-live-i:nth-child(4) { padding-left: 0; border-left: none; }
-  .pc-price-row { flex-wrap: wrap; }
-  .pc-unit { width: 100%; }
+  /* price and its unit stay on one row, the hint right under them */
+  .pc-unit { width: 128px; }
+  .pc-price-row .sn-price, .pc-price-row .se-price { min-width: 0; max-width: none; }
+  /* the description hint takes its own line, the counter goes under it on the right */
+  .sn-hintrow, .se-hintrow { flex-wrap: wrap; row-gap: 2px; }
+  .sn-hintrow .fld-hint:first-child, .se-hintrow .fld-hint:first-child { flex: 1 1 100%; }
+  /* card heads with a link: the title keeps its line, the link moves under it when they don't fit */
+  .pc-page .dcard-head { flex-wrap: wrap; row-gap: 6px; }
+  .pc-page .dcard-title { white-space: nowrap; }
+  /* three or four tabs fit the phone without scrolling out of view */
+  .pc-page .toolbar { padding: 6px 8px 0; }
+  .pc-page .toolbar .tab-bar { gap: 9px; }
+  .pc-page .toolbar .tab-bar-item { font-size: 12.5px; }
+  .pc-page .toolbar .tab-count { margin-left: 4px; padding: 1px 5px; }
+  /* bigger targets for the list's × */
+  .sn-li-x, .se-li-x { width: 30px; height: 30px; margin-right: -4px; }
+  .pc-page .pa-foot .btn { flex: 1 1 auto; }
   .pc-page .rev-hero { grid-template-columns: minmax(0, 1fr); gap: 20px; }
   .pc-page .rev-score { border-right: none; padding: 0 0 16px; border-bottom: 1px solid var(--app-line); }
   .pc-page .rev-reply, .pc-reply { margin-left: 0; }
@@ -411,3 +425,29 @@
 .pc-page .dcard + form, .pc-page form + .dcard, .pc-page form + form { margin-top: 16px; }
 .pc-page select.fld-i:invalid { color: var(--neutral-400); }
 .pc-page select.fld-i option { color: var(--primary-900); }
+
+/* ‹a · b · c› lines break between the parts only (see Segs) */
+.pc-seg { white-space: nowrap; }
+.pc-page .page-sub, .pc-page .rev-meta, .pc-page .rev-text, .pc-page .rev-reply-t, .pc-page .tbl-event, .pc-page .rule, .pc-page .fld-hint, .pc-page .panel-note, .pc-page .panel-text { text-wrap: pretty; }
+/* the chips' × gets a finger-sized hit area without moving the chip */
+.pc-page .pc-chip-x { position: relative; }
+.pc-page .pc-chip-x::after { content: ''; position: absolute; inset: -9px -10px; }
+/* payout lines: date, amount and status keep their width, the event takes the rest (the phone stacks the rows) */
+@media (min-width: 641px) {
+  .pc-earn .tbl th:nth-child(1), .pc-earn .tbl td:nth-child(1),
+  .pc-earn .tbl th:nth-child(3), .pc-earn .tbl td:nth-child(3),
+  .pc-earn .tbl th:nth-child(4), .pc-earn .tbl td:nth-child(4) { white-space: nowrap; width: 1%; }
+}
+
+/* chip menus open from the chip to the right (the chips start at the card's left edge) */
+.pc-page .chips .ui-menu--down { left: 0; right: auto; }
+@media (max-width: 960px) {
+  /* ‹Категория› sits on the left once the toolbar stacks */
+  .pc-page .toolbar-right .ui-menu--down { left: 0; right: auto; }
+}
+@media (max-width: 640px) {
+  /* on a phone a chip menu hangs under the whole chip row, so it never leaves the screen */
+  .pc-page .chips { position: relative; }
+  .pc-page .chips > .ui-menu-wrap { position: static; }
+  .pc-page .chips .ui-menu--down { top: calc(100% + 6px); width: 100%; max-width: 320px; min-width: 0; }
+}
