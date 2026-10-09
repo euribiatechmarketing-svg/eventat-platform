@@ -7,6 +7,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/db';
 import * as schema from '@/db/schema';
 import { sendEmail } from '@/lib/email/send';
+import { afterPasswordChanged, deviceFromUserAgent } from '@/lib/domain/clients';
 
 /** Who an auth email goes to. Partners' emails also name the business (partner.business_name once it exists). */
 async function recipient(email: string): Promise<{ role: 'client' | 'partner' | 'admin'; id: string | null; name: string; partnerName: string }> {
@@ -50,19 +51,41 @@ export const auth = betterAuth({
     expiresIn: 60 * 60 * 24 * 30,          // "Запомни ме": 30 days
     updateAge: 60 * 60 * 24,
     cookieCache: { enabled: true, maxAge: 5 * 60 },
+    additionalFields: {
+      deviceLabel: { type: 'string', required: false, input: false },
+      city: { type: 'string', required: false, input: false },
+    },
   },
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 8,
     requireEmailVerification: true,
     resetPasswordTokenExpiresIn: 60 * 60,
+    // A6: password_changed_at, every session revoked, client-password-changed (clients).
+    onPasswordReset: async ({ user }) => { await afterPasswordChanged({ userId: user.id }); },
     sendResetPassword: async ({ user, url }) => {
       const r = await recipient(user.email);
       await sendEmail({ key: r.role === 'partner' ? 'vendor-password-reset' : 'client-password-link', to: user.email, toUserId: user.id, vars: { url, email: user.email, partnerName: r.partnerName } });
     },
   },
-  emailVerification: { autoSignInAfterVerification: true },
+  // The sign-up action sends the code itself, after the client profile or the partner draft exists,
+  // so the code email matches the role (client-verify-code / vendor-verify-code).
+  emailVerification: { autoSignInAfterVerification: true, sendOnSignUp: false },
   socialProviders: social,
+  databaseHooks: {
+    session: {
+      create: {
+        // SPEC §1.3: a blocked (or deleted) user cannot sign in by any method. Each session gets a
+        // device label from the user agent and the user's last known city (‹Активни сесии›, §16).
+        async before(s) {
+          const [u] = await db.select({ banned: schema.user.banned, deletedAt: schema.user.deletedAt, city: schema.user.lastLoginCity })
+            .from(schema.user).where(eq(schema.user.id, s.userId)).limit(1);
+          if (!u || u.banned || u.deletedAt) return false;
+          return { data: { ...s, deviceLabel: deviceFromUserAgent(s.userAgent), city: u.city ?? null } };
+        },
+      },
+    },
+  },
   plugins: [
     emailOTP({
       otpLength: 6,
@@ -76,7 +99,20 @@ export const auth = betterAuth({
         await sendEmail({ key: r.role === 'partner' ? 'vendor-verify-code' : 'client-verify-code', to: email, toUserId: r.id, vars: { code: otp, email, partnerName: r.partnerName, contactName: r.name } });
       },
     }),
-    twoFactor({ issuer: 'EventAT' }),
+    twoFactor({
+      issuer: 'EventAT',
+      // SPEC §1.3 / §11.4: the code goes by SMS to the profile phone (sms_outbox; ⚙ sms.transport).
+      // The SMS wording is new copy awaiting approval (D20), so the text is the code alone.
+      otpOptions: {
+        period: 10,
+        allowedAttempts: 5,
+        async sendOTP({ user, otp }) {
+          const [u] = await db.select({ phone: schema.user.phone }).from(schema.user).where(eq(schema.user.id, user.id)).limit(1);
+          if (!u?.phone) return;
+          await db.insert(schema.smsOutbox).values({ templateKey: 'two-factor-code', toPhone: u.phone, toUserId: user.id, body: otp });
+        },
+      },
+    }),
     nextCookies(), // must stay last
   ],
 });
