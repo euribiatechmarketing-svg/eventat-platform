@@ -140,3 +140,16 @@ textarea { resize: vertical; }
 .side-user-menu { display: flex; width: 100%; }
 .side-user-menu > .ui-menu { left: 0; right: 0; }
 .side-user-menu .side-user { width: 100%; }
+
+/* topbar title set by a page: the short form replaces it on phones */
+.topbar-title .tt-short { display: none; }
+@media (max-width: 640px) {
+  .topbar-title .tt-long:has(+ .tt-short) { display: none; }
+  .topbar-title .tt-short { display: inline; }
+}
+
+/* page not found */
+.ui-notfound { max-width: 520px; margin: 72px auto; text-align: center; padding: 0 16px; }
+.ui-notfound-code { margin: 0; font-family: var(--font-num); font-size: 56px; font-weight: 700; color: var(--primary-300); line-height: 1; }
+.ui-notfound-t { font-family: var(--font-display); font-weight: 700; font-size: 30px; color: var(--primary-900); margin: 16px 0 10px; }
+.ui-notfound-d { margin: 0 0 24px; color: var(--neutral-600); font-size: 15px; text-wrap: pretty; }

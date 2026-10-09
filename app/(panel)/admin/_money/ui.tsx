@@ -186,22 +186,5 @@ export function FlashAgain({ message, kind = 'ok', nonce }: { message: string | 
   return null;
 }
 
-/* ---------- the topbar title of a page (‹Кейс · № …›, ‹Плащания и изплащания›) ----------
-   The shared TopbarTitle takes titles by path prefix only; this swaps the text of its node while
-   the page is shown and puts the rail label back when the page goes. */
-export function TopbarTitleText({ text, short }: { text: string; short?: string }) {
-  useEffect(() => {
-    const node = document.querySelector('.shell .topbar .topbar-title')?.firstChild;
-    if (!node || node.nodeType !== Node.TEXT_NODE) return;
-    const before = node.nodeValue;
-    const mq = window.matchMedia('(max-width: 640px)');
-    const apply = () => { node.nodeValue = short && mq.matches ? short : text; };
-    apply();
-    mq.addEventListener('change', apply);
-    return () => {
-      mq.removeEventListener('change', apply);
-      if (node.nodeValue === text || node.nodeValue === short) node.nodeValue = before;
-    };
-  }, [text, short]);
-  return null;
-}
+/** The page's own topbar title (shared store in components/panel/RailNav). */
+export { PageTitle as TopbarTitleText } from '@/components/panel/RailNav';

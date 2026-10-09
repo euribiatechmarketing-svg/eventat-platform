@@ -132,9 +132,10 @@ def main():
         ctx = b.new_context(viewport={'width': 1440, 'height': 900}, locale='bg-BG', timezone_id='Europe/Sofia')
         page = ctx.new_page()
         for route in ['/partner/uslugi', '/partner/uslugi/nova', '/partner/profil', '/partner/revyuta', '/partner/prihodi',
-                      '/partner/smetka', '/partner/nastroyki', '/partner/nastroyki/iztrivane?token=x']:
+                      '/partner/smetka', '/partner/nastroyki']:
             page.goto(BASE + route)
             ok(path(page).startswith('/vhod'), f'guest {route} → sign-in ({path(page)})')
+        # the deletion link works signed out (the token is the proof); covered in tests/e2e/auth-account.py
         sign_in(ctx, 'maria.dimitrova@gmail.com')
         page.goto(BASE + '/partner/uslugi')
         ok(path(page).startswith('/akaunt'), f'client /partner/uslugi → own home ({path(page)})')
@@ -485,14 +486,13 @@ def main():
         op = other_ctx.new_page()
         op.goto(BASE + url)
         op.click('button:has-text("Потвърди изтриването")')
-        expect(op.locator('.form-alert')).to_have_text('Линкът е невалиден или е изтекъл.')
+        expect(op.locator('.acc-err')).to_have_text('Линкът е изтекъл или вече е използван.')
         ok(one("select status from partner where slug = 'folklorna-trapeza'")['status'] == 'approved'
            and one("select status from partner where slug = 'gradina-i-masa'")['status'] == 'approved',
            "another partner's deletion link is refused (nobody deleted)")
         other_ctx.close()
         page.goto(BASE + '/partner/nastroyki/iztrivane?token=wrong')
-        page.click('button:has-text("Потвърди изтриването")')
-        expect(page.locator('.form-alert')).to_have_text('Линкът е невалиден или е изтекъл.')
+        expect(page.locator('.acc-err')).to_have_text('Линкът е изтекъл или вече е използван.')
         ok(True, 'a wrong token is refused')
         page.goto(BASE + url)
         page.click('button:has-text("Потвърди изтриването")')

@@ -37,7 +37,8 @@ export default async function PartnerLayout({ children }: { children: React.Reac
   ];
   return (
     <PanelShell area="partner" groups={groups}
-      titles={{ '/partner/kalendar': 'Календар и наличност', '/partner/saobshteniya': 'Съобщения', '/partner/poddrazhka': 'Поддръжка', '/partner/smetka': 'Сметка за изплащане', '/partner/tarsene': 'Търсене', '/partner/zapitvaniya': 'Запитвания' }}
+      aliases={{ '/partner/poddrazhka': '/partner/rezervacii' }}
+      titles={{ '/partner/uslugi/nova': 'Нова услуга', '/partner/poddrazhka/nov': 'Сигнал до екипа', '/partner/kalendar': 'Календар и наличност', '/partner/saobshteniya': 'Съобщения', '/partner/poddrazhka': 'Поддръжка', '/partner/smetka': 'Сметка за изплащане', '/partner/tarsene': 'Търсене', '/partner/zapitvaniya': 'Запитвания' }}
       userName={p.businessName} userRole={p.categoryName ?? ''} avatarUrl={p.avatarUrl}
       menu={[
         { label: 'Съобщения', href: '/partner/saobshteniya' },

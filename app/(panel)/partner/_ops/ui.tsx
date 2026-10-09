@@ -214,27 +214,8 @@ export function FlashAgain({ message, kind = 'ok', nonce }: { message: string | 
   return null;
 }
 
-/* ---------- topbar title of a record page (‹Заявка · № …›, ‹Резервация · № …›) ----------
-   The shared TopbarTitle picks titles by path prefix only, so a record number cannot be passed
-   to it. Until it takes per-record titles, this swaps the text of its node while the page is
-   shown and puts the rail label back when the page goes (only if nothing else changed it). */
-export function TopbarTitleText({ text, short }: { text: string; short: string }) {
-  useEffect(() => {
-    const node = document.querySelector('.shell .topbar .topbar-title')?.firstChild;
-    if (!node || node.nodeType !== Node.TEXT_NODE) return;
-    const before = node.nodeValue;
-    // a phone topbar has room for the number only (‹№ 2026-0614-ЕА›); the full title would be cut
-    const phone = window.matchMedia('(max-width: 640px)');
-    const set = () => { node.nodeValue = phone.matches ? short : text; };
-    set();
-    phone.addEventListener('change', set);
-    return () => {
-      phone.removeEventListener('change', set);
-      if (node.nodeValue === text || node.nodeValue === short) node.nodeValue = before;
-    };
-  }, [text, short]);
-  return null;
-}
+/** The page's own topbar title (shared store in components/panel/RailNav). */
+export { PageTitle as TopbarTitleText } from '@/components/panel/RailNav';
 
 /* ---------- calendar ‹Днес›: back to the current month, toast ‹Показваме текущия месец› ---------- */
 export function TodayButton({ href }: { href: string }) {

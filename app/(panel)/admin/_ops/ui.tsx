@@ -167,26 +167,8 @@ export function Submit({ className = 'btn btn--primary', children, name, value, 
   return <button type="submit" className={className} name={name} value={value} formNoValidate={formNoValidate} style={style}>{children}</button>;
 }
 
-/* ---------- the topbar title of a record page (‹Изпълнител · Лунна Фотография›, ‹Клиент · Мария Димитрова›) ----------
-   The shared TopbarTitle takes titles by path prefix only; like the other panel areas, this swaps the text
-   of its node while the page is shown (the short form on a phone, where the topbar has room for the name only)
-   and puts the rail label back when the page goes. */
-export function TopbarTitleText({ text, short }: { text: string; short?: string }) {
-  useEffect(() => {
-    const node = document.querySelector('.shell .topbar .topbar-title')?.firstChild;
-    if (!node || node.nodeType !== Node.TEXT_NODE) return;
-    const before = node.nodeValue;
-    const phone = window.matchMedia('(max-width: 640px)');
-    const set = () => { node.nodeValue = phone.matches && short ? short : text; };
-    set();
-    phone.addEventListener('change', set);
-    return () => {
-      phone.removeEventListener('change', set);
-      if (node.nodeValue === text || node.nodeValue === short) node.nodeValue = before;
-    };
-  }, [text, short]);
-  return null;
-}
+/** The page's own topbar title (shared store in components/panel/RailNav). */
+export { PageTitle as TopbarTitleText } from '@/components/panel/RailNav';
 
 /* ---------- ‹Чести бележки› on the moderation page: picked notes start the next ‹Върни с бележка› note ---------- */
 let pickedNotes: string[] = [];

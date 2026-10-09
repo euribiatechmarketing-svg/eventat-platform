@@ -18,7 +18,11 @@ export const currentUser = cache(async (): Promise<CurrentUser | null> => {
 /** Guard for pages and server actions. Guests go to sign-in and come back. */
 export async function requireUser(next?: string): Promise<CurrentUser> {
   const u = await currentUser();
-  if (!u) redirect(`/vhod${next ? `?next=${encodeURIComponent(next)}` : ''}`);
+  if (!u) {
+    // The page actually requested (middleware.ts) wins over the caller's fallback.
+    const target = (await headers()).get('x-pathname') || next;
+    redirect(`/vhod${target ? `?next=${encodeURIComponent(target)}` : ''}`);
+  }
   return u;
 }
 

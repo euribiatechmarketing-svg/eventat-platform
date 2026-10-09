@@ -1,6 +1,7 @@
 // vendor/service-edit.html → /partner/uslugi/[id] (SCREENS §7). Own services only (404 otherwise).
 import '@/styles/m-partner-catalogue.css';
 import { notFound } from 'next/navigation';
+import { PageTitle } from '@/components/panel/RailNav';
 import { editorOptions, serviceEditor } from '@/lib/domain/views-partner-catalogue';
 import { partnerActor } from '../../_catalogue/server';
 import { ServiceEditor } from '../../_catalogue/ServiceEditor';
@@ -18,6 +19,7 @@ export default async function EditServicePage({ params }: { params: Promise<{ id
   const o = await editorOptions(actor);
   return (
     <div className="pc-page">
+      <PageTitle text="Редактиране на услуга" />
       <ServiceEditor key={`${s.id}-${s.status}`} mode={s.mode} serviceId={s.id} options={o} canPublish={o.canPublish}
         initial={{ ...s.values, coverUrl: s.coverUrl }}
         live={{

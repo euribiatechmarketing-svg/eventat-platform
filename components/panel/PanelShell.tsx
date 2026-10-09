@@ -10,11 +10,13 @@ import { RailNav, TopbarTitle, type RailGroup } from './RailNav';
 
 export type { RailGroup, RailItem } from './RailNav';
 
-export function PanelShell({ area, groups, titles, userName, userRole, avatarUrl, menu, bell, children, topbarExtra }: {
+export function PanelShell({ area, groups, titles, aliases, userName, userRole, avatarUrl, menu, bell, children, topbarExtra }: {
   area: 'partner' | 'admin';
   groups: RailGroup[];
   /** Topbar titles for routes that are not rail items, by path prefix. */
   titles?: Record<string, string>;
+  /** Path prefixes that are not rail items, mapped to the rail item they belong under. */
+  aliases?: Record<string, string>;
   userName: string;
   userRole: string;
   avatarUrl?: string | null;
@@ -31,7 +33,7 @@ export function PanelShell({ area, groups, titles, userName, userRole, avatarUrl
           <img className="side-logo" src="/assets/eventat-logo-white.png" alt="EventAT" />
           {area === 'admin' && <span className="side-tag">Админ</span>}
         </Link>
-        <RailNav groups={groups} home={home} />
+        <RailNav groups={groups} home={home} aliases={aliases} />
         <div className="side-foot">
           <Menu align="up" label="Акаунт" className="side-user-menu" items={[...menu, null, { label: 'Изход', onSelect: signOutAction }]}
             trigger={
@@ -46,7 +48,7 @@ export function PanelShell({ area, groups, titles, userName, userRole, avatarUrl
       <div className="main">
         <header className="topbar">
           <Burger target="shell" />
-          <TopbarTitle groups={groups} home={home} titles={titles} />
+          <TopbarTitle groups={groups} home={home} titles={titles} aliases={aliases} />
           <div className="topbar-right">
             {topbarExtra}
             <Bell items={bell} />

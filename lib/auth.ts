@@ -37,6 +37,9 @@ export const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL ?? process.env.APP_URL,
   secret: process.env.BETTER_AUTH_SECRET,
   telemetry: { enabled: false },
+  // Better Auth's own limits (on in production). AUTH_RATE_LIMIT=off only for local end-to-end runs,
+  // which sign in dozens of times a minute from one address.
+  rateLimit: { enabled: process.env.AUTH_RATE_LIMIT === 'off' ? false : process.env.NODE_ENV === 'production' },
   database: drizzleAdapter(db, {
     provider: 'pg',
     schema: { user: schema.user, session: schema.session, account: schema.account, verification: schema.verification, twoFactor: schema.twoFactor },
