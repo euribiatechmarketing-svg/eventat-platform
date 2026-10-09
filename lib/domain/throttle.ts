@@ -19,8 +19,8 @@ export const LIMITS = {
   /** Reset links (‹Забравена парола?›, ‹Смени паролата›): per address, and per IP. */
   resetEmail: { max: 3, windowSec: 60 * MIN },
   resetIp: { max: 20, windowSec: 60 * MIN },
-  /** New profiles per IP. */
-  registerIp: { max: 10, windowSec: 60 * MIN },
+  /** New profiles per IP (an office or a mobile carrier shares one address). */
+  registerIp: { max: 20, windowSec: 60 * MIN },
   /** Code entries (email confirmation, the SMS step) per address / user, and per IP. */
   codeKey: { max: 20, windowSec: 60 * MIN },
   codeIp: { max: 100, windowSec: 60 * MIN },

@@ -698,7 +698,7 @@ Example cancellation reason (seed): ‹Залата ще осигури собс
 | Standard rate | 10% (`commission.standard_bp` ⚙) |
 | Introductory rate | 5% for the partner's **first three bookings** (`commission.intro_bp`, `commission.intro_count` ⚙). "First three" = the partner's first three bookings to reach `confirmed`, ordered by `paid_at`. A later cancellation does not give the slot back (D7). |
 | Business client | 10% (`commission.business_bp` ⚙) when `client_profile.client_type = 'business'`. The intro rate wins over the business rate (D7). |
-| Snapshot | At **payment** (K5: the first succeeded charge) → `booking.commission_bp`. Settings changes affect only bookings paid after `effective_from`. |
+| Snapshot | At **payment** (K5: the first succeeded charge) → `booking.commission_bp`, at the rate that charge's application fee was computed with when its checkout was created (`charge.commission_bp`): the provider has already split the money at that rate, so the ledger books the same. Settings changes affect only checkouts opened after `effective_from`. |
 | Base | The amount the partner keeps: `amount` normally, `retained` after a cancellation or partial refund. |
 | Amounts | `commission_cents = round_half_up(base × commission_bp / 10 000)`; `partner_amount_cents = base − commission_cents`. Examples: 1 450 → 145 / 1 305; 640 → 64 / 576; 1 980 → 198 / 1 782; 560 → 56 / 504; 1 900 → 190 / 1 710. |
 | Before payment | Partner screens and emails show a **projected** ‹Получавате›, computed with the rate the booking would get if paid now (e.g. ‹Получавате 1 305,00 €› in `vendor-new-request`). |

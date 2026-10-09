@@ -126,6 +126,10 @@ Indexes: U(email); (role, created_at).
 
 **`account`**, **`verification`**, **`two_factor`** — exactly as existing (Better Auth). `verification` holds email-OTP codes (`client-verify-code`/`vendor-verify-code`), password-reset tokens and the 2FA SMS OTP.
 
+**`rate_limit`** ✚ — Better Auth's rate limiter in the database (`rateLimit.storage = 'database'`): id · key U · count int · last_request bigint (ms).
+
+**`auth_throttle`** ✚ — the app's throttle for the auth server actions and uploads (`lib/domain/throttle.ts`): key PK (`signInEmail:<address>`, `signInIp:<ip>`, `uploadHour:<user id>`, …) · hits int · window_start timestamptz. Index (window_start).
+
 ### 2.2 Profiles — `profiles.ts`
 
 **`client_profile`**
@@ -592,6 +596,7 @@ Computed (not stored): `paid_cents`, `refunded_cents`, `commission_cents` / `par
 | checkout_url | text | yes | | reuse while pending |
 | amount_cents | integer | no | | |
 | application_fee_cents | integer | no | 0 | commission on this charge |
+| commission_bp | integer | yes | | ✚ the rate the fee was computed with at checkout; K5 snapshots it on the booking |
 | status | charge_status | no | 'pending' | |
 | card_brand | text | yes | | ‹Visa› |
 | card_last4 | char(4) | yes | | ‹4242› |
@@ -770,7 +775,7 @@ Indexes: (partner_id, published_at desc); (partner_id) where reply_text is null.
 
 **`notification_preference`** *(exists, ✚ channel)* — user_id · key (SPEC §11 keys, e.g. `client.payment-deadline`) · ✚ channel notification_channel default 'email' · enabled · updated_at. **Change** the unique index to (user_id, key, channel); `sendEmail()` reads channel = 'email'. Missing row = the default from SPEC §11.
 
-**`email_outbox`** *(exists)* — as in code (template_key, to_email, to_user_id, audience, subject, html, text, vars, status, provider, provider_message_id, error, attempts, dedupe_key U, created_at, sent_at).
+**`email_outbox`** *(exists)* — as in code (template_key, to_email, to_user_id, audience, subject, html, text, vars, status, provider, provider_message_id, error, attempts, dedupe_key U, created_at, sent_at). subject / html / text never hold a one-time link or code (templates' `secret` vars are masked); `vars` keeps them only until a real transport has the message.
 
 **`sms_outbox`** ✚ — id · template_key · to_phone · to_user_id null · body · status message_status default 'queued' · provider null · provider_message_id null · error null · attempts int default 0 · dedupe_key U · created_at · sent_at null.
 
