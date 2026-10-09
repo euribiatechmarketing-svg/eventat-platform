@@ -20,6 +20,9 @@ Living log of the platform build. Newest state at the top of each section.
 - **UI build** — workflow `wf_7e7cb6de-c1a` (started 8 Oct 21:55), script `tools/workflows/ui-build.js`:
   9 area builders in worktrees `../eventat-wt/ui-<area>` on branches `ui/<area>`, each followed by a click-everything reviewer.
   Resume: `Workflow({scriptPath: "<repo>/tools/workflows/ui-build.js", resumeFromRunId: "wf_7e7cb6de-c1a"})`.
+  8 Oct ~22:35: 9 agents stopped on the account's spend limit. Finished before that: messaging-support and
+  partner-catalogue builds (committed on their branches); partner-ops had committed part of its work.
+  9 Oct 12:50: relaunched from the same run ID; the other areas continue from the files left in their worktrees.
 
 ## Next
 1. Merge the nine `ui/*` branches; typecheck, tests, `next build`.
