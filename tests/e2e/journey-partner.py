@@ -1113,8 +1113,7 @@ def s6d():
         expect(c.locator('main button:has-text("Плати"), main a:has-text("Плати")')).to_have_count(0)
     stale = S['c7_stale']
     stale.locator('button:has-text("Плати 1 200 €")').click()
-    expect(stale.locator('.form-alert')).to_have_text('Състоянието се промени. Презаредете страницата.')
-    stale.reload()
+    # the stale tab is taken to the paid booking (journey-booking review), not to an error
     wait_path(stale, r'/akaunt/rezervacii/' + re.escape(n) + '$')
     stale.close()
     assert [x['status'] for x in charges_of(S['n2'])] == ['failed', 'succeeded'], charges_of(S['n2'])
