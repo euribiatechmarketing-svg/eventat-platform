@@ -590,3 +590,13 @@ Until you answer, the platform does what the item describes under "Now". Bulgari
 **156. Admin screens for money that needs a person** (security review, 9 Oct) — `/admin/plashtaniya`
 - Now: a refund that failed at the card, a chargeback (card dispute) and a payout whose result the provider could not confirm are handled by the system and written to the audit log, but no admin screen lists them.
 - Options: A — a „Изискват намеса“ block on Плащания (needs design and copy); B — keep in the audit log for now.
+
+**157. Colour contrast (accessibility audit, 9 Oct)** — every area
+The automated audit (WCAG 2.2 AA) now finds only colour contrast, all coming from the approved palette. Fixing it changes how the design looks, so nothing was changed. The worst cases:
+- Light grey labels `neutral-400` #b9b1c4 on white: 2.06:1 (needs 4.5:1). Field labels in summaries (`.kv-label`), table headers, search-bar captions, weekday letters, chart labels, invoice headers.
+- Mid grey hints `neutral-500` #8d8499 on white: 3.56:1, and 3.2–3.4:1 on the light backgrounds. Field hints, captions, message times, ‹EN› in the language switch, breadcrumbs.
+- Rail group labels #6b6578 on the dark rail: 3.07:1.
+- Brand purple #7f64ae for small bold text on #f4f4f6: 4.40:1 (eyebrows, step counters) — just under.
+- Field and control borders #e7e7ec / #ddd6e3 on white: 1.2–1.4:1 (WCAG asks 3:1 for the edge of a control).
+- Options: A — darken `neutral-400` to about #8a8299 and `neutral-500` to about #6f6a82 for text, and borders to about #b9b1c4 (closest change that passes; needs a visual check); B — keep the approved palette for now (the platform is likely exempt as a microenterprise under the accessibility law, Art. 46(3), but AA is the right target).
+- The full measured list per element is in the audit reports; `tools/a11y.py`, `tools/a11y-panel.py`, `tools/a11y-admin.py` re-run it.
