@@ -3,7 +3,9 @@ import { redirect } from 'next/navigation';
 import { requireRole } from '@/lib/session';
 import { actorFromUser, can } from '@/lib/domain/actor';
 import { adminBell, adminRailCounts, TEAM_ROLE_LABEL } from '@/lib/domain/views-panel';
+import { Suspense } from 'react';
 import { PanelShell, type RailGroup } from '@/components/panel/PanelShell';
+import { AdminSearch } from './_ops/AdminSearch';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const user = await requireRole('admin', '/admin');
@@ -26,10 +28,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     ] },
   ];
   return (
-    <PanelShell area="admin" groups={groups} titles={{ '/admin/tarsene': 'Търсене', '/admin/nastroyki/ekip': 'Екип' }}
+    <PanelShell area="admin" groups={groups} titles={{ '/admin/tarsene': 'Търсене', '/admin/moderatsiya': 'Модерация на обяви', '/admin/nastroyki': 'Настройки на платформата', '/admin/nastroyki/ekip': 'Екип и достъп' }}
       userName={user.name} userRole={TEAM_ROLE_LABEL[actor.teamRole] ?? ''}
       menu={can(actor, 'manage_team_settings') ? [{ label: 'Настройки', href: '/admin/nastroyki' }] : []}
-      bell={await adminBell(actor)}>
+      bell={await adminBell(actor)} topbarExtra={<Suspense><AdminSearch /></Suspense>}>
       {children}
     </PanelShell>
   );
