@@ -9,7 +9,7 @@ import { setFlash } from '@/lib/flash';
 import { requireRole } from '@/lib/session';
 import { actorFromUser } from '@/lib/domain/actor';
 import { DomainError } from '@/lib/domain/catalogue-kit';
-import { confirmEmailChangeLimited, resendEmailChangeCode } from '@/lib/domain/views-auth-account';
+import { cancelEmailChange, confirmEmailChangeLimited, resendEmailChangeCode } from '@/lib/domain/views-auth-account';
 import { ERR, type FormState } from '../../../../(auth)/_ui/messages';
 
 const PATH = '/akaunt/nastroyki/imeyl';
@@ -43,4 +43,11 @@ export async function resendEmailChangeAction() {
     if (!(e instanceof DomainError)) throw e;
   }
   redirect(PATH);
+}
+
+/** ‹Сменете имейла› (verify.html's link): the code stops working → back to the settings, where the address can be typed again. */
+export async function cancelEmailChangeAction() {
+  const actor = await actorFromUser(await requireRole('client', PATH));
+  await cancelEmailChange(actor);
+  redirect('/akaunt/nastroyki');
 }

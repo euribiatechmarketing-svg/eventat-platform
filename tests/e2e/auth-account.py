@@ -3,7 +3,7 @@
 /akaunt/zapazeni, /akaunt/sabitiya, /akaunt/sabitiya/[id]), driven with real clicks and typing against a
 running dev server.
 
-Usage: python3 tests/e2e/auth-account.py [--base http://localhost:3202] [--no-reseed]
+Usage: python3 tests/e2e/auth-account.py [--base http://localhost:3202] [--no-reseed] [--only <text in a step name>]
 
 Reseeds the database named in .env.local first (the platform clock restarts at 31 Aug 2025 12:00), then checks
 guards, sign-up (client and partner) with the email code, sign-in (errors, ‹Запомни ме›, unverified email,
@@ -136,6 +136,11 @@ def tick(page, label):
     page.locator(label).click(position={'x': 8, 'y': 9})
 
 
+def path_of_url(url):
+    u = urlparse(url)
+    return unquote(u.path) + (('?' + unquote(u.query)) if u.query else '')
+
+
 def path_of(page):
     u = urlparse(page.url)
     return unquote(u.path) + (('?' + unquote(u.query)) if u.query else '')
@@ -163,7 +168,8 @@ def guards(t: T):
         p.goto(route); assert urlparse(p.url).path == '/tarsene', p.url
     p.goto('/akaunt'); assert unquote(urlparse(p.url).path) == '/akaunt/zayavki', p.url
     other = one("select e.id from client_event e join \"user\" u on u.id = e.client_id where u.email <> $1 limit 1", MARIA[0])
-    r = p.goto(f'/akaunt/sabitiya/{other["id"]}')
+    p.wait_for_load_state('networkidle')   # the previous page (another branch's route here) may still be navigating
+    r = p.goto(f'/akaunt/sabitiya/{other["id"]}') or p.goto(f'/akaunt/sabitiya/{other["id"]}')
     assert r.status == 404, r.status
     c.close()
 
@@ -618,6 +624,150 @@ def sign_out_everywhere(t: T):
     c1.close(); c2.close()
 
 
+# ── review fixes: one check per defect found in the design review ─────────
+
+@step('review: ‹Вход за администратори› opens the team sign-in (no role cards, tabs or sign-up), → /admin')
+def team_sign_in(t: T):
+    c = t.ctx(); p = c.new_page()
+    p.goto('/vhod')
+    p.click('a:has-text("Вход за администратори")')
+    p.wait_for_url(lambda u: path_of_url(u) == '/vhod?next=/admin')
+    expect(p.locator('.auth-role')).to_have_count(0)
+    expect(p.locator('.auth-tabs')).to_have_count(0)
+    expect(p.locator('a:has-text("Регистрирайте се безплатно")')).to_have_count(0)
+    expect(p.locator('a:has-text("Вход за администратори")')).to_have_count(0)
+    expect(p.locator('#vhod-email')).to_be_focused()
+    p.keyboard.type(ADMIN[0]); p.fill('#vhod-password', ADMIN[1])
+    p.click('button:has-text("Влез")')
+    p.wait_for_url(re.compile(r'/admin'))
+    c.close()
+
+
+@step('review: expired links end on a ‹Вход› button, not a dead end or a floating link')
+def expired_links(t: T):
+    c = t.ctx(); p = c.new_page()
+    for route, err, target in [('/vhod/nova-parola?token=nope', 'Линкът е изтекъл. Поискайте нов от екрана за вход.', '/vhod'),
+                               ('/akaunt/iztrivane?token=nope', 'Линкът е изтекъл или вече е използван.', '/vhod'),
+                               ('/partner/nastroyki/iztrivane?token=nope', 'Линкът е изтекъл или вече е използван.', '/vhod?as=partner')]:
+        p.goto(route)
+        expect(p.locator('.acc-err[role=alert]')).to_have_text(err)
+        btn = p.locator('a.btn.btn--block:has-text("Вход")')
+        expect(btn).to_have_count(1)
+        btn.click()
+        p.wait_for_url(lambda u, target=target: path_of_url(u) == target)
+    # a two-line heading has tight lines; a one-line heading keeps the prototype's box (34 px × 1.55)
+    p.goto('/akaunt/iztrivane?token=nope')
+    lh = p.evaluate("parseFloat(getComputedStyle(document.querySelector('h1.auth-t')).lineHeight)")
+    assert lh <= 34 * 1.3, lh
+    p.goto('/vhod')
+    h = p.evaluate("document.querySelector('h1.auth-t').getBoundingClientRect().height")
+    assert 52 <= h <= 54, h
+    c.close()
+
+
+@step('review: event page — booking dates ‹19 дек 2026›, the hint keeps ‹·› with the word before, notes box has no grip')
+def event_page_details(t: T):
+    c = t.ctx(); p = c.new_page()
+    t.sign_in(p, *MARIA); p.wait_for_url(re.compile(r'/tarsene'))
+    eid = one("select e.id from client_event e join \"user\" u on u.id = e.client_id where u.email = $1 and e.title = 'Коледно парти'", MARIA[0])['id']
+    p.goto(f'/akaunt/sabitiya/{eid}')
+    dates = p.locator('.mine:has(.mine-t:text-is("Резервации")) .mrow-col:has(.mrow-l:text-is("Дата")) .mrow-v').all_inner_texts()
+    assert dates and all(d.replace(' ', ' ') == '19 дек 2026' for d in dates), dates
+    hint = p.locator('.h-right .mine-hint').inner_text()
+    assert ' ·' in hint and '40 гости' in hint, repr(hint)
+    assert p.evaluate("getComputedStyle(document.querySelector('textarea.ev-note-box')).resize") == 'none'
+    c.close()
+
+
+@step('review: email change — ‹Сменете имейла› on the code screen cancels it and returns to the settings')
+def email_change_cancel(t: T):
+    c = t.ctx(); p = c.new_page()
+    t.sign_in(p, *MARIA); p.wait_for_url(re.compile(r'/tarsene'))
+    p.goto('/akaunt/nastroyki')
+    p.fill('#set-email', f'e2e.other.{STAMP}@example.com')
+    p.click('button:has-text("Запази промените")')
+    p.wait_for_url(re.compile(r'/akaunt/nastroyki/imeyl'))
+    p.click('button.ver-change:has-text("Сменете имейла")')
+    p.wait_for_url(re.compile(r'/akaunt/nastroyki$'))
+    expect(p.locator('#set-email')).to_have_value(MARIA[0])
+    p.goto('/akaunt/nastroyki/imeyl')
+    assert urlparse(p.url).path == '/akaunt/nastroyki', p.url   # nothing pending any more
+    assert user_by_email(MARIA[0])['email'] == MARIA[0]
+    c.close()
+
+
+@step("review: a partner's two-step code screen shows the partner photo")
+def partner_two_factor_photo(t: T):
+    sql('update "user" set two_factor_enabled = true where email = $1', PARTNER[0])
+    try:
+        c = t.ctx(); p = c.new_page()
+        t.sign_in(p, *PARTNER)
+        p.wait_for_url(re.compile(r'/vhod/kod'))
+        expect(p.locator('.auth-side[data-side=partner]')).to_be_visible()
+        expect(p.locator('.auth-side[data-side=client]')).to_be_hidden()
+        c.close()
+    finally:
+        sql('update "user" set two_factor_enabled = false where email = $1', PARTNER[0])
+
+
+@step("review: another client's saved search or event → the 404 page for open, bell, delete and notes; nothing changes")
+def foreign_ids(t: T):
+    other = 'petya.n@gmail.com'
+    maria_ss = one('select s.id, s.notify from saved_search s join "user" u on u.id = s.client_id where u.email = $1 order by s.created_at limit 1', MARIA[0])
+    maria_ev = one("select e.id, e.notes from client_event e join \"user\" u on u.id = e.client_id where u.email = $1 and e.title = 'Коледно парти'", MARIA[0])
+    # the other client gets a saved search of her own, so the bell and the bin are on her page
+    sql('insert into saved_search (params, notify, client_id, title, filters_summary, created_at) '
+        'select params, notify, (select id from "user" where email = $1), title, filters_summary, created_at from saved_search where id = $2', other, maria_ss['id'])
+    own_ev = one('select e.id from client_event e join "user" u on u.id = e.client_id where u.email = $1 limit 1', other)['id']
+    c = t.ctx(); p = c.new_page()
+    t.sign_in(p, other, 'eventat-demo'); p.wait_for_url(re.compile(r'/tarsene'))
+    r = p.goto(f'/akaunt/zapazeni/{maria_ss["id"]}/otvori'); assert r.status == 404, r.status
+    r = p.goto('/akaunt/zapazeni/not-an-id/otvori'); assert r.status == 404, r.status
+    for label in ('за това търсене', 'Изтрий запазеното търсене'):
+        p.goto('/akaunt/zapazeni', wait_until='networkidle')   # hydrated, so the edited ids are what gets posted
+        p.evaluate("id => document.querySelectorAll('input[name=id]').forEach(i => { i.value = id })", maria_ss['id'])
+        p.locator(f'button[aria-label*="{label}"]').first.click()
+        expect(p.locator('body')).to_contain_text('404', timeout=15_000)
+    assert one('select notify from saved_search where id = $1', maria_ss['id'])['notify'] == maria_ss['notify']
+    p.goto(f'/akaunt/sabitiya/{own_ev}', wait_until='networkidle')
+    p.evaluate("id => { document.querySelector('input[name=eventId]').value = id }", maria_ev['id'])
+    p.fill('textarea.ev-note-box', 'чужда бележка')
+    p.click('button:has-text("Запази бележката")')
+    expect(p.locator('body')).to_contain_text('404', timeout=15_000)
+    assert one('select notes from client_event where id = $1', maria_ev['id'])['notes'] == maria_ev['notes']
+    c.close()
+
+
+@step('review: phone (390 px) — stacked role cards, 40 px buttons, switch hit areas, one session per line, balanced helper lines')
+def phone_details(t: T):
+    c = t.ctx(390, 844); p = c.new_page()
+    for route in ['/vhod', '/registratsiya']:
+        p.goto(route)
+        cols = p.evaluate("getComputedStyle(document.querySelector('.auth-role')).gridTemplateColumns.split(' ').length")
+        assert cols == 1, (route, cols)
+        tall = p.evaluate("[...document.querySelectorAll('.role-d')].filter(e => e.offsetParent).map(e => e.getBoundingClientRect().height)")
+        assert tall and all(h < 24 for h in tall), (route, tall)   # one line each
+    t.sign_in(p, *MARIA); p.wait_for_url(re.compile(r'/tarsene'))
+    c2 = t.ctx(390, 844); p2 = c2.new_page(); t.sign_in(p2, *MARIA); p2.wait_for_url(re.compile(r'/tarsene')); c2.close()
+    for route in ['/akaunt/nastroyki', '/akaunt/zapazeni', '/akaunt/sabitiya']:
+        p.goto(route)
+        small = p.evaluate("[...document.querySelectorAll('main .btn--sm')].filter(e => e.offsetParent).map(e => [e.textContent.trim() || e.getAttribute('aria-label'), e.getBoundingClientRect().height]).filter(x => x[1] < 40)")
+        assert not small, (route, small)
+    p.goto('/akaunt/nastroyki')
+    # a tap 7 px below a switch still lands on it
+    hit = p.evaluate("""() => { const t = document.querySelector('[role=switch][aria-label="Маркетингови съобщения"]'); t.scrollIntoView({block: 'center'});
+        const b = t.getBoundingClientRect(); return document.elementFromPoint(b.x + b.width / 2, b.bottom + 7) === t; }""")
+    assert hit, 'switch hit area'
+    lines = p.evaluate("[...document.querySelectorAll('.set-sessions > span')].map(e => getComputedStyle(e).display)")
+    assert len(lines) >= 2 and set(lines) == {'block'}, lines
+    assert p.evaluate("[...document.querySelectorAll('.set-sessions .acc-sep')].every(e => !e.offsetParent)")
+    assert p.evaluate("getComputedStyle(document.querySelector('.set-d')).textWrapStyle") == 'balance'
+    # a dash stays with the word before it, so no line starts with ‹—›
+    note = p.locator('.book-note span').inner_text()
+    assert 'МОЛ\u00a0—' in note, repr(note)
+    c.close()
+
+
 def main():
     args = sys.argv[1:]
     base = 'http://localhost:3202'
@@ -625,10 +775,13 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     if '--no-reseed' not in args:
         print('reseeding…'); reseed()
+    steps = STEPS
+    if '--only' in args:   # steps whose name contains the text (the review steps need only the seed)
+        steps = [x for x in STEPS if args[args.index('--only') + 1] in x[0]]
     failed = 0
     with sync_playwright() as pw:
         t = T(pw, base)
-        for name, fn in STEPS:
+        for name, fn in steps:
             try:
                 fn(t); print(f'PASS  {name}')
             except Exception as e:
@@ -640,7 +793,7 @@ def main():
                         except Exception: pass
                     ctx.close()
         t.browser.close()
-    print(f'{len(STEPS) - failed}/{len(STEPS)} passed' + (f' · screenshots in {OUT}' if failed else ''))
+    print(f'{len(steps) - failed}/{len(steps)} passed' + (f' · screenshots in {OUT}' if failed else ''))
     sys.exit(1 if failed else 0)
 
 

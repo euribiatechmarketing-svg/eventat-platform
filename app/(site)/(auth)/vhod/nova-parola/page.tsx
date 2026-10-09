@@ -29,8 +29,8 @@ export default async function NewPasswordPage({ searchParams }: { searchParams: 
             <ResetForm token={token} />
           ) : (
             <>
-              <p className="acc-err" role="alert" style={{ marginTop: 14 }}>{ERR.link}</p>
-              <div className="auth-alt"><Link href="/vhod">Вход</Link></div>
+              <p className="acc-err acc-expired" role="alert">{ERR.link}</p>
+              <Link className="btn btn--primary btn--lg btn--block" href="/vhod">Вход</Link>
             </>
           )}
         </div>

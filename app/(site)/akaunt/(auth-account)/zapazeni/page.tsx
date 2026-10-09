@@ -94,7 +94,7 @@ export default async function SavedPage() {
               <div className="mine-head">
                 <span className="mine-t">Чакам да се освободи</span>
                 <span className="mine-c">{watches.length}</span>
-                <span className="mine-hint">Проверяваме наличността всеки ден — щом се освободи, можете да заявите отново</span>
+                <span className="mine-hint">Проверяваме наличността всеки ден&nbsp;— щом се освободи, можете да заявите отново</span>
               </div>
               {watches.map(w => (
                 <Link className="mrow" href={w.href} key={w.id}>

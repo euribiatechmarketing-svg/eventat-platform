@@ -34,7 +34,7 @@ export default async function TwoFactorPage({ searchParams }: { searchParams: Pr
             waitMs={resendWaitMs(ch.sentAt, wall)} spamHint={false} />
         </div>
       </div>
-      <AuthSides role="client" />
+      <AuthSides role={ch.role === 'partner' ? 'partner' : 'client'} />
     </div>
   );
 }

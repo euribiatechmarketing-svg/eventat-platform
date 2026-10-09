@@ -1,6 +1,6 @@
 'use server';
 // ‹Запази бележката› → events.saveNotes(); toast ‹Бележката е запазена›.
-import { redirect } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { setFlash } from '@/lib/flash';
@@ -17,10 +17,13 @@ export async function saveNotesAction(_prev: FormState, fd: FormData): Promise<F
   const actor = await actorFromUser(await requireRole('client', `/akaunt/sabitiya/${eventId}`));
   // A submitted <textarea> sends CRLF line breaks; store plain \n.
   const p = schema.safeParse({ eventId, notes: String(fd.get('notes') ?? '').replace(/\r\n?/g, '\n') });
+  if (!z.uuid().safeParse(eventId).success) notFound();
   if (!p.success) return { error: ERR.generic };
   try {
     await saveNotes(actor, p.data);
   } catch (e) {
+    // Someone else's event (or one that is gone) → the 404 page, as when opening it.
+    if (e instanceof LifecycleError && e.code === 'not_found') notFound();
     if (e instanceof LifecycleError) return { error: ERR.generic };
     throw e;
   }

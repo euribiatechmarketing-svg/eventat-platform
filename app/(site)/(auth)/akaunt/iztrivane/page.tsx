@@ -1,6 +1,7 @@
 // /akaunt/iztrivane?token= — behind the email CTA ‹Потвърди изтриването› (SCREENS §3, SPEC §4.1 A10).
 // Guard: the token. The wording is the client-delete-confirm email's own.
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { deletionLinkView } from '@/lib/domain/views-auth-account';
 import { AuthSides } from '../../_ui/AuthSides';
 import { BinMark, ConfirmDeletion } from '../../_ui/ConfirmDeletion';
@@ -28,7 +29,10 @@ export default async function ClientDeletionPage({ searchParams }: { searchParam
               <ConfirmDeletion action={confirmClientDeletionAction} token={token} />
             </>
           ) : (
-            <p className="acc-err" role="alert" style={{ marginTop: 14 }}>{ERR.linkUsed}</p>
+            <>
+              <p className="acc-err acc-expired" role="alert">{ERR.linkUsed}</p>
+              <Link className="btn btn--primary btn--lg btn--block" href="/vhod">Вход</Link>
+            </>
           )}
         </div>
       </div>

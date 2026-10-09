@@ -20,14 +20,14 @@ const NOTIF: [key: string, name: string, desc: string][] = [
   ['client.event-reminder', 'Напомняне преди събитието', '7 дни и 1 ден преди датата'],
   ['client.review-invite', 'Покана за ревю', 'На следващия ден след събитието'],
 ];
-const LOCKED = 'Този имейл е служебен — идва винаги, за да имате потвърждение и разписка';
+const LOCKED = 'Този имейл е служебен\u00a0— идва винаги, за да имате потвърждение и разписка';
 const FORM = 'acc-settings';
 
 function Toggle({ on, locked, label, onChange }: { on: boolean; locked?: boolean; label: string; onChange?: (v: boolean) => void }) {
   return (
     <button type="button" role="switch" aria-checked={on} aria-label={label}
       className={`toggle${on ? ' is-on' : ''}${locked ? ' is-locked' : ''}`}
-      title={locked ? 'Служебен имейл — не се изключва' : undefined}
+      title={locked ? 'Служебен имейл\u00a0— не се изключва' : undefined}
       onClick={() => (locked ? toast(LOCKED) : onChange?.(!on))} />
   );
 }
@@ -134,7 +134,7 @@ export function SettingsForm({ view }: { view: View }) {
                 <div className="set-n">Активни сесии</div>
                 <div className="set-d set-sessions">
                   {view.sessions.map((s, i) => (
-                    <span key={s.id}>{i > 0 && '  ·  '}{[s.device, s.city, s.age].filter(Boolean).join(' · ')}</span>
+                    <span key={s.id}>{i > 0 && <span className="acc-sep">{'  ·  '}</span>}{[s.device, s.city, s.age].filter(Boolean).join(' · ')}</span>
                   ))}
                 </div>
               </div>
@@ -202,7 +202,7 @@ export function SettingsForm({ view }: { view: View }) {
                 </div>
               );
             })}
-            <p className="notif-foot">Имейлите за регистрация, отговор по заявка, плащане, анулиране и сигнали до екипа идват винаги — те са служебни и съдържат потвърждения и разписки.</p>
+            <p className="notif-foot">Имейлите за регистрация, отговор по заявка, плащане, анулиране и сигнали до екипа идват винаги&nbsp;— те са служебни и съдържат потвърждения и разписки.</p>
           </section>
 
           <InvoiceCard invoice={view.invoice} />
@@ -261,7 +261,7 @@ function InvoiceCard({ invoice }: { invoice: View['invoice'] }) {
           </div>
         </form>
       )}
-      <div className="book-note" style={{ marginTop: 4 }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /><path d="M12 8h.01M11 12h1v4h1" /></svg><span>За фирмена фактура добавете ЕИК и МОЛ — фактурите се издават автоматично след всяко плащане.</span></div>
+      <div className="book-note" style={{ marginTop: 4 }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /><path d="M12 8h.01M11 12h1v4h1" /></svg><span>За фирмена фактура добавете ЕИК и МОЛ&nbsp;— фактурите се издават автоматично след всяко плащане.</span></div>
     </section>
   );
 }

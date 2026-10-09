@@ -182,11 +182,11 @@ export async function twoFactorChallenge(cookieValue: string | null | undefined,
   const [v] = await q.select({ value: verification.value, expiresAt: verification.expiresAt }).from(verification)
     .where(eq(verification.identifier, id)).orderBy(desc(verification.createdAt)).limit(1);
   if (!v || v.expiresAt.getTime() <= wallNow) return null;
-  const [u] = await q.select({ id: user.id, phone: user.phone }).from(user).where(eq(user.id, v.value)).limit(1);
+  const [u] = await q.select({ id: user.id, phone: user.phone, role: user.role }).from(user).where(eq(user.id, v.value)).limit(1);
   if (!u) return null;
   const [otp] = await q.select({ expiresAt: verification.expiresAt }).from(verification)
     .where(eq(verification.identifier, `2fa-otp-${id}`)).orderBy(desc(verification.createdAt)).limit(1);
-  return { userId: u.id, phone: maskPhone(u.phone), sentAt: otp ? new Date(otp.expiresAt.getTime() - 10 * 60_000) : null };
+  return { userId: u.id, role: u.role, phone: maskPhone(u.phone), sentAt: otp ? new Date(otp.expiresAt.getTime() - 10 * 60_000) : null };
 }
 
 /** '+359884127730' → '+359 88 ••• ••30' */
@@ -316,6 +316,16 @@ export async function resendEmailChangeCode(actor: Actor, tx?: Tx) {
     if ((await now()).getTime() - p.sentAt.getTime() < RESEND_COOLDOWN_MS) throw new DomainError('too_soon');
     await t.update(emailChangeRequest).set({ expiresAt: await now() }).where(eq(emailChangeRequest.id, p.id));
     return requestEmailChangeCode(actor, p.newEmail, t);
+  });
+}
+
+/** ‹Сменете имейла› on the email-change screen: the open request ends (its code stops working); the address stays as it was. */
+export async function cancelEmailChange(actor: Actor, tx?: Tx) {
+  assertClient(actor);
+  return withTx(tx, async t => {
+    const p = await pendingEmailChange(actor, t);
+    if (!p) return;
+    await t.update(emailChangeRequest).set({ expiresAt: await now() }).where(eq(emailChangeRequest.id, p.id));
   });
 }
 
@@ -471,7 +481,7 @@ export async function eventView(actor: Actor, id: string, q: Queryable = db) {
     .orderBy(sql`${booking.startTime} asc nulls last`, asc(booking.createdAt));
   const bookings = bks.map(x => ({
     number: x.b.number, partnerName: x.partnerName, line: serviceLine(x.categoryName, x.b.serviceTitle), image: thumb(mediaUrl(x.coverKey)),
-    date: date(x.b.eventDate), time: x.b.startTime ? x.b.startTime.slice(0, 5) : null, amountCents: x.b.amountCents,
+    date: dateAbbr(x.b.eventDate, true), time: x.b.startTime ? x.b.startTime.slice(0, 5) : null, amountCents: x.b.amountCents,
     badge: x.b.status === 'completed' ? 'Приключила' : x.b.status === 'cancellation_requested' ? 'Искане за анулиране' : 'Потвърдена',
     tone: x.b.status === 'cancellation_requested' ? 'warning' : 'success',
     paidOn: x.b.paidAt ? x.b.paidAt : null, href: `/akaunt/rezervacii/${encodeURIComponent(x.b.number)}`,
@@ -481,7 +491,8 @@ export async function eventView(actor: Actor, id: string, q: Queryable = db) {
     ...sum, parts: dateParts(sum.date), place: placeLine(sum), venueName: ev.venueName, placeSmall: ev.locality ?? sum.cityName,
     notes: ev.notes, notesUpdatedAt: ev.notesUpdatedAt, endTime: ev.endTime,
     addHref: sum.upcoming ? addServiceHref(sum, citySlug) : null,
-    searchHint: [date(sum.date), sum.cityName, sum.guests ? `${sum.guests} гости` : null].filter(Boolean).join(' · '),
+    // A ‹·› stays with the word before it, so a wrapped hint never starts a line with one.
+    searchHint: [date(sum.date), sum.cityName, sum.guests ? `${sum.guests}\u00a0гости` : null].filter(Boolean).join('\u00a0· '),
     requests, bookings, today: sofiaDate(at),
   };
 }

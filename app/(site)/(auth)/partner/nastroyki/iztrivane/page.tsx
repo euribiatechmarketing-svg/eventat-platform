@@ -2,6 +2,7 @@
 // (SCREENS §3, SPEC §4.2 P10). Guard: the token (works signed out, outside the panel shell).
 // The wording is the email's own.
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { deletionLinkView } from '@/lib/domain/views-auth-account';
 import { AuthSides } from '../../../_ui/AuthSides';
 import { BinMark, ConfirmDeletion } from '../../../_ui/ConfirmDeletion';
@@ -28,7 +29,10 @@ export default async function PartnerDeletionPage({ searchParams }: { searchPara
               <ConfirmDeletion action={confirmPartnerDeletionAction} token={token} />
             </>
           ) : (
-            <p className="acc-err" role="alert" style={{ marginTop: 14 }}>{ERR.linkUsed}</p>
+            <>
+              <p className="acc-err acc-expired" role="alert">{ERR.linkUsed}</p>
+              <Link className="btn btn--primary btn--lg btn--block" href="/vhod?as=partner">Вход</Link>
+            </>
           )}
         </div>
       </div>

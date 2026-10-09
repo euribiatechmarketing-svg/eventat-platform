@@ -25,7 +25,7 @@ export default async function EventsPage() {
           <div className="h-row">
             <div>
               <h1 className="h-page">Моите събития</h1>
-              <p className="h-sub">Всяко събитие е отделна папка — заявките, резервациите и разходите за него са на едно място.</p>
+              <p className="h-sub">Всяко събитие е отделна папка&nbsp;— заявките, резервациите и разходите за него са на едно място.</p>
             </div>
             <div className="h-right">
               <Link className="btn btn--outline btn--sm" href="/tarsene">Добави още услуги</Link>

@@ -9,7 +9,7 @@ import { actorFromUser } from '@/lib/domain/actor';
 import { pendingEmailChange, resendWaitMs } from '@/lib/domain/views-auth-account';
 import { AuthSides } from '../../../../(auth)/_ui/AuthSides';
 import { CodeForm, MailMark } from '../../../../(auth)/_ui/CodeForm';
-import { confirmEmailChangeAction, resendEmailChangeAction } from './actions';
+import { cancelEmailChangeAction, confirmEmailChangeAction, resendEmailChangeAction } from './actions';
 
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'Потвърждение на имейла' };
@@ -28,7 +28,10 @@ export default async function EmailChangePage() {
               <MailMark />
               <div className="ver-eyebrow">Потвърждение на имейла</div>
               <h1 className="auth-t">Проверете имейла си</h1>
-              <p className="auth-d ver-lead">Изпратихме код за потвърждение <br />на <b>{p.newEmail}</b>.</p>
+              <p className="auth-d ver-lead">
+                Изпратихме код за потвърждение <br />на <b>{p.newEmail}</b>. <button type="submit" form="imeyl-change" className="ver-change acc-linkbtn">Сменете имейла</button>
+              </p>
+              <form id="imeyl-change" action={cancelEmailChangeAction} hidden />
               <CodeForm verify={confirmEmailChangeAction} resend={resendEmailChangeAction} fields={{}}
                 waitMs={resendWaitMs(p.sentAt, (await now()).getTime())} />
             </div>

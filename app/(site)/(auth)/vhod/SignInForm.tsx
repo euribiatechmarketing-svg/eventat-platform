@@ -22,6 +22,9 @@ export function SignInForm({ as, next, email, social }: { as: AuthRole; next: st
   useEffect(() => { const v = state?.values?.email ?? fstate?.values?.email; if (v !== undefined) setMail(v); }, [state, fstate]);
 
   const errs = { ...(fstate?.errors ?? {}), ...(state?.errors ?? {}) };
+  // ‹Вход за администратори› (→ /admin → /vhod?next=/admin): the team's sign-in has no role cards,
+  // no sign-up and no client lead line, so the click visibly lands on a different screen.
+  const team = next === '/admin' || !!next?.startsWith('/admin/') || !!next?.startsWith('/admin?');
   const lead = next?.startsWith('/zayavka') && role === 'client'
     ? 'Ще изпратите запитването веднага след като влезете.'
     : 'Влезте, за да проследите заявките и резервациите си.';
@@ -32,8 +35,9 @@ export function SignInForm({ as, next, email, social }: { as: AuthRole; next: st
       <div className="auth-form">
         <div className="auth-box">
           <h1 className="auth-t">Добре дошли отново</h1>
-          <p className="auth-d">{lead}</p>
+          {!team && <p className="auth-d">{lead}</p>}
 
+          {!team && (<>
           <div className="auth-tabs">
             <span className="auth-tab is-on" aria-current="page">Вход</span>
             <Link className="auth-tab" href={toRegister}>Регистрация</Link>
@@ -49,12 +53,13 @@ export function SignInForm({ as, next, email, social }: { as: AuthRole; next: st
               <span className="role-d">Предлагам услуги за събития</span>
             </button>
           </div>
+          </>)}
 
-          <form ref={formRef} onSubmit={onSubmit} noValidate>
+          <form ref={formRef} className={team ? 'acc-team' : undefined} onSubmit={onSubmit} noValidate>
             <input type="hidden" name="next" value={next ?? ''} />
             <div className={`field${errs.email ? ' field--error' : ''}`} style={{ marginBottom: 14 }}>
               <label className="field-label" htmlFor="vhod-email">Имейл</label>
-              <input id="vhod-email" className="field-input" name="email" type="email" autoComplete="email" value={mail} onChange={e => setMail(e.target.value)} />
+              <input id="vhod-email" className="field-input" name="email" type="email" autoComplete="email" autoFocus={team} value={mail} onChange={e => setMail(e.target.value)} />
               {errs.email && <span className="acc-err">{errs.email}</span>}
             </div>
             <div className={`field${errs.password ? ' field--error' : ''}`}>
@@ -75,7 +80,7 @@ export function SignInForm({ as, next, email, social }: { as: AuthRole; next: st
             <button className="btn btn--primary btn--lg btn--block" type="submit" disabled={pending}>Влез</button>
           </form>
 
-          {social.length > 0 && (
+          {social.length > 0 && !team && (
             <>
               <div className="reg-or">
                 <span className="reg-or-line"></span>
@@ -95,8 +100,10 @@ export function SignInForm({ as, next, email, social }: { as: AuthRole; next: st
             </>
           )}
 
-          <div className="auth-alt">Нямате профил? <Link href={toRegister}>Регистрирайте се безплатно</Link></div>
-          <div className="auth-alt" style={{ marginTop: 8 }}>Екип на EventAT? <Link href="/admin">Вход за администратори</Link></div>
+          {!team && (<>
+            <div className="auth-alt">Нямате профил? <Link href={toRegister}>Регистрирайте се безплатно</Link></div>
+            <div className="auth-alt" style={{ marginTop: 8 }}>Екип на EventAT? <Link href="/admin">Вход за администратори</Link></div>
+          </>)}
         </div>
       </div>
       <AuthSides role={role} />

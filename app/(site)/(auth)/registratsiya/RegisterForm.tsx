@@ -29,7 +29,7 @@ export function RegisterForm({ as, next, social }: { as: AuthRole; next: string 
   );
   const lead = next?.startsWith('/zayavka') && role === 'client'
     ? 'Ще изпратите запитването веднага след регистрацията.'
-    : 'Безплатно е — и за клиенти, и за изпълнители.';
+    : 'Безплатно е\u00a0— и за клиенти, и за изпълнители.';
 
   return (
     <div className="auth">

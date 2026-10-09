@@ -46,6 +46,20 @@
 .m-acc .ver-mark svg { width: 26px; height: 26px; }
 .m-acc .auth-d + .auth-d { margin-top: 12px; }
 
+/* a heading that runs to two lines (the deletion links, phones) keeps tight, balanced lines; on one
+   line the box stays the prototype's: 1.25 line + .3em padding = the inherited 1.55 */
+.m-acc .auth-t { line-height: 1.25; padding: .15em 0; text-wrap: balance; }
+/* running text and helper lines never leave one word on the last line */
+.m-acc .auth-d, .m-acc .auth-alt, .m-acc .acc-err, .m-acc .h-sub, .m-acc .mine-hint, .m-acc .set-d, .m-acc .notif-d,
+.m-acc .notif-foot, .m-acc .book-note span, .m-acc .mrow-s, .m-acc .reg-consent .f-item > span, .m-acc .empty-text { text-wrap: pretty; }
+
+/* the team's sign-in (‹Вход за администратори› → /vhod?next=/admin): no role cards or tabs, so the form follows the heading */
+.m-acc .acc-team { margin-top: 28px; }
+
+/* a link that no longer works: the line, then the way back in */
+.m-acc .acc-expired { margin-top: 14px; }
+.m-acc .acc-expired + .btn { margin-top: 26px; }
+
 /* password strength: the bar only, the label shows at 4/4 (‹Силна парола›) */
 .m-acc .reg-meter-bar i { transition: background var(--duration-fast) var(--ease-out); }
 
@@ -161,7 +175,7 @@
 .ev-note-meta { font-size: 12.5px; color: var(--neutral-500); }
 
 /* the notes are a real text field */
-textarea.ev-note-box { display: block; width: 100%; min-height: 104px; box-sizing: border-box; font: inherit; font-size: 14px; line-height: 1.7; resize: vertical; outline: none; }
+textarea.ev-note-box { display: block; width: 100%; min-height: 104px; box-sizing: border-box; font: inherit; font-size: 14px; line-height: 1.7; resize: none; outline: none; }
 /* grows with the text (the rows attribute is the fallback where field-sizing is unsupported) */
 @supports (field-sizing: content) { textarea.ev-note-box { field-sizing: content; max-height: 520px; } }
 textarea.ev-note-box:focus { border-color: var(--primary-500); box-shadow: var(--shadow-focus); background: #fff; }
@@ -211,7 +225,11 @@ textarea.ev-note-box:focus { border-color: var(--primary-500); box-shadow: var(-
   .m-acc .auth-form, .m-acc .ver-form, .m-acc .ver-form--plain { padding: 28px 16px 48px; }
   .m-acc .auth-t { font-size: 29px; }
   .m-acc .reg-fields, .m-acc .reg-social { grid-template-columns: minmax(0, 1fr); }
-  .m-acc .role-d, .m-acc .reg-consent .f-item, .m-acc .ver-eyebrow, .m-acc .ver-hint, .m-acc .ver-resend { white-space: normal; }
+  /* short helper lines that wrap on a phone split into even lines (no word left alone) */
+  .m-acc .auth-d, .m-acc .h-sub, .m-acc .mine-hint, .m-acc .set-d, .m-acc .notif-d, .m-acc .mrow-s, .m-acc .acc-err { text-wrap: balance; }
+  /* the role cards stack, so ‹Предлагам услуги за събития› stays on one line */
+  .m-acc .auth-role { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .m-acc .reg-consent .f-item, .m-acc .ver-eyebrow, .m-acc .ver-hint, .m-acc .ver-resend { white-space: normal; }
   .m-acc .reg-consent .f-item { align-items: flex-start; }
   .m-acc .ver-code { gap: 6px; }
   .m-acc .ver-cell { height: 56px; font-size: 26px; }
@@ -226,7 +244,9 @@ textarea.ev-note-box:focus { border-color: var(--primary-500); box-shadow: var(-
   .m-acc .set-row .set-t { min-width: 0; flex: 1 1 200px; }
   .m-acc .acc-prof { flex-wrap: wrap; }
   .m-acc .acc-prof-act { margin-left: 0; width: 100%; }
-  .m-acc .set-sessions span { white-space: normal; }
+  /* one session per line, without the ‹·› between them */
+  .m-acc .set-sessions > span { display: block; white-space: normal; }
+  .m-acc .set-sessions .acc-sep { display: none; }
   .m-acc .notif { grid-template-columns: minmax(0, 1fr) 46px 46px; gap: 8px; }
 
   .m-acc .mrow { grid-template-columns: 48px minmax(0, 1fr); gap: 14px; padding: 14px 16px; }
@@ -254,4 +274,13 @@ textarea.ev-note-box:focus { border-color: var(--primary-500); box-shadow: var(-
   .ev-fact:last-child { grid-column: auto; }
   .ev-note { padding: 14px 16px 16px; }
   .ev-note-foot { flex-wrap: wrap; }
+
+  /* tap targets: small buttons and icon buttons are 40 px tall; switches, checkboxes and text links
+     keep their drawn size and get a larger invisible hit area */
+  .m-acc .btn--sm { min-height: 40px; }
+  .m-acc .btn--icon.btn--sm { width: 40px; height: 40px; }
+  .m-acc .toggle::before { content: ''; position: absolute; inset: -10px -4px; }
+  .m-acc label.f-item { padding-top: 10px; padding-bottom: 10px; margin-top: -10px; margin-bottom: -10px; }
+  .m-acc .auth-alt a, .m-acc .acc-linkbtn, .m-acc .ev-flat a, .m-acc .crumbs a, .m-acc .reg-consent a { position: relative; }
+  .m-acc .auth-alt a::before, .m-acc .acc-linkbtn::before, .m-acc .ev-flat a::before, .m-acc .crumbs a::before { content: ''; position: absolute; inset: -12px -6px; }
 }

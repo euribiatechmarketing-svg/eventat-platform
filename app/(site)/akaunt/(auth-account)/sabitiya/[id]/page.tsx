@@ -73,7 +73,7 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
           <section className="mine" style={{ marginTop: 22 }}>
             <div className="mine-head">
               <span className="mine-t">Бележки</span>
-              <span className="mine-hint">Виждате ги само вие — изпълнителите нямат достъп</span>
+              <span className="mine-hint">Виждате ги само вие&nbsp;— изпълнителите нямат достъп</span>
             </div>
             <NotesForm eventId={e.id} notes={e.notes ?? ''} updated={e.notesUpdatedAt ? sentOn(e.notesUpdatedAt) : null} />
           </section>
@@ -83,7 +83,7 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
               <div className="mine-head">
                 <span className="mine-t">Заявки</span>
                 <span className="mine-c">{e.requests.length}</span>
-                <span className="mine-hint">Одобрените заявки се плащат до 24 часа — след това датата се освобождава</span>
+                <span className="mine-hint">Одобрените заявки се плащат до 24 часа&nbsp;— след това датата се освобождава</span>
               </div>
               {e.requests.map(r => (
                 <div className={`mrow acc-row${r.off ? ' is-off' : ''}`} key={r.number}>
