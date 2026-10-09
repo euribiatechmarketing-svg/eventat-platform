@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useFormStatus } from 'react-dom';
 import { toast } from '@/components/ui/client';
+import { money, parseMoney } from '@/lib/format';
 
 type FormAction = (fd: FormData) => void | Promise<void>;
 
@@ -133,6 +134,23 @@ export function DecisionForm({ action, disputeId, number, options }: {
         <Submit className="btn btn--primary btn--block">Приложи решението</Submit>
       </div>
     </form>
+  );
+}
+
+/* ---------- the team cancellation's refund: ‹Задържа се› follows what is typed, never more than was paid ---------- */
+export function RefundSplit({ paidCents, refundCents }: { paidCents: number; refundCents: number }) {
+  const [v, setV] = useState((refundCents / 100).toFixed(2).replace('.', ','));
+  const ref = useRef<HTMLInputElement>(null);
+  const cents = parseMoney(v);
+  const ok = cents !== null && cents <= paidCents;
+  useEffect(() => { ref.current?.setCustomValidity(ok ? '' : 'Проверете сумата за връщане'); }, [ok]);
+  return (
+    <>
+      <label className="split am-refund"><span>Връща се</span>
+        <span className="rate-f"><input ref={ref} className="rate-in am-refund-in" name="refund" inputMode="decimal" value={v} onChange={e => setV(e.target.value)} aria-label="Връща се" aria-invalid={!ok} /><span className="rate-u">€</span></span>
+      </label>
+      <div className="split is-fee"><span>Задържа се</span><b>{ok ? money(paidCents - (cents ?? 0)) : '—'}</b></div>
+    </>
   );
 }
 

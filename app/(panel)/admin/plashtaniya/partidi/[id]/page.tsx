@@ -39,11 +39,11 @@ export default async function AdminBatch({ params, searchParams }: { params: P; 
         </div>
         <div className="page-head-right">
           <span className={`badge ${r.badge.cls}`}>{r.badge.label}</span>
-          <a className="btn btn--outline btn--sm" href={`/admin/plashtaniya/partidi/${b.id}/otchet`} download>Свали отчета</a>
+          {r.groups.length > 0 && <a className="btn btn--outline btn--sm" href={`/admin/plashtaniya/partidi/${b.id}/otchet`} download>Свали отчета</a>}
         </div>
       </div>
 
-      <div className="adm-grid">
+      <div className="adm-grid am-batch">
         <div>
           {r.filtered && (
             <div className="am-filter-note"><span>{r.partnerName}</span><Link className="link-more" href={`/admin/plashtaniya/partidi/${b.id}`}>Виж всички</Link></div>

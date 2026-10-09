@@ -80,6 +80,29 @@ describe('disputes', () => {
     expect(plain(q.done.find(d => d.number === '2025-0517-РД')?.amount)).toBe('върнати 384 €');
     expect((await disputeQueue(admin, { filter: 'otvoreni' })).done).toHaveLength(0);
   });
+  it('queue head: the held money of every open case (= the rows and the bell), decisions without the dash', async () => {
+    const q = await disputeQueue(admin, {});
+    expect(q.heldCents).toBe(238000);
+    expect(plain(q.done.find(d => d.number === '2025-0517-РД')?.sub)).toContain('частично възстановяване 30%');
+  });
+  it('case 2026-0630-АБ: the silent client is written to by email; no waiting warning', async () => {
+    const c = (await disputeCase(admin, '2026-0630-АБ'))!;
+    expect(c.client.initials).toBe('СУ');
+    expect(c.client.role).toBe('Бизнес клиент · office@sou-botev.bg');
+    expect(plain(c.client.wait?.[1])).toBe('Писахме на office@sou-botev.bg на 30 август в 16:30 — срок до 1 септември, 16:30.');
+    expect(c.warn).toBeNull();
+    expect(c.timeline.map(t => t.title)).toEqual(['Студио Мелодия отвори сигнал', 'Писахме на СУ „Христо Ботев“', 'Чакаме отговор от СУ „Христо Ботев“']);
+  });
+  it('case 2026-0621-ТЛ: how the price changed after approval; feminine ‹отговорила›', async () => {
+    const c = (await disputeCase(admin, '2026-0621-ТЛ'))!;
+    expect(c.timeline.slice(0, 3).map(t => [plain(t.title), plain(t.time)])).toEqual([
+      ['Вкусна История одобри заявката', '30 август, 18:20 · 3 200 €'],
+      ['Вкусна История подаде нова цена на гост', '31 август, 04:40 · 28 € → 32 € · чака модерация'],
+      ['Офертата за плащане стана 3 600 €', '31 август, 08:15'],
+    ]);
+    expect(c.partner.wait?.[0]).toBe('Още не е отговорила.');
+    expect(c.timeline.map(t => t.title)).not.toContain('Вашето решение');
+  });
   it('needs resolve_disputes', async () => {
     await expect(disputeQueue(support, {})).rejects.toThrow(/Forbidden/);
   });
@@ -104,6 +127,7 @@ describe('disputes', () => {
     const c = (await disputeCase(admin, '2025-0517-РД'))!;
     expect(plain(c.decision?.title)).toBe('Частично възстановяване — 30%');
     expect(plain(c.decision?.by)).toBe('Моника Ковачева · 20 май 2025, 11:30');
+    expect(c.timeline.map(t => plain(t.title))).toEqual(['Стефка Илиева отвори сигнал', 'Вкусна История отговори', 'Решение: частично възстановяване 30%', '384 € върнати на клиента']);
   });
 });
 

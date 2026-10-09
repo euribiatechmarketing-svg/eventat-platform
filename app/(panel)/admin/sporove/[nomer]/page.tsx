@@ -151,8 +151,10 @@ export default async function AdminCase({ params }: { params: P }) {
               <form action={holdAction} className="am-hold">
                 <input type="hidden" name="number" value={c.number} />
                 <input type="hidden" name="hold" value={c.holdsPayout ? 'off' : 'on'} />
-                <button type="submit" className={`toggle${c.holdsPayout ? ' is-on' : ''}`} role="switch" aria-checked={c.holdsPayout} aria-label="Изплащането е спряно до решението" />
-                <span className="am-hold-t">{c.holdsPayout ? 'Изплащането е спряно до решението' : 'Изплащането следва обичайния график'}</span>
+                <button type="submit" className="am-hold-btn" role="switch" aria-checked={c.holdsPayout}>
+                  <span className={`toggle${c.holdsPayout ? ' is-on' : ''}`} aria-hidden="true" />
+                  <span className="am-hold-t">{c.holdsPayout ? 'Изплащането е спряно до решението' : 'Изплащането следва обичайния график'}</span>
+                </button>
               </form>
             )}
             <Link className="link-more am-booking-link" href={bookingPath(c.bookingNumber)}>Резервация № {c.bookingNumber}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 6l6 6-6 6" /></svg></Link>

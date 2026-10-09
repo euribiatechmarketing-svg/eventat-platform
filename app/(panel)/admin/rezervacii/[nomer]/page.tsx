@@ -7,7 +7,7 @@ import { PageChrome } from '../../_money/chrome';
 import { BOOKING_BADGE, bookingRecord } from '@/lib/domain/views-admin-money';
 import { date, dateNumeric, dateTime, money, plural } from '@/lib/format';
 import { NUMBER_RE, adminActor, bookingPath, casePath } from '../../_money/server';
-import { Dialog, DialogClose, NoteField, PrintLink, Submit } from '../../_money/ui';
+import { Dialog, DialogClose, NoteField, PrintLink, RefundSplit, Submit } from '../../_money/ui';
 import { addNoteAction, cancelAction, declineCancelAction, extendAction, openDisputeAction } from './actions';
 
 type P = Promise<{ nomer: string }>;
@@ -203,13 +203,11 @@ export default async function AdminBooking({ params }: { params: P }) {
                     <div>
                       <div className="split"><span>Платено</span><b>{money(q.paidCents)}</b></div>
                       {partnerReq ? (
-                        <div className="split"><span>Връща се</span><b>{money(q.refundCents)}</b></div>
-                      ) : (
-                        <label className="split am-refund"><span>Връща се</span>
-                          <span className="rate-f"><input className="rate-in am-refund-in" name="refund" inputMode="decimal" defaultValue={(q.refundCents / 100).toFixed(2).replace('.', ',')} aria-label="Връща се" /><span className="rate-u">€</span></span>
-                        </label>
-                      )}
-                      <div className="split is-fee"><span>Задържа се</span><b>{money(q.retainedCents)}</b></div>
+                        <>
+                          <div className="split"><span>Връща се</span><b>{money(q.refundCents)}</b></div>
+                          <div className="split is-fee"><span>Задържа се</span><b>{money(q.retainedCents)}</b></div>
+                        </>
+                      ) : <RefundSplit paidCents={q.paidCents} refundCents={q.refundCents} />}
                     </div>
                     {!partnerReq && (
                       <label className="fld">

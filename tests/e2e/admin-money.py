@@ -157,6 +157,70 @@ def main():
         assert r.status == 404, r.status
         step('every route loads for the admin; unknown numbers are 404')
 
+        # ── review: the case pages read like the prototype's CASES (run first: case 0614's position deadline is 12:10) ──
+        page.goto(base + '/admin/sporove')
+        expect(page.locator('.page-sub')).to_contain_text('4 отворени · 2 380 € задържани')
+        amounts = page.locator('.case.is-urgent .case-amt, .case.is-open .case-amt').all_inner_texts()
+        assert sum(int(re.sub(r'\D', '', a)) for a in amounts) == 2380, amounts
+        expect(page.locator('.case:has-text("2025-0517-РД") .case-s')).to_contain_text('частично възстановяване 30%')
+        step('review: the queue head sums the open cases\' held money (= the rows and the bell)')
+        page.goto(case_url(base, '2026-0630-АБ'))
+        client = page.locator('.cs-party').first
+        expect(client.locator('.cs-av')).to_have_text('СУ')
+        expect(client.locator('.cs-party-r')).to_have_text('Бизнес клиент · office@sou-botev.bg')
+        expect(client.locator('.cs-wait')).to_contain_text('Писахме на office@sou-botev.bg на 30 август в 16:30 — срок до 1 септември, 16:30.')
+        expect(page.locator('.cs-warn')).to_have_count(0)
+        expect(page.locator('.tl-title')).to_have_text(['Студио Мелодия отвори сигнал', 'Писахме на СУ „Христо Ботев“', 'Чакаме отговор от СУ „Христо Ботев“'])
+        step('review: case 0630 — the silent client\'s address, ‹Писахме на…›, no waiting warning or ‹Вашето решение›')
+        page.goto(case_url(base, '2026-0621-ТЛ'))
+        expect(page.locator('.tl-title')).to_have_text(['Вкусна История одобри заявката', 'Вкусна История подаде нова цена на гост', 'Офертата за плащане стана 3 600 €',
+                                                         'Технолинк ЕООД отвори сигнал', 'Поискахме позиция от Вкусна История', 'Чакаме отговор от Вкусна История'])
+        expect(page.locator('.tl-time').nth(0)).to_have_text('30 август, 18:20 · 3 200 €')
+        expect(page.locator('.tl-time').nth(1)).to_have_text('31 август, 04:40 · 28 € → 32 € · чака модерация')
+        expect(page.locator('.cs-party.is-vendor .cs-wait b')).to_have_text('Още не е отговорила.')
+        expect(page.locator('.cs-money-l')).to_have_text('задържани · Технолинк ЕООД още не е платил')
+        step('review: case 0621 — the booking\'s price history, feminine ‹отговорила›')
+        page.goto(case_url(base, '2026-0614-ФК'))
+        expect(page.locator('.cs-warn')).to_contain_text('Snap360 още не е отговорил.')
+        expect(page.locator('.tl-title').last).to_have_text('Вашето решение')
+        page.goto(case_url(base, '2026-0607-СВ'))
+        expect(page.locator('.tl-time:has-text("прилага")')).to_have_text('29 август, 14:05 · прилага 2 снимки')
+        motive = page.locator('textarea[name="motive"]')
+        assert motive.evaluate('e => getComputedStyle(e).fontSize') == '13.5px'
+        assert motive.evaluate("e => getComputedStyle(e, '::placeholder').color") == page.evaluate("() => { const d = document.createElement('div'); d.style.color = 'var(--neutral-400)'; document.body.append(d); const c = getComputedStyle(d).color; d.remove(); return c; }")
+        page.goto(case_url(base, '2025-0517-РД'))
+        expect(page.locator('.tl-title')).to_have_text(['Стефка Илиева отвори сигнал', 'Вкусна История отговори', 'Решение: частично възстановяване 30%', '384 € върнати на клиента'])
+        step('review: case 0614 waits for the partner; 0607 ‹прилага 2 снимки›, fields 13.5px with a light hint; 0517 without the position request')
+
+        # ── review: layout at every width — nothing scrolls sideways, nothing cut off or squeezed ──
+        lay = b.new_context(locale='bg-BG', timezone_id='Europe/Sofia'); sign_in(lay, base, ADMIN); lp = lay.new_page()
+        lay_routes = ['/admin/rezervacii?mesec=2026-06', '/admin/rezervacii/' + quote('2026-0614-ЕА'), '/admin/sporove', '/admin/sporove/' + quote('2026-0607-СВ'),
+                      '/admin/sporove/' + quote('2026-0621-ТЛ'), '/admin/plashtaniya', '/admin/plashtaniya/partidi/' + one("select id from payout_batch where batch_date = '2025-05-01'")['id'],
+                      '/admin/imeyli/team-batch-report', '/admin/imeyli?izgled=izprateni']
+        CHECK = """(w) => {
+          const bad = [];
+          if (document.documentElement.scrollWidth > w) bad.push('page scrolls sideways ' + document.documentElement.scrollWidth);
+          document.querySelectorAll('.am .am-tbl-wrap, .am .tab-bar').forEach(el => { if (el.scrollWidth > el.clientWidth + 1) bad.push('cut off: ' + el.className); });
+          document.querySelectorAll('.am .em-t, .am .em-s, .am .em-when span').forEach(el => { if (el.scrollWidth > el.clientWidth + 1) bad.push('truncated: ' + el.textContent.slice(0, 40)); });
+          const oneLine = el => { const r = document.createRange(); r.selectNodeContents(el); const t = [...r.getClientRects()].filter(x => x.width > 1); return t.every(x => Math.abs(x.top - t[0].top) < 4); };
+          document.querySelectorAll('.am .cs-party-n, .am .bkg-line-l, .am .kv-label, .am .btn, .am .tab-bar-item, .am .badge').forEach(el => { if (el.offsetWidth && !oneLine(el)) bad.push('wraps: ' + el.textContent.trim().slice(0, 40)); });
+          const grid = document.querySelector('.am .adm-grid'); const side = grid && grid.querySelector(':scope > aside');
+          if (grid && side && side.offsetWidth && grid.firstElementChild !== side) {
+            const main = grid.firstElementChild.getBoundingClientRect(), a = side.getBoundingClientRect();
+            if (a.left > main.left && main.width < (grid.classList.contains('adm-grid--mail') ? 400 : 560)) bad.push('main column squeezed to ' + Math.round(main.width));
+          }
+          if (w <= 640) document.querySelectorAll('.am .btn, .am .crumb, .am button[role=switch], .am .filter-btn').forEach(el => { if (el.offsetWidth && el.getBoundingClientRect().height < 36) bad.push('small tap target: ' + el.textContent.trim().slice(0, 30)); });
+          return bad;
+        }"""
+        for w in (1440, 1366, 1280, 1024, 768, 390):
+            lp.set_viewport_size({'width': w, 'height': 900})
+            for rt in lay_routes:
+                lp.goto(base + rt); lp.wait_for_load_state('networkidle')
+                bad = lp.evaluate(CHECK, w)
+                assert not bad, (w, rt, bad[:6])
+        lay.close()
+        step('review: 1440 / 1366 / 1280 / 1024 / 768 / 390 — no sideways scroll, tables and tabs inside their cards, no squeezed columns, 36px phone targets')
+
         # ── Резервации: the register ────────────────────────────────────
         page.goto(base + '/admin/rezervacii')
         expect(page.locator('.topbar-title')).to_have_text('Резервации')
@@ -177,6 +241,15 @@ def main():
         page.click('.ui-menu a:has-text("Всички категории")')
         page.wait_for_url(lambda u: 'kategoriya' not in u)
         step('the category dropdown filters the register through the URL')
+        page.click('.filter-btn:has-text("Юни 2026")')
+        expect(page.locator('.ui-menu')).to_be_visible()
+        page.keyboard.press('Escape')
+        expect(page.locator('.ui-menu')).to_have_count(0)
+        page.click('.filter-btn:has-text("Категория")')
+        expect(page.locator('.ui-menu')).to_be_visible()
+        page.click('h1.page-title')
+        expect(page.locator('.ui-menu')).to_have_count(0)
+        step('review: the dropdowns close on Escape and on a click outside')
         page.click('.tab-bar a:has-text("Чакат плащане")')
         page.wait_for_url(re.compile(r'tab=chakat-plashtane'))
         expect(page.locator('.am-reg tbody tr')).to_have_count(1)
@@ -249,7 +322,27 @@ def main():
         page.goto(booking_url(base, '2026-0719-ГП'))
         page.click('button:has-text("Анулирай резервацията")')
         dlg = page.locator('dialog[open]')
+        dlg.locator('.am-dialog-x').click()
+        expect(page.locator('dialog[open]')).to_have_count(0)
+        page.click('button:has-text("Анулирай резервацията")')
+        page.mouse.click(8, 8)   # the backdrop
+        expect(page.locator('dialog[open]')).to_have_count(0)
+        page.click('button:has-text("Анулирай резервацията")')
         expect(dlg.locator('.split').first).to_contain_text('1 450,00 €')
+        dlg.locator('input[name="refund"]').fill('1000')
+        expect(dlg.locator('.split.is-fee')).to_contain_text('450,00 €')
+        dlg.locator('input[name="refund"]').fill('2000')
+        expect(dlg.locator('.split.is-fee b')).to_have_text('—')
+        dlg.locator('textarea[name="reason"]').fill('Проверка на сумата.')
+        dlg.locator('button[type="submit"]').click()
+        expect(dlg.locator('input[name="refund"]:invalid')).to_have_count(1)
+        dlg.evaluate('d => d.querySelector("form").noValidate = true')   # the server checks it too
+        dlg.locator('button[type="submit"]').click()
+        toast(page, 'Проверете сумата за връщане')
+        assert one("select status from booking where number = '2026-0719-ГП'")['status'] == 'confirmed'
+        step('review: the refund preview follows the amount; more than was paid is refused with ‹Проверете сумата за връщане›')
+        page.click('button:has-text("Анулирай резервацията")')
+        dlg = page.locator('dialog[open]')
         dlg.locator('input[name="refund"]').fill('1000')
         dlg.locator('textarea[name="reason"]').fill('Изпълнителят не може да осигури техниката за датата.')
         dlg.locator('button[type="submit"]').click()
@@ -339,7 +432,7 @@ def main():
         toast(page, 'Изплащането следва обичайния график')
         assert one("select holds_payout from dispute where number = '2026-0614-ФК'")['holds_payout'] is False
         assert one("select payout_hold from booking where number = '2026-0614-ФК'")['payout_hold'] is False
-        page.click('button[role="switch"]')
+        page.click('.am-hold-t')   # the words switch it too
         toast(page, 'Изплащането към Snap360 е спряно до решението')
         assert one("select holds_payout from dispute where number = '2026-0614-ФК'")['holds_payout'] is True
         step('the payout-hold switch (D13) turns the hold off and on')
@@ -432,6 +525,13 @@ def main():
         step('pending payout account: ‹Откажи› with a reason, ‹Потвърди›')
 
         expect(page.locator('button.btn--block:has-text("Пусни партидата")')).to_be_disabled()
+        page.click('.dcard-head a.link-more')
+        page.wait_for_url(re.compile(r'/admin/plashtaniya/partidi/'))
+        expect(page.locator('h1.page-title')).to_have_text('Партида август · втора половина')
+        expect(page.locator('a:has-text("Свали отчета")')).to_have_count(0)
+        expect(page.locator('.ui-empty')).to_have_text('Няма записи в този изглед.')
+        page.goto(base + '/admin/plashtaniya')
+        step('review: the next batch opens from its date; an empty batch offers no report')
         # Move the demo clock to Monday 1 September 2025, 10:00 (Sofia): the batch day.
         sql("insert into platform_settings (key, value) values ('clock_offset_ms', to_jsonb((extract(epoch from (timestamptz '2025-09-01 10:00 Europe/Sofia' - now())) * 1000)::bigint))")
         time.sleep(6)

@@ -10,7 +10,7 @@ import { db, type Queryable, type Tx } from '@/db';
 import {
   booking, cancellation, category, city, clientEvent, clientProfile, dispute, disputeAttachment, disputeMessage, disputeOption,
   emailOutbox, eventType, media, partner, partnerCancellationRequest, paymentExtension, payoutAccount, payoutBatch, payoutItem, payoutLine,
-  refund, reportJob, request, serviceRevision, user,
+  refund, reportJob, request, service, serviceRevision, user,
   type BookingStatus, type DisputeDecisionKind, type DisputeStatus, type HoldReason, type ReportKind,
 } from '@/db/schema';
 import { now } from '@/lib/clock';
@@ -70,13 +70,27 @@ const ymOf = (d: DateStr) => d.slice(0, 7);
 const nextYm = (ym: string) => { const [y, m] = ym.split('-').map(Number); return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`; };
 const prevYm = (ym: string) => { const [y, m] = ym.split('-').map(Number); return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`; };
 /** Two or more people (‹Петя и Николай›) take plural verbs: ‹подадоха›, ‹клиентите›. */
-const isPlural = (name: string) => /\sи\s/.test(name);
-/** Avatar letters: ‹Петя и Николай› → ПН, ‹Snap360› → SN, ‹СУ „Христо Ботев“› → СХ. */
+const isPlural = (name: string) => /\sи\s/.test(unquoted(name));
+/** The name without its quoted part: ‹Сладкарница „Мед и мляко“› → ‹Сладкарница›. */
+const unquoted = (name: string) => name.replace(/[„"«][^“"»]*[“"»]/g, ' ').trim();
+/** Avatar letters: ‹Петя и Николай› → ПН, ‹Snap360› → SN, ‹СУ „Христо Ботев“› → СУ (an abbreviation stays whole). */
 function initials(name: string): string {
   const words = name.replace(/[„“"'«»()]/g, ' ').split(/\s+/).filter(w => w && w !== 'и');
   if (words.length === 1) return words[0].replace(/[^\p{L}]/gu, '').slice(0, 2).toUpperCase();
+  if (/^\p{Lu}{2,4}$/u.test(words[0])) return words[0].slice(0, 2);
   return baseInitials(words.join(' '));
 }
+/**
+ * Feminine names take feminine participles (‹Вкусна История още не е отговорила›, ‹Мария Димитрова … е платила›):
+ * both the first and the last word end in -а/-я (‹Вкусна История›, ‹Мария Димитрова›, ‹Стефка Илиева›).
+ * Anything else keeps the masculine form the prototype uses (‹Snap360›, ‹СУ „Христо Ботев“›, ‹Технолинк ЕООД›).
+ */
+const isFeminine = (name: string) => {
+  const w = unquoted(name).split(/\s+/).filter(Boolean);
+  return w.length > 0 && !isPlural(name) && /[ая]$/.test(w[0]) && /[ая]$/.test(w[w.length - 1]) && /^[А-Я]/.test(w[0]);
+};
+/** ‹отговорил› / ‹отговорила› / ‹отговорили› for the name. */
+const pastPart = (name: string, stem: string) => `${stem}${isPlural(name) ? 'ли' : isFeminine(name) ? 'ла' : 'л'}`;
 
 /** ‹14 юни› this year, ‹14 юни 2026› otherwise. */
 function dayText(d: Date | DateStr, today: DateStr): string {
@@ -99,6 +113,12 @@ function onDay(at: Date, today: DateStr): string {
   if (n === 1) return 'вчера';
   return `на ${dayText(at, today)}`;
 }
+/** ‹днес› / ‹на 30 август› (the prototype's position-request lines never say ‹вчера›). */
+function dayOf(at: Date, today: DateStr): string {
+  return daysBetween(sofiaDate(at), today) === 0 ? 'днес' : `на ${dayText(at, today)}`;
+}
+/** A decision in running text: ‹частично възстановяване 30%› (‹Решение: …›, the queue rows). */
+const decisionShort = (title: string | null | undefined) => low(title ?? '').replace(/\s+—\s+/g, ' ');
 
 /** Keep a number with its thousands and with the word or unit after it (‹3 200 €›, ‹4 часа›), as the prototype's pages do. */
 export const tie = (s: string) => s.replace(/(\d) (?=\d{3}(?!\d))/g, '$1\u00a0').replace(/(\d) (?=[€%а-яА-Я])/g, '$1\u00a0');
@@ -121,6 +141,8 @@ export function refusalText(e: unknown): string {
     case 'batch_too_early': return 'Партидите тръгват на 1-во и 15-то число.';
     case 'second_admin_required': return 'Партидата се пуска от втори администратор';
     case 'deadline_passed': return 'Срокът е изтекъл';
+    case 'bad_refund_amount': return 'Проверете сумата за връщане';
+    case 'reason_required': return 'Напишете причината за анулирането';
     default: return 'Действието вече не е възможно';
   }
 }
@@ -354,7 +376,7 @@ export async function bookingRecord(actor: Actor, number: string) {
   }
   if (disp) {
     tl.push({ state: 'done', title: disp.openedBy === 'team' ? 'Екипът отвори спор' : `${disp.openedBy === 'client' ? v.client.name : p.businessName} ${isPlural(disp.openedBy === 'client' ? v.client.name : p.businessName) ? 'отвориха' : 'отвори'} сигнал`, time: `${fmtDate(sofiaDate(disp.openedAt))}, ${time(disp.openedAt)} · ${disp.title}` });
-    if (disp.decidedAt) tl.push({ state: 'done', title: `Решение: ${low(disp.decisionTitle ?? '')}`, time: `${fmtDate(sofiaDate(disp.decidedAt))}, ${time(disp.decidedAt)}` });
+    if (disp.decidedAt) tl.push({ state: 'done', title: `Решение: ${decisionShort(disp.decisionTitle)}`, time: `${fmtDate(sofiaDate(disp.decidedAt))}, ${time(disp.decidedAt)}` });
   }
   if (pcr) tl.push({ state: 'done', title: `${p.businessName} поиска анулиране`, time: `${fmtDate(sofiaDate(pcr.requestedAt))}, ${time(pcr.requestedAt)}` });
   if (canc) tl.push({ state: 'done', title: 'Резервацията е анулирана', time: `${fmtDate(sofiaDate(canc.createdAt))}, ${time(canc.createdAt)} · ${moneyShort(canc.refundCents)} се връщат на клиента` });
@@ -432,7 +454,7 @@ export const DISPUTE_FILTERS: { key: DisputeFilter; label: string }[] = [
 
 async function disputeRows(q: Queryable, where: SQL | undefined) {
   return q.select({
-    d: dispute, b: booking, clientName: user.name, partnerName: partner.businessName,
+    d: dispute, b: booking, clientName: user.name, clientEmail: user.email, partnerName: partner.businessName,
   }).from(dispute)
     .innerJoin(booking, eq(booking.id, dispute.bookingId))
     .innerJoin(user, eq(user.id, booking.clientId))
@@ -462,7 +484,7 @@ export async function disputeQueue(actor: Actor, p: { filter?: string; q?: strin
     const sub = open
       ? `${d.number} · ${r.clientName} · ${OPENER[d.openedBy](isPlural(r.clientName))} · отворен ${ago(d.openedAt, today)}`
       : d.status === 'resolved'
-        ? `${d.number} · ${low(d.decisionTitle ?? '')} · решен на ${fmtDate(sofiaDate(d.decidedAt ?? d.updatedAt))}`
+        ? `${d.number} · ${decisionShort(d.decisionTitle)} · решен на ${fmtDate(sofiaDate(d.decidedAt ?? d.updatedAt))}`
         : `${d.number} · ${r.clientName} · оттеглен на ${fmtDate(sofiaDate(d.withdrawnAt ?? d.updatedAt))}`;
     const amount = open ? moneyShort(d.heldCents) : d.refundCents ? `върнати ${moneyShort(d.refundCents)}` : moneyShort(0);
     return {
@@ -476,7 +498,7 @@ export async function disputeQueue(actor: Actor, p: { filter?: string; q?: strin
   // Head figures (always over every case, not the search).
   const everything = query ? await disputeRows(db, undefined) : all;
   const openAll = everything.filter(r => OPEN.includes(r.d.status));
-  const held = openAll.filter(r => r.d.holdsPayout).reduce((s, r) => s + r.d.heldCents, 0);
+  const held = openAll.reduce((s, r) => s + r.d.heldCents, 0);   // = the rows' amounts and the bell's ‹X € задържани›
   const decided = everything.filter(r => r.d.decidedAt);
   const avgDays = decided.length ? decided.reduce((s, r) => s + (r.d.decidedAt!.getTime() - r.d.openedAt.getTime()), 0) / decided.length / 86_400_000 : null;
 
@@ -575,24 +597,48 @@ export async function disputeCase(actor: Actor, number: string) {
       };
     });
     let wait: [string, string] | null = null;
+    const asked = d.openedBy !== 'team' && d.positionFrom === side;
     if (!statements.length) {
-      wait = [isPlural(name) ? 'Още не са отговорили.' : 'Още не е отговорил.',
-        d.openedBy !== 'team' && d.positionFrom === side ? `Поискахме позиция ${onDay(d.positionRequestedAt, today)} в ${time(d.positionRequestedAt)} — ${dueText(d.positionDueAt)}.` : ''];
+      const when = `${dayOf(d.positionRequestedAt, today)} в ${time(d.positionRequestedAt)} — ${dueText(d.positionDueAt)}.`;
+      wait = [`Още не ${isPlural(name) ? 'са' : 'е'} ${pastPart(name, 'отговори')}.`,
+        !asked ? '' : side === 'client' && r.clientEmail ? `Писахме на ${r.clientEmail} ${when}` : `Поискахме позиция ${when}`];
     }
+    const role = side === 'client' ? (cp?.type === 'business' ? 'Бизнес клиент' : `${clientPl ? 'Клиенти' : 'Клиент'} · частно лице`) : ['Изпълнител', cat?.name].filter(Boolean).join(' · ');
     return {
       initials: initials(name), name, vendor: side === 'partner', filer: d.openedBy === side, plural: side === 'client' ? clientPl : false,
-      role: side === 'client' ? (cp?.type === 'business' ? 'Бизнес клиент' : `${clientPl ? 'Клиенти' : 'Клиент'} · частно лице`) : ['Изпълнител', cat?.name].filter(Boolean).join(' · '),
+      // The team writes to a client who has not answered: their address sits under the name (prototype case 0630).
+      role: side === 'client' && wait && asked && open && r.clientEmail ? `${role} · ${r.clientEmail}` : role,
       statements, wait,
     };
   };
 
+  const [req] = await db.select({ amount: request.amountCents }).from(request).where(eq(request.id, b.requestId));
+  // A price change of the booked service still waiting in Модерация (‹Виж редакцията →›).
+  const [rev] = b.serviceId && b.status === 'awaiting_payment'
+    ? await db.select({ id: serviceRevision.id, payload: serviceRevision.payload, submittedAt: serviceRevision.submittedAt, unit: service.priceUnit })
+      .from(serviceRevision).innerJoin(service, eq(service.id, serviceRevision.serviceId))
+      .where(and(eq(serviceRevision.serviceId, b.serviceId), eq(serviceRevision.status, 'pending'))).limit(1)
+    : [];
+
   // ‹Хронология›
   const tl: TimelineItem[] = [];
+  // The price moved after the partner approved: how the booking got here comes first.
+  const total = b.amountCents + b.bookingFeeCents;
+  if (b.status === 'awaiting_payment' && req?.amount && req.amount !== b.amountCents) {
+    tl.push({ state: 'done', title: `${partnerName} одобри заявката`, time: `${stamp(b.approvedAt, today)} · ${moneyShort(req.amount)}` });
+    const price = rev && Array.isArray((rev.payload as Record<string, unknown>).priceCents) ? (rev.payload as { priceCents: [number, number] }).priceCents : null;
+    if (rev && price) {
+      tl.push({ state: 'done', title: `${partnerName} подаде нова цена${rev.unit === 'per_guest' ? ' на гост' : ''}`, time: `${stamp(rev.submittedAt, today)} · ${moneyShort(price[0])} → ${moneyShort(price[1])} · чака модерация` });
+      if (b.updatedAt > rev.submittedAt && b.updatedAt < d.openedAt) tl.push({ state: 'done', title: `Офертата за плащане стана ${moneyShort(total)}`, time: stamp(b.updatedAt, today) });
+    }
+  }
   const opener = d.openedBy === 'team' ? null : sideName(d.openedBy);
   tl.push({ state: 'done', title: opener ? `${opener} ${isPlural(opener) ? 'отвориха' : 'отвори'} сигнал` : 'Екипът отвори спор', time: stamp(d.openedAt, today) });
-  if (d.openedBy !== 'team') {
+  if (d.openedBy !== 'team' && open) {
     const hrs = Math.round((d.positionDueAt.getTime() - d.positionRequestedAt.getTime()) / 3_600_000);
-    tl.push({ state: 'done', title: `Поискахме позиция от ${sideName(d.positionFrom)}`, time: `${stamp(d.positionRequestedAt, today)} · срок ${plural(hrs, 'час', 'часа')}` });
+    tl.push(d.positionFrom === 'client' && r.clientEmail
+      ? { state: 'done', title: `Писахме на ${r.clientName}`, time: `${stamp(d.positionRequestedAt, today)} · ${r.clientEmail}` }
+      : { state: 'done', title: `Поискахме позиция от ${sideName(d.positionFrom)}`, time: `${stamp(d.positionRequestedAt, today)} · срок ${plural(hrs, 'час', 'часа')}` });
   }
   const exts = await db.select().from(paymentExtension).where(eq(paymentExtension.disputeId, d.id));
   const events: { at: Date; item: TimelineItem }[] = [];
@@ -600,7 +646,8 @@ export async function disputeCase(actor: Actor, number: string) {
     if (m.kind === 'statement' && m.createdAt.getTime() === d.openedAt.getTime() && m.party === d.openedBy) continue;
     const who = sideName(m.party);
     const files = atts.filter(a => a.messageId === m.id).length;
-    if (m.kind === 'statement') events.push({ at: m.createdAt, item: { state: 'done', title: `${who} ${isPlural(who) ? 'отговориха' : 'отговори'}`, time: `${stamp(m.createdAt, today)}${files ? ` · прилага ${plural(files, 'файл', 'файла')}` : ''}` } });
+    const pics = atts.filter(a => a.messageId === m.id && a.mime.startsWith('image/') && !a.label).length;
+    if (m.kind === 'statement') events.push({ at: m.createdAt, item: { state: 'done', title: `${who} ${isPlural(who) ? 'отговориха' : 'отговори'}`, time: `${stamp(m.createdAt, today)}${files ? ` · прилага ${pics === files ? plural(files, 'снимка', 'снимки') : plural(files, 'файл', 'файла')}` : ''}` } });
     else if (m.kind === 'question') events.push({ at: m.createdAt, item: { state: 'done', title: 'Поискахме още информация', time: `${stamp(m.createdAt, today)} · ${m.recipients === 'client' ? r.clientName : m.recipients === 'partner' ? partnerName : 'до двете страни'}` } });
     else if (m.kind === 'reminder') events.push({ at: m.createdAt, item: { state: 'done', title: `Писахме на ${m.recipients === 'client' ? r.clientName : partnerName}`, time: stamp(m.createdAt, today) } });
   }
@@ -609,7 +656,7 @@ export async function disputeCase(actor: Actor, number: string) {
   const waitingFor = open && d.status === 'collecting' && !answered(d.positionFrom === 'team' ? 'partner' : d.positionFrom) && d.openedBy !== 'team' ? d.positionFrom : null;
   if (d.status === 'resolved' && d.decidedAt) {
     const [admin] = d.decidedBy ? await db.select({ name: user.name }).from(user).where(eq(user.id, d.decidedBy)) : [];
-    tl.push({ state: 'done', title: `Решение: ${low(d.decisionTitle ?? '')}`, time: [stamp(d.decidedAt, today), admin?.name].filter(Boolean).join(' · ') });
+    tl.push({ state: 'done', title: `Решение: ${decisionShort(d.decisionTitle)}`, time: [stamp(d.decidedAt, today), admin?.name].filter(Boolean).join(' · ') });
     const refunds = await db.select().from(refund).where(and(eq(refund.disputeId, d.id), eq(refund.status, 'succeeded')));
     for (const x of refunds) if (x.succeededAt) tl.push({ state: 'done', title: `${moneyShort(x.amountCents)} върнати на ${clientPl ? 'клиентите' : 'клиента'}`, time: dayText(x.succeededAt, today) });
   } else if (d.status === 'withdrawn') {
@@ -618,14 +665,12 @@ export async function disputeCase(actor: Actor, number: string) {
     const w = sideName(waitingFor);
     const due = d.positionDueAt;
     tl.push({ state: 'current', title: `Чакаме отговор от ${w}`, time: due <= at ? `Срокът изтече на ${dayText(due, today)}, ${time(due)}` : sofiaDate(due) === today ? `Срокът изтича днес в ${time(due)}` : `Срок до ${dayText(due, today)}, ${time(due)}` });
-    tl.push({ state: '', title: 'Вашето решение', time: 'След отговора или след срока' });
   } else {
     tl.push({ state: 'current', title: 'Чака вашето решение', time: d.holdsPayout && paid > 0 ? 'Средствата остават задържани' : '' });
   }
 
   // ‹Пари по случая›
   let moneyCard: { value: string; label: string; note: string };
-  const [req] = await db.select({ amount: request.amountCents }).from(request).where(eq(request.id, b.requestId));
   if (d.status === 'resolved') {
     moneyCard = {
       value: moneyShort(d.refundCents ?? 0), label: `върнати на ${clientPl ? 'клиентите' : 'клиента'}`,
@@ -633,7 +678,7 @@ export async function disputeCase(actor: Actor, number: string) {
     };
   } else if (paid === 0) {
     const approved = req?.amount && req.amount !== b.amountCents ? ` вместо одобрените ${moneyShort(req.amount)}` : '';
-    moneyCard = { value: moneyShort(0), label: `задържани · ${r.clientName} още не ${clientPl ? 'са платили' : 'е платил'}`, note: `За плащане: ${moneyShort(b.amountCents + b.bookingFeeCents)}${approved}.` };
+    moneyCard = { value: moneyShort(0), label: `задържани · ${r.clientName} още не ${clientPl ? 'са' : 'е'} ${pastPart(r.clientName, 'плати')}`, note: `За плащане: ${moneyShort(b.amountCents + b.bookingFeeCents)}${approved}.` };
   } else if (d.holdsPayout && open) {
     moneyCard = { value: moneyShort(paid), label: 'платени и задържани от платформата', note: `Изплащането към ${partnerName} е спряно до решението.` };
   } else {
@@ -653,15 +698,12 @@ export async function disputeCase(actor: Actor, number: string) {
   let warn: { text: string; extend: boolean } | null = null;
   if (open && b.status === 'awaiting_payment' && b.paymentDueAt > at) {
     warn = { text: `Срокът за плащане изтича след ${remaining(at, b.paymentDueAt)}. Удължете го, за да не ${clientPl ? 'изгубят' : 'изгуби'} ${r.clientName} датата, докато решите.`, extend: canExtend };
-  } else if (waitingFor && d.positionDueAt > at) {
+  } else if (waitingFor === 'partner' && d.positionDueAt > at) {
+    // Waiting for the partner's position: the decision usually waits for it (prototype cases 0614; not 0630, where the client is silent).
     const w = sideName(waitingFor);
-    warn = { text: `${w} още не ${isPlural(w) ? 'са отговорили' : 'е отговорил'}. Може да решите и сега, но обикновено изчакваме срока.`, extend: false };
+    warn = { text: `${w} още не ${isPlural(w) ? 'са' : 'е'} ${pastPart(w, 'отговори')}. Може да решите и сега, но обикновено изчакваме срока.`, extend: false };
+    tl.push({ state: '', title: 'Вашето решение', time: 'След отговора или след срока' });
   }
-
-  // ‹Виж редакцията →›: a price change of the booked service still waiting in Модерация.
-  const [rev] = b.serviceId && b.status === 'awaiting_payment'
-    ? await db.select({ id: serviceRevision.id }).from(serviceRevision).where(and(eq(serviceRevision.serviceId, b.serviceId), eq(serviceRevision.status, 'pending'))).limit(1)
-    : [];
 
   const evLower = (et?.name ?? '').toLowerCase();
   const sub = d.status === 'resolved' && d.decidedAt
