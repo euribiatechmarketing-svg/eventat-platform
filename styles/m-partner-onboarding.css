@@ -1,0 +1,218 @@
+/* =====================================================================
+   Partner sign-up wizard (app/(wizard)/partner/registratsiya) — the
+   production layer on wizard.css: the frame flows in the window (sticky
+   top bar and footer, a gutter below 1320px), runtime UI the prototype
+   script added, the per-page <style> blocks, and the small screens
+   (DESIGN-PORT §6).
+   ===================================================================== */
+
+/* ---------- fluid frame ---------- */
+.wiz-top { position: sticky; top: 0; z-index: 30; }
+.wiz-body { flex: 1 0 auto; min-height: 0; padding: 40px max(24px, calc((100% - var(--wiz-w)) / 2)) 56px; }
+.wiz-stepper { top: calc(var(--wiz-top-h) + 40px); }
+.wiz-footer { position: sticky; bottom: 0; z-index: 20; padding: 0 max(24px, calc((100% - var(--wiz-w)) / 2)); }
+.pending-hero { flex: 1 0 auto; min-height: 0; }
+
+/* top bar controls are buttons (they submit the step form) drawn as the prototype's links */
+button.wiz-logo { padding: 0; border: 0; background: none; cursor: pointer; }
+button.wiz-top-link { padding-block: 0; padding-right: 0; border-block: 0; border-right: 0; border-left-width: 0; background: none; font-family: inherit; cursor: pointer; }
+.wiz-top-right > * + button.wiz-top-link { padding-left: 20px; border-left: 1px solid var(--app-line); }
+.wiz-top-right > :first-child + button.wiz-top-link { border-left-width: 1px; }
+.lang .ui-click:hover { color: var(--primary-700); }
+
+/* steps rail: a finished or next step is a button over the whole row — the row's
+   12px top and bottom band included, so nothing with the pointer cursor is dead */
+.wiz-step.ui-click:hover .wiz-step-label { color: var(--primary-700); }
+.wiz-step:has(> .m-step-btn) { padding: 0; }
+.m-step-btn {
+  grid-column: 1 / -1;
+  display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 14px;
+  width: 100%; padding: 12px 0; border: 0; background: none;
+  font: inherit; color: inherit; text-align: left; cursor: pointer;
+}
+.m-step-btn:focus-visible { outline-offset: 4px; border-radius: 6px; }
+
+/* ---------- form states ---------- */
+.m-form-alert { align-items: center; }
+#frame .m-form-alert .alert-title { margin: 0; }
+.field-input[aria-invalid='true'] { border-color: var(--danger-500); }
+.option-card input[type='radio'], .option-card input[type='checkbox'] { position: absolute; opacity: 0; pointer-events: none; }
+.option-card:has(input:focus-visible) { box-shadow: var(--shadow-focus); }
+.m-section-error { margin: -6px 0 0; font-size: var(--fs-caption); color: var(--danger-600); }
+
+/* ---------- step 2: uploads, gallery, chips ---------- */
+.upload--cover .upload-preview, .upload--circle .m-avatar-pick { cursor: pointer; }
+.upload--cover .upload-preview:hover { box-shadow: inset 0 0 0 2px var(--primary-300); }
+.upload--circle .m-avatar-pick { flex-shrink: 0; padding: 0; border: 0; background: none; border-radius: 50%; }
+.upload--circle .m-avatar-pick:hover .avatar, .upload--circle .m-avatar-pick:hover .upload-preview { box-shadow: 0 0 0 2px var(--primary-300); }
+.upload--circle .m-avatar-pick:focus-visible { outline: 2px solid var(--primary-500); outline-offset: 3px; }
+.m-upload-avatar { position: relative; flex-shrink: 0; }
+.upload-preview--placeholder svg { width: 22px; height: 22px; color: var(--neutral-400); }
+.gallery-add[disabled] { opacity: .5; cursor: default; }
+.m-busy { opacity: .55; pointer-events: none; }
+.chip--add[hidden] { display: none; }
+.m-chip-input {
+  width: 180px; height: 35px; padding: 0 14px;
+  border: 1px solid var(--primary-400); border-radius: var(--radius-pill);
+  font: 500 13px/1 var(--font-ui); color: var(--neutral-800); outline: none;
+}
+.m-chip-input:focus { box-shadow: var(--shadow-focus); }
+.m-counter { font-variant-numeric: lining-nums tabular-nums; }
+
+/* ---------- step 3: package editor ---------- */
+.m-pkg-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.m-pkg-title .wiz-fieldset-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.m-pkg-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.m-pkg > .wiz-fieldset-head { flex-wrap: nowrap; }
+.m-pkg-checks .check strong { white-space: nowrap; }
+.m-pkg-actions .btn svg { transition: transform var(--duration-fast); }
+.m-pkg-collapsed .m-pkg-actions [aria-label='Разгъни'] svg { transform: rotate(180deg); }
+.card.m-pkg { padding: 22px 24px; }
+.card.m-pkg + .card.m-pkg, .card.m-pkg + .service-row, .service-row + .card.m-pkg { margin-top: 10px; }
+.m-pkg-body > * + * { margin-top: var(--space-5); }
+.m-pkg-body > .m-pkg-checks { margin-top: var(--space-4); }
+.m-inline-amount {
+  width: 64px; height: 26px; margin: 0 2px; padding: 0 6px;
+  border: 1px solid var(--border-default); border-radius: 6px; background: #fff;
+  font: 600 13.5px/1 var(--font-ui); color: var(--primary-900); text-align: right;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.check input.m-inline-amount { position: static; opacity: 1; pointer-events: auto; }
+.m-inline-amount:focus { outline: none; border-color: var(--primary-500); box-shadow: var(--shadow-focus); }
+.service-row-thumb:not([style]) { background-color: var(--app-bg); }
+.service-row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.service-row-meta { flex-wrap: nowrap; white-space: nowrap; min-width: 0; }
+.service-row-meta > * { flex-shrink: 0; }
+.service-row-meta > .m-meta-text { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.m-add-btn { align-self: flex-start; }
+
+/* ---------- step 4: calendar ---------- */
+button.calendar-day { width: 100%; padding: 0; border-top: 0; border-left: 0; font-family: inherit; }
+.calendar-day--off, .calendar-day.m-past { cursor: default; }
+.calendar-day.m-past { color: var(--neutral-300); }
+.calendar-grid > .calendar-day.m-past:not(.calendar-day--off):not(.calendar-day--booked):hover { background: #fff; }
+.calendar-day.m-pending { opacity: .6; }
+.calendar-head a.btn, .calendar-head button.btn { flex-shrink: 0; }
+.m-limit { margin-top: 14px; }
+
+/* ---------- step 5: policy (onboarding/policy.html) ---------- */
+.ob-policy-list { display: flex; flex-direction: column; gap: 12px; }
+
+/* ---------- step 6: review (onboarding/review.html) ---------- */
+.ob-link { color: var(--primary-700); font-weight: var(--fw-semibold); }
+.ob-cover { background-position: 50% 25%; }
+.ob-pretty { text-wrap: pretty; }
+.ob-balance { text-wrap: balance; }
+.preview-card-head .avatar { flex-shrink: 0; }
+.preview-card-head .avatar:not(:has(img)) { background: var(--primary-100); }
+.review-grid dd { overflow-wrap: anywhere; }
+.m-check-error .check-box { border-color: var(--danger-500) !important; }
+
+/* ---------- pending (onboarding/pending.html) ---------- */
+.pending-title { text-wrap: balance; }
+/* a business name or an email moves to the next line whole instead of splitting */
+.pending-text strong { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
+.pending-icon--danger { background: var(--danger-50); color: var(--danger-600); }
+.m-reason { margin: 24px 0 0; padding: 16px 20px; text-align: left; background: var(--app-bg); border-radius: 12px; font-size: 14px; line-height: 1.6; color: var(--primary-900); }
+.m-reason b { display: block; margin-bottom: 4px; font-size: 12px; font-weight: var(--fw-semibold); color: var(--neutral-600); }
+
+/* gallery remove stays reachable without hover */
+@media (hover: none) { .gallery-item .gallery-action { opacity: 1; } }
+.gallery-action:focus-visible { opacity: 1; }
+
+/* =====================================================================
+   Smaller screens
+   ===================================================================== */
+@media (max-width: 1280px) {
+  .wiz-body { grid-template-columns: 260px minmax(0, 1fr); column-gap: 40px; padding: 32px max(24px, calc((100% - var(--wiz-w)) / 2)) 48px; }
+  .wiz-top { padding: 0 32px; }
+}
+
+@media (max-width: 960px) {
+  .wiz-top { padding: 0 20px; gap: 16px; height: 64px; }
+  .wiz-logo img { height: 34px; }
+  .wiz-top-right { gap: 14px; }
+  .wiz-save-status { display: none; }
+  .wiz-body { grid-template-columns: minmax(0, 1fr); row-gap: 24px; padding: 24px 24px 40px; }
+  .wiz-stepper { position: static; }
+  .wiz-stepper-sub { display: none; }
+  .wiz-stepper-title { font-size: 24px; }
+  .wiz-steps { flex-direction: row; gap: 8px; overflow-x: auto; scrollbar-width: none; margin-top: 14px; }
+  .wiz-steps::-webkit-scrollbar { display: none; }
+  .wiz-step { padding: 0; }
+  .wiz-step::after, .wiz-step:not(:last-child)::after { display: none; }
+  .wiz-step-meta { display: none; }
+  .wiz-step:not(.wiz-step--current) .wiz-step-label { display: none; }
+  .wiz-step, .m-step-btn { grid-template-columns: 28px auto; }
+  .m-step-btn { padding: 0; }
+  .wiz-row--3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gallery-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .wiz-footer { padding: 0 24px; }
+  .wiz-step-title { font-size: 32px; }
+}
+
+@media (max-width: 640px) {
+  .wiz-top { padding: 0 16px; gap: 10px; }
+  .wiz-logo img { height: 30px; }
+  .wiz-top-btn { display: none; }
+  .wiz-top-right > * + button.wiz-top-link { padding-left: 12px; }
+  .wiz-steps { gap: 10px; margin-top: 12px; }
+  .wiz-step--current .wiz-step-label { display: none; }
+  .wiz-step, .m-step-btn { grid-template-columns: 28px; }
+  .wiz-stepper-title { font-size: 22px; }
+  .wiz-body { padding: 20px 16px 32px; }
+  .wiz-row, .wiz-row--3, .policy-timeline, .review-grid { grid-template-columns: minmax(0, 1fr); }
+  .review-grid { gap: 2px 0; }
+  .review-grid dd { margin-bottom: 10px; }
+  .policy-tl-cell { border-right: none; border-bottom: 1px solid var(--app-line); }
+  .policy-tl-cell:last-child { border-bottom: none; }
+  #frame .field-label { white-space: normal; }
+  .wiz-fieldset, .review-section { padding: 20px 18px 22px; }
+  .wiz-fieldset-head { flex-wrap: wrap; }
+  .wiz-step-title { font-size: 30px; }
+  .wiz-step-intro { font-size: 14.5px; }
+  .gallery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .upload { flex-wrap: wrap; }
+  .service-row { grid-template-columns: 48px minmax(0, 1fr); padding: 12px; }
+  .service-row-thumb { width: 48px; height: 48px; }
+  .service-row-actions, .service-row > .badge { grid-column: 1 / -1; justify-self: start; }
+  .card.m-pkg { padding: 18px 16px; }
+  .m-pkg-title { flex-wrap: wrap; row-gap: 6px; }
+  .wiz-footer { height: auto; padding: 10px 16px 12px; }
+  .wiz-footer-inner { flex-wrap: wrap; row-gap: 10px; }
+  .wiz-progress { flex: 1 1 100%; gap: 10px; font-size: 12px; }
+  .wiz-progress-bar { flex: 1; width: auto; }
+  .wiz-footer-actions { flex: 1 1 100%; margin-left: 0; min-width: 0; gap: 8px; }
+  .wiz-footer-actions .btn { padding: 13px 14px; font-size: 14px; }
+  .wiz-footer-actions .btn--primary { min-width: 0; flex: 1; }
+  .calendar-day { height: 40px; }
+  .calendar-head { padding: 8px 10px; }
+  .preview-card-body { padding: 14px 18px 18px; }
+  .preview-card-meta { gap: 8px 18px; }
+  .pending-hero { padding: 24px 16px; }
+  .pending-card { padding: 32px 20px; }
+  .pending-title { font-size: 28px; }
+  .pending-actions { flex-direction: column; }
+  .pending-actions .btn { width: 100%; justify-content: center; }
+  .option-card { padding: 16px; }
+  .option-card-title { white-space: normal; }
+  .m-chip-input { width: 150px; }
+
+  /* working days: one row of seven equal pills */
+  .dow-row { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+  .dow-pill { padding: 10px 0; text-align: center; }
+  .service-row-meta { font-size: 12.5px; gap: 6px; }
+
+  /* tap targets: small controls keep their drawn size and get a ≥ 44px hit area */
+  .wiz-steps { padding: 8px 4px; margin: 4px -4px -8px; }
+  .m-step-btn, .wiz-top-link, .lang .ui-click, .btn--sm, .calendar-head .btn, .review-section-head a { position: relative; }
+  .m-step-btn::before, .wiz-top-link::before, .lang .ui-click::before, .btn--sm::before,
+  .calendar-head .btn::before, .gallery-action::before, .review-section-head a::before { content: ''; position: absolute; }
+  .m-step-btn::before { inset: -8px -4px; }
+  .wiz-top-link::before { inset: -7px -6px; }
+  .lang .ui-click::before { inset: -9px -4px; }
+  .btn--sm::before { inset: -8px -3px; }
+  .calendar-head .btn::before { inset: -8px; }
+  .gallery-action::before { inset: -9px; }
+  .review-section-head a::before { inset: -12px -8px; }
+}
