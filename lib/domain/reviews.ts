@@ -9,7 +9,7 @@ import { cancelJobs } from '@/lib/jobs';
 import { type AnyActor } from './actor';
 import { audit } from './audit';
 import { DomainError, ForbiddenError, NotFoundError, assertClient, mail, maskContacts, partnerOf, partnerRecipient, withTx } from './catalogue-kit';
-import { ownMedia } from './media';
+import { ownMedia, publishReviewPhotos } from './media';
 import { refreshPartner } from './partners';
 import { ratingText } from './search';
 import { getSetting } from './settings';
@@ -74,6 +74,7 @@ export async function publish(actor: AnyActor, a: {
       ratingQuality: a.ratingQuality, ratingValue: a.ratingValue, body: maskContacts(body), bodyOriginal: body, tags, publishedAt: at,
     }).returning();
     if (photos.length) await t.insert(reviewPhoto).values(photos.map((mediaId, position) => ({ reviewId: r.id, mediaId, position })));
+    await publishReviewPhotos(t, photos); // uploaded private; public from now on, with the review
     await t.update(booking).set({ reviewState: 'reviewed', updatedAt: at }).where(eq(booking.id, b.id));
     await cancelJobs(`booking:${b.id}:reviewinvite`, t);
     await refreshPartner(t, b.partnerId);

@@ -27,6 +27,7 @@ import {
   refund, reportJob, user, type HoldReason, type PayoutLineStatus,
 } from '@/db/schema';
 import { now } from '@/lib/clock';
+import { csvCell } from '@/lib/csv';
 import { addDays, date as fmtDate, monthName, money, sofiaDate, sofiaInstant, type DateStr } from '@/lib/format';
 import { SYSTEM, assertCan, type Actor } from './actor';
 import { audit } from './audit';
@@ -847,10 +848,6 @@ async function checkBatchCompletion(tx: Tx, batchId: string): Promise<void> {
 // ── Reports (Y9) and CSV for the accountant ───────────────────────────────
 
 const csvMoney = (cents: number) => `${cents < 0 ? '-' : ''}${Math.floor(Math.abs(cents) / 100)},${String(Math.abs(cents) % 100).padStart(2, '0')}`;
-const csvCell = (v: string | number | null | undefined) => {
-  const s = v === null || v === undefined ? '' : String(v);
-  return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
 /** Semicolon-separated, decimal comma, UTF-8 with BOM: opens as-is in a Bulgarian Excel. */
 const toCsv = (rows: (string | number | null | undefined)[][]) => `﻿${rows.map(r => r.map(csvCell).join(';')).join('\r\n')}\r\n`;
 

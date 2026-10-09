@@ -2,15 +2,21 @@
 // (local disk in dev, R2/S3 in production); this module validates what may be
 // uploaded by whom, records the `media` row and answers who may read a
 // private file (/api/files/[id] calls canAccess()).
-import { and, eq, or, sql } from 'drizzle-orm';
+//
+// Storage is not free hosting: an upload needs a reason (evidence needs a booking that can carry a
+// dispute, a review photo a booking that can be reviewed, a gallery photo a free slot), each user has
+// an hourly and a daily quota, review photos stay private until a published review shows them, and
+// files nothing links to are deleted after a day (purgeUnlinkedMedia, from the cron tick).
+import { and, count, eq, inArray, or, sql } from 'drizzle-orm';
 import { db, type Tx } from '@/db';
 import {
   booking, brief, briefAttachment, briefInvitation, conversation, dispute, disputeAttachment, invoice, media, message, messageAttachment,
-  partnerMember, payoutAccount, reportJob, request, requestAttachment, type MediaKind,
+  partnerMember, partnerPhoto, payoutAccount, reportJob, request, requestAttachment, review, type MediaKind,
 } from '@/db/schema';
-import { putFile, type Visibility } from '@/lib/storage';
+import { deleteFile, putFile, type Visibility } from '@/lib/storage';
 import { isSystem, type AnyActor } from './actor';
 import { getSetting } from './settings';
+import { hit } from './throttle';
 import { DomainError, NotFoundError, withTx } from './catalogue-kit';
 
 export type Media = typeof media.$inferSelect;
@@ -24,7 +30,8 @@ export const MEDIA_RULES: Record<MediaKind, { mimes: readonly string[]; by: read
   request_attachment: { mimes: JPG_PNG, by: ['client'], visibility: 'private' },
   brief_attachment: { mimes: JPG_PNG, by: ['client'], visibility: 'private' },
   dispute_evidence: { mimes: WITH_PDF, by: ['client', 'partner', 'admin'], visibility: 'private' },
-  review_photo: { mimes: JPG_PNG, by: ['client'], visibility: 'public' },
+  // Private until reviews.publish() attaches it (then is_public, served through /api/files/<id>).
+  review_photo: { mimes: JPG_PNG, by: ['client'], visibility: 'private' },
   message_attachment: { mimes: WITH_PDF, by: ['client', 'partner'], visibility: 'private' },
   partner_avatar: { mimes: JPG_PNG, by: ['partner'], visibility: 'public', minSide: 400 },
   user_avatar: { mimes: JPG_PNG, by: ['client', 'admin'], visibility: 'public' },
@@ -94,9 +101,105 @@ export async function upload(actor: AnyActor, a: { kind: MediaKind; file: File }
   const meta = { kind: a.kind, mime: a.file.type, sizeBytes: a.file.size, width: size?.width, height: size?.height, originalName: a.file.name };
   await validateUpload(actor, meta);
   if (!matchesSignature(a.file.type, bytes)) throw new DomainError('upload_type', `the file is not a ${a.file.type}`);
+  // Nothing is stored without a reason for it, or past the uploader's quota.
+  await assertUploadContext(actor, a.kind);
+  if (!isSystem(actor) && !((await hit('uploadHour', actor.userId)) && (await hit('uploadDay', actor.userId)))) {
+    throw new DomainError('upload_quota');
+  }
   const owner = isSystem(actor) ? 'system' : actor.userId;
   const stored = await putFile(a.file, `${a.kind}/${owner}`, MEDIA_RULES[a.kind].visibility);
   return recordUpload(actor, { ...meta, storageKey: stored.key });
+}
+
+/** Booking statuses on which a dispute can be opened (disputes.ts DISPUTABLE). */
+const DISPUTABLE = ['awaiting_payment', 'confirmed', 'cancellation_requested', 'completed'] as const;
+
+/**
+ * What an upload must be for, checked before anything is stored:
+ *   dispute_evidence — a booking of the uploader's that can carry a dispute, or has an open one (the team: always);
+ *   review_photo     — a completed, paid booking of the client's that has no review yet;
+ *   gallery          — a free slot in the partner's gallery (⚙ partner.gallery_max).
+ * Other kinds are tied to their target when they are attached (requests, briefs, messages, profiles).
+ */
+export async function assertUploadContext(actor: AnyActor, kind: MediaKind, q: Tx | typeof db = db): Promise<void> {
+  if (isSystem(actor)) return;
+  const uid = actor.userId;
+  if (kind === 'dispute_evidence') {
+    if (actor.role === 'admin') {
+      if (!actor.teamRole) throw new DomainError('upload_forbidden');
+      return;
+    }
+    const party = actor.role === 'client'
+      ? eq(booking.clientId, uid)
+      : sql`${booking.partnerId} in (select ${partnerMember.partnerId} from ${partnerMember} where ${partnerMember.userId} = ${uid})`;
+    const openDispute = sql`exists (select 1 from ${dispute} where ${dispute.bookingId} = ${booking.id} and ${dispute.status} in ('collecting', 'awaiting_decision'))`;
+    const [b] = await q.select({ id: booking.id }).from(booking)
+      .where(and(party, or(inArray(booking.status, [...DISPUTABLE]), openDispute))).limit(1);
+    if (!b) throw new DomainError('not_disputable');
+  } else if (kind === 'review_photo') {
+    const [b] = await q.select({ id: booking.id }).from(booking)
+      .where(and(eq(booking.clientId, uid), eq(booking.status, 'completed'), sql`${booking.paidAt} is not null`,
+        sql`not exists (select 1 from ${review} where ${review.bookingId} = ${booking.id})`)).limit(1);
+    if (!b) throw new DomainError('not_reviewable');
+  } else if (kind === 'gallery') {
+    const [m] = await q.select({ partnerId: partnerMember.partnerId }).from(partnerMember).where(eq(partnerMember.userId, uid)).limit(1);
+    if (!m) throw new DomainError('upload_forbidden');
+    const [{ n }] = await q.select({ n: count() }).from(partnerPhoto).where(eq(partnerPhoto.partnerId, m.partnerId));
+    if (Number(n) >= await getSetting('partner.gallery_max', undefined, q)) throw new DomainError('gallery_full');
+  }
+}
+
+/** A published review shows its photos: they become public (served through /api/files/<id>). */
+export async function publishReviewPhotos(tx: Tx, mediaIds: string[]): Promise<void> {
+  if (!mediaIds.length) return;
+  await tx.update(media).set({ isPublic: true }).where(and(inArray(media.id, mediaIds), eq(media.kind, 'review_photo')));
+}
+
+/** Kinds whose files exist only for what links to them; an unlinked one is left over from an abandoned form. */
+const LINKED_KINDS: MediaKind[] = [
+  'request_attachment', 'brief_attachment', 'dispute_evidence', 'message_attachment', 'review_photo', 'partner_avatar', 'user_avatar',
+  'partner_cover', 'gallery', 'service_cover', 'bank_proof',
+];
+
+/**
+ * Housekeeping (cron tick): uploads older than `olderThanHours` that nothing links to — no request,
+ * brief, dispute, message, review, gallery, profile, service (or a service change waiting for
+ * moderation), payout account or avatar — are deleted, row first (a link made meanwhile keeps the
+ * row: the foreign key refuses), then the bytes. Returns how many went.
+ */
+export async function purgeUnlinkedMedia(a: { olderThanHours?: number; limit?: number } = {}, q: typeof db = db): Promise<number> {
+  const hours = a.olderThanHours ?? 24;
+  const rows = await q.execute<{ id: string; storage_key: string }>(sql`
+    select m.id, m.storage_key from media m
+    where m.created_at < now() - make_interval(hours => ${hours}::int)
+      and m.kind in (${sql.join(LINKED_KINDS.map(k => sql`${k}`), sql`, `)})
+      and left(m.storage_key, 1) <> '/'
+      and not exists (select 1 from request_attachment x where x.media_id = m.id)
+      and not exists (select 1 from brief_attachment x where x.media_id = m.id)
+      and not exists (select 1 from dispute_attachment x where x.media_id = m.id)
+      and not exists (select 1 from message_attachment x where x.media_id = m.id)
+      and not exists (select 1 from review_photo x where x.media_id = m.id)
+      and not exists (select 1 from partner_photo x where x.media_id = m.id)
+      and not exists (select 1 from partner p where p.avatar_media_id = m.id or p.cover_media_id = m.id)
+      and not exists (select 1 from service s where s.cover_media_id = m.id)
+      and not exists (select 1 from service_revision r where position(m.id::text in r.payload::text) > 0)
+      and not exists (select 1 from payout_account x where x.proof_media_id = m.id)
+      and not exists (select 1 from invoice x where x.pdf_media_id = m.id)
+      and not exists (select 1 from legal_document x where x.media_id = m.id)
+      and not exists (select 1 from report_job x where x.media_id = m.id)
+      and not exists (select 1 from "user" u where u.image is not null and position(m.storage_key in u.image) > 0)
+    order by m.created_at
+    limit ${a.limit ?? 200}`);
+  let n = 0;
+  for (const r of rows) {
+    try {
+      const gone = await q.delete(media).where(eq(media.id, r.id)).returning({ id: media.id });
+      if (!gone.length) continue;
+    } catch { continue; } // linked meanwhile (foreign key)
+    try { await deleteFile(r.storage_key); } catch (e) { console.error('media: could not delete the file of an unlinked upload', r.storage_key, e); }
+    n++;
+  }
+  return n;
 }
 
 /** The media row, checked to be of an expected kind and (unless public) uploaded by this user. */

@@ -6,7 +6,9 @@ const nextConfig: NextConfig = {
   // A second build directory lets `next dev` run beside a `next start` (NEXT_DIST_DIR=.next-dev).
   distDir: process.env.NEXT_DIST_DIR || '.next',
   serverExternalPackages: ['postgres'],
-  images: { remotePatterns: [{ protocol: 'https', hostname: '**.r2.dev' }, { protocol: 'https', hostname: 'media.eventat.bg' }] },
+  // No page uses next/image, so the optimizer (/_next/image) stays off: with a wildcard host it fetched
+  // and transformed anyone's R2 images at our expense. Should it be turned on, only our own media host.
+  images: { unoptimized: true, remotePatterns: [{ protocol: 'https', hostname: 'media.eventat.bg', pathname: '/public/**' }] },
   experimental: { serverActions: { bodySizeLimit: '12mb' }, globalNotFound: true },
 };
 

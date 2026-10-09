@@ -229,8 +229,12 @@ export function maskContacts(text: string): string {
 
 // ── Misc ─────────────────────────────────────────────────────────────────
 
-/** Public URL of a stored file (public photos directly, private ones through /api/files). */
+/** URL of a public stored file (listing photos, avatars). A private file is linked with mediaHref(). */
 export const mediaUrl = (storageKey: string | null | undefined) => (storageKey ? fileUrl(storageKey) : null);
+
+/** URL of a media row of any kind: a private file by its id through /api/files (access-checked), never by its storage key. */
+export const mediaHref = (id: string, storageKey: string | null | undefined) =>
+  (!storageKey ? null : storageKey.startsWith('private/') ? `/api/files/${id}` : fileUrl(storageKey));
 
 /** Phone to E.164: '+359 88 412 7730' / '0884127730' → '+359884127730'; null if it cannot be one. */
 export function normalizePhone(input: string | null | undefined): string | null {
