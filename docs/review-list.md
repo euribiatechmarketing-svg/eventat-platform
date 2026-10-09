@@ -582,3 +582,11 @@ Until you answer, the platform does what the item describes under "Now". Bulgari
 
 **154. Review photos in the partner's review list** — `/partner/revyuta`
 - Now: clients can attach photos to reviews, but the partner's list does not show them, as in the prototype.
+
+**155. Changing the email address, phone or two-step: extra safety** (security review, 9 Oct) — `/akaunt/nastroyki`
+- Now: confirming a new email signs the account out everywhere else; nothing else is asked or sent.
+- Recommended (needs copy and two new emails): ask for the password again before changing the email or phone or turning off two-step; email the old address with a link to undo the change; tell the user when two-step is turned off or the phone changes.
+
+**156. Admin screens for money that needs a person** (security review, 9 Oct) — `/admin/plashtaniya`
+- Now: a refund that failed at the card, a chargeback (card dispute) and a payout whose result the provider could not confirm are handled by the system and written to the audit log, but no admin screen lists them.
+- Options: A — a „Изискват намеса“ block on Плащания (needs design and copy); B — keep in the audit log for now.
