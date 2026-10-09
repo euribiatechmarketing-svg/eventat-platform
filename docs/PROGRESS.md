@@ -46,10 +46,13 @@ Living log of the platform build. Newest state at the top of each section.
 - Nothing running.
 
 ## Next
-2. Staging on Vercel (Euribiatech team, Pro): needs a Neon Postgres database created by a person; then env vars, cron, seed.
-3. Answers to `docs/review-list.md` → apply.
-4. Known intermittent issue: a rare React hydration warning (#418) seen twice in the production build during e2e
-   (partner sign-up, admin money), never reproduced in dev — add error monitoring (Sentry) before launch.
+State at end of 9 Oct: main `6a8bd34` — 586 unit tests, 13/13 e2e suites (9 areas + 4 journeys) pass on the production build.
+1. **Staging online** as soon as a Neon database exists (Vercel → Euribiatech → Storage → Neon, Frankfurt):
+   Vercel project in the Euribiatech team from `euribiatechmarketing-svg/eventat-platform`, env vars per docs/DEPLOY.md,
+   `STAGING_DB_HOST=… npm run db:reset && npm run db:seed`, Deployment Protection on.
+2. **Apply Nikola's answers** to `docs/review-list.md` (158 items), then rerun `tools/e2e-all.sh`.
+3. Before launch: error monitoring (Sentry; also to catch the rare hydration warning #418), real Stripe test-mode run
+   with test keys, Postmark sending domain (SPF/DKIM/DMARC), private R2 bucket, Stripe Connect webhook.
 
 ## Waiting on people
 - Production needs (from the security review): a second, private R2 bucket (`S3_PRIVATE_BUCKET`); a Stripe Connect
