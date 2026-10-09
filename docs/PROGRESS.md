@@ -21,12 +21,16 @@ Living log of the platform build. Newest state at the top of each section.
   All 9 area e2e suites pass against the production build (`tools/e2e-all.sh`), 514 unit tests, `next build` clean.
 - **Approval list** (9 Oct): `docs/review-list.md`, 154 numbered items for Nikola.
 
+- **Cross-area journeys** (9 Oct): J1 booking → payout, J2 cancellations, J3 disputes, J4 new partner → first booking;
+  ~30 more defects fixed. Full suite on the merged production build: 9 areas + 4 journeys all pass
+  (`tools/e2e-all.sh`, local demo database `eventat_dev`), 529 unit tests, `next build` clean.
+
 ## In progress
-- **Cross-area journeys** — workflow `wf_f1aa8721-d03` (9 Oct 15:20): booking→payout, cancellations, disputes,
-  new partner→first booking; worktrees `../eventat-wt/journey-*`, branches `test/journey-*`.
+- **Security review** — workflow `wf_8cf3f09b-a1a` (9 Oct 18:35): 6 threat classes, adversarial verification,
+  fixes on branch `fix/security` (worktree `../eventat-wt/security`).
 
 ## Next
-1. Merge the journey branches; rerun `tools/e2e-all.sh` and the journeys.
+1. Merge `fix/security`; rerun `tools/e2e-all.sh`.
 2. Staging on Vercel (Euribiatech team, Pro): needs a Neon Postgres database created by a person; then env vars, cron, seed.
 3. Answers to `docs/review-list.md` → apply.
 4. Known intermittent issue: a rare React hydration warning (#418) seen twice in the production build during e2e
