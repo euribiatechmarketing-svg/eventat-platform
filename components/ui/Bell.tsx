@@ -1,7 +1,8 @@
 'use client';
-import { useEffect, useRef, useState, useTransition } from 'react';
+import { useId, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { Icon } from './Icon';
+import { usePopup } from './popup';
 import { markNotificationsRead } from '@/lib/actions/common';
 
 export type BellItem = { id: string; title: string; body: string | null; href: string | null; unread: boolean };
@@ -16,24 +17,19 @@ export function Bell({ items }: { items: BellItem[] }) {
   const unread = unreadKey !== '' && unreadKey !== seenKey;
   const [, start] = useTransition();
   const ref = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent | KeyboardEvent) => {
-      if (e instanceof KeyboardEvent ? e.key === 'Escape' : !ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', close);
-    document.addEventListener('keydown', close);
-    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', close); };
-  }, [open]);
+  const btn = useRef<HTMLButtonElement>(null);
+  const id = useId();
+  // A disclosure, not a menu: the notices are links read in order; Escape brings focus back to the bell.
+  usePopup({ open, setOpen, wrap: ref, trigger: btn });
   return (
     <span ref={ref} className="ui-anchor">
-      <button className="icon-btn" aria-label="Известия" aria-expanded={open}
+      <button ref={btn} className="icon-btn" aria-label="Известия" aria-expanded={open} aria-controls={open ? id : undefined}
         onClick={() => { setOpen(o => !o); if (unread) { setSeenKey(unreadKey); start(() => markNotificationsRead()); } }}>
         <Icon name="bell" />
         {unread && <span className="dot" />}
       </button>
       {open && (
-        <div className="ui-menu ui-menu--down ui-menu--wide" role="menu">
+        <div id={id} className="ui-menu ui-menu--down ui-menu--wide">
           {items.length === 0 && <div className="ui-empty">Нямате нови известия.</div>}
           {items.map(n => n.href
             ? <Link key={n.id} className="ui-note" href={n.href} onClick={() => setOpen(false)}><b>{n.title}</b>{n.body && <span>{n.body}</span>}</Link>

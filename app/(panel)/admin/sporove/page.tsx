@@ -54,7 +54,7 @@ export default async function AdminDisputes({ searchParams }: { searchParams: SP
         </div>
         <div className="page-head-right">
           <span className="seg">
-            {DISPUTE_FILTERS.map(f => <Link key={f.key} className={r.filter === f.key ? 'is-on' : undefined} href={href(f.key)} scroll={false}>{f.label}</Link>)}
+            {DISPUTE_FILTERS.map(f => <Link key={f.key} className={r.filter === f.key ? 'is-on' : undefined} href={href(f.key)} scroll={false} aria-current={r.filter === f.key ? 'page' : undefined}>{f.label}</Link>)}
           </span>
         </div>
       </div>

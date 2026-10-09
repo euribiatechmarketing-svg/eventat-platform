@@ -22,6 +22,7 @@ export default async function PanelRoot({ children }: { children: React.ReactNod
   return (
     <html lang="bg" className={fontVars}>
       <body>
+        <a className="ui-skip" href="#main">Към съдържанието</a>
         <div id="frame"><AfterParse>{children}</AfterParse></div>
         <Toaster />
         <FlashToast message={flash?.message ?? null} kind={flash?.kind} />

@@ -7,7 +7,7 @@ import { can } from '@/lib/domain/actor';
 import { BOOKING_BADGE, BOOKING_TABS, bookingsRegister } from '@/lib/domain/views-admin-money';
 import { dateShort, money, moneyShort, monthName, plural } from '@/lib/format';
 import { adminActor, bookingPath, casePath } from '../_money/server';
-import { FilterMenu, RowLink, Submit } from '../_money/ui';
+import { CellLink, FilterMenu, RowLink, Submit } from '../_money/ui';
 import { exportBookingsAction, extendDeadlineAction } from './actions';
 
 export const metadata: Metadata = { title: 'Резервации' };
@@ -48,7 +48,7 @@ export default async function AdminBookings({ searchParams }: { searchParams: SP
       <div className="toolbar am-toolbar">
         <nav className="tab-bar">
           {BOOKING_TABS.map(t => (
-            <Link key={t.key} className={`tab-bar-item${r.tab === t.key ? ' is-active' : ''}`} href={href({ tab: t.key === 'vsichki' ? undefined : t.key })} scroll={false}>
+            <Link key={t.key} className={`tab-bar-item${r.tab === t.key ? ' is-active' : ''}`} href={href({ tab: t.key === 'vsichki' ? undefined : t.key })} scroll={false} aria-current={r.tab === t.key ? 'page' : undefined}>
               {t.label} <span className="tab-count">{r.counts[t.key]}</span>
             </Link>
           ))}
@@ -73,7 +73,7 @@ export default async function AdminBookings({ searchParams }: { searchParams: SP
             <tbody>
               {att.map(a => (
                 <RowLink key={a.number} href={bookingPath(a.number)}>
-                  <td className="c-main"><div className="tbl-event">{a.number}</div><div className="tbl-sub">{dateShort(a.eventDate)} · {a.eventTypeName}</div></td>
+                  <td className="c-main"><div className="tbl-event"><CellLink href={bookingPath(a.number)}>{a.number}</CellLink></div><div className="tbl-sub">{dateShort(a.eventDate)} · {a.eventTypeName}</div></td>
                   <td className="c-side"><div className="tbl-event">{a.clientName}</div><div className="tbl-sub">{a.partnerName}</div></td>
                   <td className="num strong c-amount">{money(a.amountCents)}</td>
                   <td className="c-status"><span className={`badge ${a.badge.cls}`}>{a.badge.label}</span></td>
@@ -114,7 +114,7 @@ export default async function AdminBookings({ searchParams }: { searchParams: SP
               {r.rows.map(b => (
                 <RowLink key={b.id} href={bookingPath(b.number)}>
                   <td className="c-date"><div className="tbl-event">{dateShort(b.eventDate)}</div><div className="tbl-sub">{b.eventWeekday}</div></td>
-                  <td className="c-main"><div className="tbl-event">{b.eventTypeName} · {b.clientName}</div><div className="tbl-sub">{[b.number, b.venue].filter(Boolean).join(' · ')}</div></td>
+                  <td className="c-main"><div className="tbl-event"><CellLink href={bookingPath(b.number)}>{b.eventTypeName} · {b.clientName}</CellLink></div><div className="tbl-sub">{[b.number, b.venue].filter(Boolean).join(' · ')}</div></td>
                   <td className="c-side"><div className="tbl-event">{b.partnerName}</div><div className="tbl-sub">{b.partnerCategory}</div></td>
                   <td className="num c-amount">{money(b.amountCents)}</td>
                   {r.finance && <td className="num strong c-com">{money(b.commissionCents ?? 0)}</td>}

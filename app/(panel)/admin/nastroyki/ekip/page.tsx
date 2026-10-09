@@ -121,7 +121,7 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
           <div className="fld-hint" style={{ marginTop: 9 }}>Поканеният получава имейл с линк и си избира парола при първото влизане.</div>
         </ActionForm>
 
-        <div className="tm-div"><b>Чакащи покани</b><span>{team.invites.length}</span></div>
+        <div className="tm-div"><b role="heading" aria-level={3}>Чакащи покани</b><span>{team.invites.length}</span></div>
         {invites.length ? invites.map(i => (
           <div className="tm-inv" key={i.id}>
             <span className="tm-inv-i"><Icon name="mail" /></span>
@@ -149,7 +149,7 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
               {team.matrix.map(row => (
                 <tr key={row.permission}>
                   <td><div className="tm-cap-n">{CAPS[row.permission][0]}</div><div className="tm-cap-d">{CAPS[row.permission][1]}</div></td>
-                  {ROLES.map(r => <td key={r} data-role={ROLE_LABEL[r]}>{ROLE_PERMISSIONS[r].includes(row.permission) ? <span className="tm-can"><Check /></span> : <span className="tm-cant">—</span>}</td>)}
+                  {ROLES.map(r => <td key={r} data-role={ROLE_LABEL[r]}>{ROLE_PERMISSIONS[r].includes(row.permission) ? <span className="tm-can" role="img" aria-label="Да"><Check /></span> : <span className="tm-cant" role="img" aria-label="Не">—</span>}</td>)}
                 </tr>
               ))}
             </tbody>
