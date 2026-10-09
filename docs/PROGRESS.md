@@ -16,20 +16,21 @@ Living log of the platform build. Newest state at the top of each section.
   Merged to main: typecheck clean, 433 tests pass. Main DB reset + seeded (30 users, 80 pending jobs).
 - **Panel chrome** (8 Oct): partner and admin layouts with guards, live rail counters, computed admin bell.
 
+- **UI build** (8–9 Oct): every prototype screen ported on real data in 9 areas, each reviewed by a click-everything
+  reviewer (180+ defects fixed); merged; shared fixes (page titles, guest return path, Bulgarian 404, deletion links).
+  All 9 area e2e suites pass against the production build (`tools/e2e-all.sh`), 514 unit tests, `next build` clean.
+- **Approval list** (9 Oct): `docs/review-list.md`, 154 numbered items for Nikola.
+
 ## In progress
-- **UI build** — workflow `wf_7e7cb6de-c1a` (started 8 Oct 21:55), script `tools/workflows/ui-build.js`:
-  9 area builders in worktrees `../eventat-wt/ui-<area>` on branches `ui/<area>`, each followed by a click-everything reviewer.
-  Resume: `Workflow({scriptPath: "<repo>/tools/workflows/ui-build.js", resumeFromRunId: "wf_7e7cb6de-c1a"})`.
-  8 Oct ~22:35: 9 agents stopped on the account's spend limit. Finished before that: messaging-support and
-  partner-catalogue builds (committed on their branches); partner-ops had committed part of its work.
-  9 Oct 12:50: relaunched from the same run ID; the other areas continue from the files left in their worktrees.
+- **Cross-area journeys** — workflow `wf_f1aa8721-d03` (9 Oct 15:20): booking→payout, cancellations, disputes,
+  new partner→first booking; worktrees `../eventat-wt/journey-*`, branches `test/journey-*`.
 
 ## Next
-1. Merge the nine `ui/*` branches; typecheck, tests, `next build`.
-2. Open items from the domain reviews (see below).
-3. End-to-end journeys with real clicks (client books → partner approves → client pays → event → payout; cancellation; dispute).
-4. Responsive pass at 390 px; accessibility basics.
-5. Deploy to a protected staging URL (needs Neon DB + Vercel Pro from the user).
+1. Merge the journey branches; rerun `tools/e2e-all.sh` and the journeys.
+2. Staging on Vercel (Euribiatech team, Pro): needs a Neon Postgres database created by a person; then env vars, cron, seed.
+3. Answers to `docs/review-list.md` → apply.
+4. Known intermittent issue: a rare React hydration warning (#418) seen twice in the production build during e2e
+   (partner sign-up, admin money), never reproduced in dev — add error monitoring (Sentry) before launch.
 
 ## Waiting on people
 - Nikola / client: approve new copy flagged in SPEC §17 (decisions marked [Nikola]).
