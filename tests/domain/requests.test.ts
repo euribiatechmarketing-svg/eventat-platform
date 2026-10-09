@@ -157,6 +157,12 @@ describe('R1 sendRequest', () => {
     setTestNow(new Date(NOW.getTime() + H));
     const { paymentDueAt } = await approveRequest(sameDay.actor, { number: r.number });
     expect(paymentDueAt).toEqual(sofiaInstant('2025-09-01', 8, 0));
+    // The approval email gives that clamped window (19 h from approval), not the 24 h setting.
+    const [ce] = await emails('client-request-approved', client.user.id);
+    expect(ce.vars).toMatchObject({ payHours: 19, payBy: dateTime(paymentDueAt) });
+    expect(ce.subject).toMatch(/ — платете до 19 часа$/);
+    expect(ce.text).toContain('платете в рамките на 19 часа');
+    expect(ce.text).not.toContain('24 часа');
   });
 });
 

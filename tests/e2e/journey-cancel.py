@@ -16,6 +16,11 @@ running server the way people use the product, one browser context per person:
   4. The amount a late cancellation kept is released to the partner the day after the event (L3), and
      the ledger and money invariants hold after every step (balanced postings, nothing negative, the
      provider's money = client funds + partner payable, every charge and refund posted exactly once).
+  5. The risky steps the way people really click: double clicks on ‹Одобри заявката›, ‹Плати›,
+     ‹Удължи срока›, ‹Анулиране› and ‹Анулирай резервацията›; the back button after paying and after
+     cancelling; the same account in two tabs (a stale payment form, a stale cancel form, the team
+     declining a request another tab has completed); a cancellation done on a 390 px touch phone, and
+     one pressed before the page's JavaScript has loaded.
 
 Prints one line per step and exits non-zero on the first failure. Screenshots of the key moments
 (1440 and 390 px) go to --shots (default .data/journey-cancel).
@@ -201,17 +206,28 @@ def watch_status(email, slug, d):
 
 # ── browser helpers ─────────────────────────────────────────────────────────
 
+# Every toast a page shows (components/ui/client.tsx dispatches `eventat:toast`), kept per document.
+TOAST_LOG = "window.__toasts = []; window.addEventListener('eventat:toast', e => window.__toasts.push(e.detail));"
+
+
 class Person:
-    def __init__(self, browser, email, width=1440):
+    def __init__(self, browser, email, width=1440, touch=False):
         self.email = email
-        self.ctx = browser.new_context(viewport={'width': width, 'height': 900 if width > 500 else 844}, locale='bg-BG', timezone_id='Europe/Sofia')
+        self.ctx = browser.new_context(viewport={'width': width, 'height': 900 if width > 500 else 844}, locale='bg-BG', timezone_id='Europe/Sofia',
+                                       has_touch=touch, is_mobile=touch)
+        self.ctx.add_init_script(TOAST_LOG)
         r = self.ctx.request.post(BASE + '/api/auth/sign-in/email', data={'email': email, 'password': PW}, headers={'Origin': BASE})
         assert r.ok, f'sign-in {email}: {r.status} {r.text()[:200]}'
-        self.page = self.ctx.new_page()
-        self.page.set_default_timeout(120000)
         self.errors = []
-        self.page.on('pageerror', lambda e: self.errors.append(f'step {STEP[0] + 1}, pageerror on {unquote(self.page.url)}: {e}'))
-        self.page.on('console', lambda m: self.errors.append(f'step {STEP[0] + 1}, console on {unquote(self.page.url)}: {m.text}') if m.type == 'error' else None)
+        self.page = self.new_tab()
+
+    def new_tab(self):
+        """Another tab of the same browser (same session), watched for page and console errors like the first."""
+        page = self.ctx.new_page()
+        page.set_default_timeout(120000)
+        page.on('pageerror', lambda e: self.errors.append(f'step {STEP[0] + 1}, pageerror on {unquote(page.url)}: {e}'))
+        page.on('console', lambda m: self.errors.append(f'step {STEP[0] + 1}, console on {unquote(page.url)}: {m.text}') if m.type == 'error' else None)
+        return page
 
     def go(self, path, status=200):
         r = self.page.goto(BASE + path)
@@ -220,6 +236,11 @@ class Person:
 
     def path(self):
         return unquote(self.page.url.replace(BASE, ''))
+
+
+def toasts(page):
+    """The toasts this document has shown so far, as (kind, message)."""
+    return [(t['kind'], t['message']) for t in page.evaluate('window.__toasts || []')]
 
 
 def toast(page, text):
@@ -377,6 +398,197 @@ def no_commission_for_partner(person, *paths):
         p = person.go(path)
         body = norm(p.locator('body').inner_text())
         assert 'Комисиона' not in body and 'комисиона' not in body, f'{path}: commission visible to the partner'
+
+
+def no_error_toast(page, label):
+    bad = [m for k, m in toasts(page) if k == 'error']
+    assert not bad, f'{label}: error toast {bad}'
+    expect(page.locator('.form-alert')).to_have_count(0)
+
+
+def count(query, *params):
+    return int(val(query, *params))
+
+
+# ── 5. A real person at the risky steps ────────────────────────────────────
+
+def risky_steps(b, maria, melodia, admin, n_paid):
+    """Approving, paying and cancelling the way people really do it: a double click on every button that
+    moves a booking or money, the back button after paying and after cancelling, the same account in two
+    tabs, the cancellation done on a 390 px phone. Every move happens once and nobody sees an error."""
+    T1 = today()
+
+    # ── approve: the partner double-clicks ‹Одобри заявката› ──
+    d1 = T1 + dt.timedelta(days=45)
+    n1 = send_request(maria, 'studio-melodiya', event_type='Рожден ден', day=d1, package='Пакет „Вечер“')
+    p = melodia.go('/partner/zayavki/' + quote(n1))
+    p.locator('button:has-text("Одобри заявката")').dblclick()
+    expect(p.locator('.page-head .badge')).to_have_text('Одобрена · чака плащане')
+    expect(p.locator('.countdown-time')).to_have_text(re.compile(r'^\d\d:\d\d$'))
+    p.wait_for_timeout(1500)  # a second submit, if one went out, has answered by now
+    no_error_toast(p, 'double click on ‹Одобри заявката›')
+    assert count("select count(*) from booking where number = $1", n1) == 1
+    assert count("select count(*) from audit_log where action = 'request.approved' and data->>'number' = $1", n1) == 1
+    assert len(outbox('client-request-approved', MARIA, n1)) == 1
+    step(f'Двоен клик: the partner double-clicks ‹Одобри заявката› on {n1} → one booking, one approval, no error')
+
+    # ── pay: two tabs, a double click on each ‹Плати›, the back button ──
+    p = maria.go('/akaunt/zayavki/' + quote(n1))
+    p.click('a.btn:has-text("Плати 640 €")')
+    p.wait_for_url(re.compile(r'/plashtane/' + re.escape(quote(n1)) + '$'))
+    p.locator('button:has-text("Плати 640 €")').dblclick()
+    p.wait_for_url(re.compile(r'/plashtane/test/[0-9a-f-]{36}$'))
+    checkout = maria.path()
+    tab = maria.new_tab()
+    tab.goto(BASE + '/plashtane/' + quote(n1))
+    tab.click('button:has-text("Плати 640 €")')
+    tab.wait_for_url(re.compile(r'/plashtane/test/[0-9a-f-]{36}$'))
+    assert unquote(tab.url.replace(BASE, '')) == checkout, (tab.url, checkout)  # the open charge is reused
+    bid = booking_row(n1)['id']
+    assert count("select count(*) from charge where booking_id = $1", bid) == 1
+    # Both tabs press the provider's ‹Плати› at the same moment, the first with a double click.
+    p.locator('form button:has-text("Плати")').dblclick(no_wait_after=True)
+    tab.locator('form button:has-text("Плати")').click(no_wait_after=True)
+    p.wait_for_url(re.compile(r'/potvardena$'))
+    expect(p.locator('.done-t')).to_have_text('Резервацията е потвърдена')
+    tab.wait_for_url(re.compile(r'/potvardena$'))
+    expect(tab.locator('.done-t')).to_have_text('Резервацията е потвърдена')
+    no_error_toast(p, 'double click on ‹Плати›')
+    no_error_toast(tab, '‹Плати› in a second tab')
+    bp = booking_row(n1)
+    assert bp['status'] == 'confirmed' and bp['paid'] == 64000 and bp['client_funds'] == 64000, bp
+    assert sql("select status::text from charge where booking_id = $1", bid) == [{'status': 'succeeded'}]
+    assert len(outbox('client-booking-confirmed', MARIA, n1)) == 1
+    ledger_invariants('after a double-clicked payment')
+    step(f'Плащане: two tabs and a double click on every ‹Плати› → one charge of 640 €, {n1} confirmed once')
+
+    for _ in range(2):  # back to the provider's form, then to ‹Плащане›: neither takes money again
+        p.go_back()
+        p.wait_for_load_state('networkidle')
+        if p.locator('form button:has-text("Плати")').count():
+            p.locator('form button:has-text("Плати")').first.click()
+            p.wait_for_load_state('networkidle')
+            p.wait_for_timeout(1000)
+    p.reload()
+    assert maria.path() == '/akaunt/rezervacii/' + n1, maria.path()
+    expect(p.locator('.h-right .badge')).to_have_text('Потвърдена')
+    assert sql("select status::text from charge where booking_id = $1", bid) == [{'status': 'succeeded'}]
+    assert booking_row(n1)['paid'] == 64000
+    no_error_toast(p, 'back after paying')
+    step('Назад след плащане: the provider\'s form and ‹Плащане› no longer take money; a reload lands on the booking')
+
+    # ── the team double-clicks ‹Удължи срока› ──
+    d3 = T1 + dt.timedelta(days=50)
+    n3 = send_request(maria, 'studio-melodiya', event_type='Рожден ден', day=d3, package='Пакет „Вечер“')
+    approve(melodia, 'Мария Димитрова', d3, n3)
+    due0 = dt.datetime.fromisoformat(booking_row(n3)['payment_due_at'].replace('Z', '+00:00'))
+    p = admin.go('/admin/rezervacii/' + quote(n3))
+    p.locator('button:has-text("Удължи срока")').dblclick()
+    toast(p, 'Срокът е удължен с 24 часа')
+    p.wait_for_timeout(1500)
+    no_error_toast(p, 'double click on ‹Удължи срока›')
+    r3 = booking_row(n3)
+    assert r3['payment_extensions'] == 1, r3
+    assert dt.datetime.fromisoformat(r3['payment_due_at'].replace('Z', '+00:00')) - due0 == dt.timedelta(hours=24), (r3, due0)
+    assert count("select count(*) from payment_extension where booking_id = $1", r3['id']) == 1
+    assert len(outbox('client-payment-extended', MARIA, n3)) == 1
+    step(f'Двоен клик: the team double-clicks ‹Удължи срока› on {n3} → extended once, by 24 hours')
+
+    # ── a partner's request, the team in two tabs, a double click on ‹Анулирай резервацията› ──
+    p = melodia.go('/partner/rezervacii/' + quote(n_paid))
+    p.click('.panel-actions button:has-text("Анулиране")')
+    p.locator('.po-confirm button[type="submit"]:has-text("Анулиране")').dblclick()
+    toast(p, 'Изпратихме искането за анулиране — екипът се свързва с клиента')
+    p.wait_for_timeout(1500)
+    no_error_toast(p, 'double click on the partner\'s ‹Анулиране›')
+    pid = booking_row(n_paid)['id']
+    assert count("select count(*) from partner_cancellation_request where booking_id = $1", pid) == 1
+    a1, a2 = admin.page, admin.new_tab()
+    a1.goto(BASE + '/admin/rezervacii/' + quote(n_paid))
+    a2.goto(BASE + '/admin/rezervacii/' + quote(n_paid))
+    expect(a2.locator('.page-head .badge').first).to_have_text('Искане за анулиране')
+    a1.click('button:has-text("Анулирай резервацията")')
+    a1.locator('dialog[open] button[type="submit"]').dblclick()
+    toast(a1, 'Резервацията е анулирана')
+    expect(a1.locator('.page-head .badge').first).to_have_text('Анулирана')
+    a1.wait_for_timeout(1500)
+    no_error_toast(a1, 'double click on the team\'s ‹Анулирай резервацията›')
+    a2.click('button:has-text("Откажи анулирането")')  # the second tab still offers it
+    expect(a2.locator('.ui-toast.is-on.ui-toast--error')).to_have_count(1)
+    expect(a2.locator('.page-head .badge').first).to_have_text('Анулирана')
+    tick(a1)
+    rp = booking_row(n_paid)
+    assert rp['status'] == 'cancelled' and rp['cancelled_by'] == 'partner' and rp['refunded'] == 64000 and rp['client_funds'] == 0, rp
+    assert count("select count(*) from refund where booking_id = $1", pid) == 1
+    assert val("select string_agg(status::text, ',') from partner_cancellation_request where booking_id = $1", pid) == 'completed'
+    assert len(outbox('client-vendor-cancelled', MARIA, n_paid)) == 1 and len(outbox('client-refund-sent', MARIA, n_paid)) == 1
+    ledger_invariants('after the team\'s double click')
+    step(f'Екип в два раздела: {n_paid} cancelled once with a double click (one refund of 640 €); ‹Откажи анулирането› in the other tab is refused')
+
+    # ── Мария cancels on her phone (390 px, touch) with a double tap; her laptop tab has the form open ──
+    tab.goto(BASE + f'/akaunt/rezervacii/{quote(n1)}/anulirane')
+    expect(tab.locator('button:has-text("Анулирай резервацията")')).to_be_enabled()
+    phone = Person(b, MARIA, width=390, touch=True)
+    days = (d1 - T1).days
+    q = expected_quote('moderate', 64000, 30, 64000, days, 1000)
+    assert q['tier'] == 'none' and q['refund'] == 64000, q
+    p = open_cancel_page(phone, n1, 'Студио Мелодия')
+    check_preview(p, q, paid=64000, event_date=d1, policy='moderate', days=days)
+    p.locator('label.cx-pick:has-text("Събитието се отменя")').tap()
+    btn = p.locator('button:has-text("Анулирай резервацията")')
+    btn.scroll_into_view_if_needed()
+    expect(btn).to_be_in_viewport()
+    assert p.evaluate('document.documentElement.scrollWidth') <= 390
+    btn.dblclick()
+    p.wait_for_url(BASE + '/akaunt/rezervacii')
+    toast(p, 'Резервацията е анулирана — изпратихме ви потвърждение по имейл')
+    p.wait_for_timeout(1500)
+    no_error_toast(p, 'double tap on ‹Анулирай резервацията›')
+    r1 = booking_row(n1)
+    assert r1['status'] == 'cancelled' and r1['cancellation']['reason'] == 'event_cancelled' and r1['refund_pending'] == 64000, r1
+    assert count("select count(*) from refund where booking_id = $1", bid) == 1
+    assert len(outbox('client-cancel-confirmed', MARIA, n1)) == 1 and len(outbox('vendor-client-cancelled', MELODIA, n1)) == 1
+    step(f'Телефон: Мария cancels {n1} at 390 px with a double tap → cancelled once, one refund of 640 € pending')
+
+    p.go_back()  # back to the cancel page: the form is not offered again
+    p.wait_for_load_state('networkidle')
+    p.wait_for_timeout(500)
+    if p.url.endswith('/anulirane'):
+        expect(p.locator('button:has-text("Анулирай резервацията")')).to_have_count(0)
+    expect(p.locator('body')).not_to_contain_text('Анулирай резервацията')
+    tab.click('label.cx-pick:has-text("Промяна в датата")')  # the laptop tab, opened before the phone cancelled
+    tab.click('button:has-text("Анулирай резервацията")')
+    expect(tab.locator('.form-alert')).to_have_text('Състоянието се промени. Презаредете страницата.')
+    expect(tab.locator('input[name=reason][value=date_change]')).to_be_checked()  # a refusal keeps what was picked
+    r1 = booking_row(n1)
+    assert r1['cancellation']['reason'] == 'event_cancelled' and count("select count(*) from refund where booking_id = $1", bid) == 1, r1
+    tick(p)
+    r1 = booking_row(n1)
+    assert r1['refunded'] == 64000 and r1['client_funds'] == 0 and len(outbox('client-refund-sent', MARIA, n1)) == 1, r1
+    ledger_invariants('after the double-tapped cancellation')
+    assert not phone.errors, phone.errors
+    phone.ctx.close()
+    step('Назад и втори раздел: back on the phone offers no second cancellation; the stale laptop tab is told the state changed; one refund')
+
+    # ── a tap before the page's JavaScript has loaded (a slow phone): the form still reaches the server ──
+    EA2 = '2026-1219-ЕА'
+    slow = b.new_context(java_script_enabled=False, viewport={'width': 390, 'height': 844}, locale='bg-BG', timezone_id='Europe/Sofia')
+    assert slow.request.post(BASE + '/api/auth/sign-in/email', data={'email': MARIA, 'password': PW}, headers={'Origin': BASE}).ok
+    sp = slow.new_page()
+    sp.goto(BASE + f'/akaunt/rezervacii/{quote(EA2)}/anulirane')
+    sp.click('label.cb-pick-other .cx-pick-n')
+    sp.fill('textarea[name=reasonText]', 'Сменихме мястото на събитието.')
+    sp.click('button:has-text("Анулирай резервацията")')
+    sp.wait_for_url(BASE + '/akaunt/rezervacii')  # not the page again with the fields in its address
+    ea2 = booking_row(EA2)
+    c = ea2['cancellation']
+    assert ea2['status'] == 'cancelled' and c and c['reason'] == 'other' and c['reason_text'] == 'Сменихме мястото на събитието.' \
+        and c['refund_cents'] == 68000 and ea2['refund_pending'] == 68000, ea2
+    slow.close()
+    tick(maria.page)
+    assert booking_row(EA2)['refunded'] == 68000
+    ledger_invariants('after the cancellation sent before the page loaded')
+    step(f'Бавен телефон: ‹Анулирай резервацията› pressed before the JavaScript loaded still cancels {EA2} (the reason stays out of the address)')
 
 
 # ── the journey ─────────────────────────────────────────────────────────────
@@ -776,8 +988,11 @@ def main():
         pay(maria, n_ext, 64000)
         bx = booking_row(n_ext)
         assert bx['status'] == 'confirmed' and bx['paid'] == 64000 and bx['commission_bp'] == 1000, bx
+        # The team's record counts the window the client really had (24 + 24 hours).
+        p = admin.go('/admin/rezervacii/' + quote(n_ext))
+        expect(p.locator('.tl-item').filter(has_text='Плащането постъпи в платформата')).to_contain_text('в срока от 48 часа')
         ledger_invariants('after the extended payment')
-        step(f'{n_ext}: paid inside the extended window → confirmed; ledger ok')
+        step(f'{n_ext}: paid inside the extended window → confirmed (‹в срока от 48 часа› for the team); ledger ok')
 
         p = admin.go('/admin/nastroyki')
         p.click('.ops-clock-acts button:has-text("+1 ден")')
@@ -821,6 +1036,9 @@ def main():
         no_commission_for_partner(ana, '/partner/rezervacii/' + quote(n_str), '/partner/prihodi')
         ledger_invariants('after the release of the kept amount')
         step(f'11 септември: the kept 1 900 € of {n_str} is released — 1 805 € to the partner (batch 15 септември), 95 € commission; the Умерена 192 € still waits; ledger ok')
+
+        # ════ 5. The risky steps the way people really click ════════════════════
+        risky_steps(b, maria, melodia, admin, n_ext)
 
         leaks = sql("select template_key, to_email from email_outbox where audience = 'partner' and (text ilike '%омисион%' or html ilike '%омисион%')")
         assert not leaks, f'commission in partner emails: {leaks}'

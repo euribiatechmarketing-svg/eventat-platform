@@ -20,8 +20,8 @@ import { SYSTEM, type Actor, type AnyActor } from './actor';
 import { audit } from './audit';
 import {
   HOLDING_STATUSES, HOUR, LIFECYCLE_JOBS, LifecycleError, PHONE_VISIBLE_STATUSES, assertClientActor, assertPartnerActor, checkPartnerDate,
-  completionInstant, createBookingFromRequest, eventStartInstant, jobKey, loadParties, locationOf, mail, packageNameOf, schedulePaymentJobs,
-  timeRange, withTx,
+  completionInstant, createBookingFromRequest, eventStartInstant, jobKey, loadParties, locationOf, mail, packageNameOf, paymentWindowHours,
+  schedulePaymentJobs, timeRange, withTx,
   type DateProblem, type Parties, type RequestRow,
 } from './bookings';
 import { projectedSplit, split } from './commission';
@@ -440,7 +440,7 @@ export async function approveRequest(actor: AnyActor, input: { number: string },
       vars: {
         bookingId: b.number, requestNo: b.number, partnerName: p.businessName, partnerCategory: pt.partnerCategory,
         packageName: packageNameOf(r.serviceTitle), eventType: pt.eventType.name, eventDate: date(b.eventDate), eventTime: b.startTime ? b.startTime.slice(0, 5) : '—',
-        amount: money(b.dueNowCents), payBy: dateTime(b.paymentDueAt), payHours: s['payment.window_hours'],
+        amount: money(b.dueNowCents), payBy: dateTime(b.paymentDueAt), payHours: paymentWindowHours(b), // the event start may clamp it (§3)
       },
       // D54: ‹{Партньор} одобри заявката ви› / ‹Платете до {срок}, за да запазите датата›
       bell: {

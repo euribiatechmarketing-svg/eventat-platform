@@ -27,7 +27,7 @@ import { audit } from './audit';
 import { getSetting, getSettings } from './settings';
 import { commissionRateFor } from './commission';
 import { quoteBooking, policyStrings, type CancellationQuote } from './cancellation';
-import { getBookingForAdmin } from './bookings';
+import { getBookingForAdmin, paymentWindowHours } from './bookings';
 import { DISPUTE_REASON_LABEL, bpOf, low, paidCents, withTx } from './aftercare-shared';
 import { displayPhone } from './catalogue-kit';
 import { batchDetail, batchName, listBatches, partnerHoldReason, payoutKpis, prepareBatch, releaseBatch, type ReleaseBatchResult } from './payouts';
@@ -372,7 +372,7 @@ export async function bookingRecord(actor: Actor, number: string) {
   for (const x of exts) tl.push({ state: 'done', title: `Срокът е удължен с ${x.hours} часа`, time: `${fmtDate(sofiaDate(x.createdAt))}, ${time(x.createdAt)} · до ${fmtDate(sofiaDate(x.newDueAt))}, ${time(x.newDueAt)}` });
   if (b.paidAt) {
     const inTime = b.paidAt <= b.paymentDueAt;
-    tl.push({ state: 'done', title: 'Плащането постъпи в платформата', time: `${fmtDate(sofiaDate(b.paidAt))} · ${money(v.money.paidCents + v.money.refundedCents)}${inTime ? ` · в срока от ${await getSetting('payment.window_hours', b.approvedAt)} часа` : ''}` });
+    tl.push({ state: 'done', title: 'Плащането постъпи в платформата', time: `${fmtDate(sofiaDate(b.paidAt))} · ${money(v.money.paidCents + v.money.refundedCents)}${inTime ? ` · в срока от ${paymentWindowHours(b)} ${paymentWindowHours(b) === 1 ? 'час' : 'часа'}` : ''}` });
   }
   if (disp) {
     tl.push({ state: 'done', title: disp.openedBy === 'team' ? 'Екипът отвори спор' : `${disp.openedBy === 'client' ? v.client.name : p.businessName} ${isPlural(disp.openedBy === 'client' ? v.client.name : p.businessName) ? 'отвориха' : 'отвори'} сигнал`, time: `${fmtDate(sofiaDate(disp.openedAt))}, ${time(disp.openedAt)} · ${disp.title}` });

@@ -228,7 +228,7 @@ export const clientOfferReceived: EmailTemplate<OfferReceivedVars> = {
   }),
 };
 
-/** payHours: the payment window in hours (24). */
+/** payHours: this booking's payment window in hours (24; less when the event start clamps it). */
 type RequestApprovedVars = {
   bookingId: string; requestNo: string;
   partnerName: string; partnerCategory: string; packageName: string;
@@ -238,12 +238,12 @@ type RequestApprovedVars = {
 export const clientRequestApproved: EmailTemplate<RequestApprovedVars> = {
   key: 'client-request-approved', audience: 'client', optional: false,
   render: v => ({
-    subject: `${v.partnerName} одобри заявката ви — платете до ${v.payHours} часа`,
+    subject: `${v.partnerName} одобри заявката ви — платете до ${pl(v.payHours, 'час', 'часа')}`,
     preheader: `Датата ${v.eventDate} е запазена за вас до ${v.payBy}.`,
     trigger: 'Одобрена заявка',
     heading: `${v.partnerName} одобри заявката ви`,
     paragraphs: [
-      `Датата ${v.eventDate} е запазена за вас. За да потвърдите резервацията, платете в рамките на ${v.payHours} часа — след това датата се освобождава автоматично.`,
+      `Датата ${v.eventDate} е запазена за вас. За да потвърдите резервацията, платете в рамките на ${pl(v.payHours, 'час', 'часа')} — след това датата се освобождава автоматично.`,
       'Сумата се задържа от платформата и се превежда на изпълнителя чак след като събитието се проведе.',
     ],
     details: [
