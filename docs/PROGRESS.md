@@ -25,18 +25,24 @@ Living log of the platform build. Newest state at the top of each section.
   ~30 more defects fixed. Full suite on the merged production build: 9 areas + 4 journeys all pass
   (`tools/e2e-all.sh`, local demo database `eventat_dev`), 529 unit tests, `next build` clean.
 
+- **Security review** (9 Oct): 21 findings in 6 threat classes, 17 confirmed by adversarial verification, 14 fixed
+  with tests (live reset/invite links hidden from the team outbox view; chargeback/refund/payout webhooks applied;
+  stale checkouts can't confirm old prices; private files in a separate bucket; upload quotas; CSV formula escaping;
+  open-redirect hole; DB-backed auth throttling; image proxy). After the merge: 569 unit tests, 13/13 e2e suites pass.
+
 ## In progress
-- **Security review** — workflow `wf_8cf3f09b-a1a` (9 Oct 18:35): 6 threat classes, adversarial verification,
-  fixes on branch `fix/security` (worktree `../eventat-wt/security`).
+- **Auth/session review** (the part that was interrupted) — workflow `wf_84207f12-bf3`, fixes on `fix/auth-sec`.
 
 ## Next
-1. Merge `fix/security`; rerun `tools/e2e-all.sh`.
+1. Merge `fix/auth-sec`; rerun `tools/e2e-all.sh`.
 2. Staging on Vercel (Euribiatech team, Pro): needs a Neon Postgres database created by a person; then env vars, cron, seed.
 3. Answers to `docs/review-list.md` → apply.
 4. Known intermittent issue: a rare React hydration warning (#418) seen twice in the production build during e2e
    (partner sign-up, admin money), never reproduced in dev — add error monitoring (Sentry) before launch.
 
 ## Waiting on people
+- Production needs (from the security review): a second, private R2 bucket (`S3_PRIVATE_BUCKET`); a Stripe Connect
+  webhook endpoint (`STRIPE_CONNECT_WEBHOOK_SECRET`); an admin screen for failed refunds / chargebacks (decision).
 - Nikola / client: approve new copy flagged in SPEC §17 (decisions marked [Nikola]).
 - Accounts only a person can create: Neon (via Vercel Storage), Stripe, Postmark, Cloudflare R2.
 
