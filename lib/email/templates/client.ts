@@ -125,7 +125,7 @@ export const clientSignoutAll: EmailTemplate<SignoutAllVars> = {
 /** url: the one-time confirmation link that actually deletes the profile. */
 type DeleteConfirmVars = { email: string; url: string };
 export const clientDeleteConfirm: EmailTemplate<DeleteConfirmVars> = {
-  key: 'client-delete-confirm', audience: 'client', optional: false,
+  key: 'client-delete-confirm', audience: 'client', optional: false, secret: ['url'],
   render: v => ({
     subject: 'Потвърдете изтриването на профила си в EventAT',
     preheader: 'Профилът се изтрива едва след като потвърдите от писмото.',

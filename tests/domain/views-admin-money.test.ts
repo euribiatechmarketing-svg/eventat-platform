@@ -159,9 +159,9 @@ describe('emails and reports', () => {
     expect(c.count).toBe(90);
     expect(c.totals).toEqual({ client: 35, partner: 42, team: 13 });
     expect((await emailCatalogue({ audience: 'team' })).count).toBe(13);
-    const p = await emailPreview('client-welcome');
+    const p = await emailPreview(admin, 'client-welcome');
     expect(p?.kind === 'sample' && p.content.heading).toBe('Добре дошли в EventAT');
-    expect(await emailPreview('no-such-key')).toBeNull();
+    expect(await emailPreview(admin, 'no-such-key')).toBeNull();
   });
   it('requestReport records a report job', async () => {
     const { reportId } = await requestReport(admin, { kind: 'admin_bookings', params: { month: '2026-06' } });

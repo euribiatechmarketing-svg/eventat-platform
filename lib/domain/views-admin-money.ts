@@ -21,6 +21,7 @@ import {
 import { initials as baseInitials, shortName } from '@/lib/initials';
 import { CATALOGUE, TEMPLATES } from '@/lib/email/templates';
 import { SAMPLES } from '@/lib/email/templates/samples';
+import { hasSecrets, storedCopy } from '@/lib/email/secrets';
 import type { Audience, EmailContent } from '@/lib/email/types';
 import { ForbiddenError, assertCan, can, type Actor } from './actor';
 import { audit } from './audit';
@@ -1012,8 +1013,23 @@ export const OUTBOX_STATUS: Record<string, Badge> = {
   suppressed: { cls: 'badge--dot', label: 'Изключен' },
 };
 
-/** The real outbox, newest first: what went out (filter by audience, template, search). */
-export async function outboxList(p: { audience?: string | null; key?: string | null; q?: string | null; limit?: number }) {
+/**
+ * Who may open the real outbox (‹Изпратени› and a sent message's preview): every email that went
+ * out, to every client, partner and team member. manage_team_settings — the owner's role; the other
+ * team roles see the catalogue with its sample previews.
+ */
+export const canReadOutbox = (actor: Actor | null | undefined) => can(actor, 'manage_team_settings');
+
+/** A stored message's subject, with any credential masked (rows queued before masking existed included). */
+function safeSubject(key: string, subject: string, vars: unknown): string {
+  const tpl = TEMPLATES[key];
+  if (!hasSecrets(tpl)) return subject;
+  return storedCopy(tpl, (vars ?? {}) as Record<string, unknown>).subject;
+}
+
+/** The real outbox, newest first: what went out (filter by audience, template, search). manage_team_settings. */
+export async function outboxList(actor: Actor, p: { audience?: string | null; key?: string | null; q?: string | null; limit?: number }) {
+  assertCan(actor, 'manage_team_settings');
   const conds: SQL[] = [];
   const audience = (['client', 'partner', 'team'] as const).find(a => a === p.audience);
   if (audience) conds.push(eq(emailOutbox.audience, audience));
@@ -1024,14 +1040,15 @@ export async function outboxList(p: { audience?: string | null; key?: string | n
   const [{ n }] = await db.select({ n: count() }).from(emailOutbox).where(where);
   const rows = await db.select({
     id: emailOutbox.id, key: emailOutbox.templateKey, to: emailOutbox.toEmail, subject: emailOutbox.subject, status: emailOutbox.status,
-    createdAt: emailOutbox.createdAt, sentAt: emailOutbox.sentAt, audience: emailOutbox.audience,
+    createdAt: emailOutbox.createdAt, sentAt: emailOutbox.sentAt, audience: emailOutbox.audience, vars: emailOutbox.vars,
   }).from(emailOutbox).where(where).orderBy(desc(emailOutbox.createdAt)).limit(p.limit ?? 50);
   const at = await now();
   const today = sofiaDate(at);
   return {
     total: Number(n),
-    rows: rows.map(r => ({
-      ...r, trigger: CATALOGUE.find(c => c.key === r.key)?.trigger ?? r.key, badge: OUTBOX_STATUS[r.status] ?? OUTBOX_STATUS.queued,
+    rows: rows.map(({ vars, ...r }) => ({
+      ...r, subject: safeSubject(r.key, r.subject, vars),
+      trigger: CATALOGUE.find(c => c.key === r.key)?.trigger ?? r.key, badge: OUTBOX_STATUS[r.status] ?? OUTBOX_STATUS.queued,
       when: stamp(r.sentAt ?? r.createdAt, today),
     })),
   };
@@ -1044,8 +1061,13 @@ export async function templateStats(key: string) {
   return { sent: Number(s?.n ?? 0), last: s?.last ? new Date(s.last) : null };
 }
 
-/** The email preview (/admin/imeyli/[key]/preview): a template with its sample, or a real outbox message. */
-export async function emailPreview(key: string, outboxId?: string | null): Promise<
+/**
+ * The email preview (/admin/imeyli/[key]/preview): a template with its sample, or a real outbox
+ * message (only for canReadOutbox; null otherwise). A message's credentials are never shown: it is
+ * drawn from the masked copy, and a template with secrets is rendered again from masked variables,
+ * whatever the stored row holds.
+ */
+export async function emailPreview(actor: Actor, key: string, outboxId?: string | null): Promise<
   | { kind: 'sample'; content: EmailContent; audience: Audience; optional: boolean; to: string }
   | { kind: 'sent'; subject: string; to: string; html: string; audience: Audience; status: string; at: Date }
   | null
@@ -1053,10 +1075,12 @@ export async function emailPreview(key: string, outboxId?: string | null): Promi
   const t = TEMPLATES[key];
   if (!t) return null;
   if (outboxId) {
+    if (!canReadOutbox(actor)) return null;
     if (!/^[0-9a-f-]{36}$/.test(outboxId)) return null;
     const [m] = await db.select().from(emailOutbox).where(and(eq(emailOutbox.id, outboxId), eq(emailOutbox.templateKey, key)));
     if (!m) return null;
-    return { kind: 'sent', subject: m.subject, to: m.toEmail, html: m.html, audience: m.audience as Audience, status: m.status, at: m.sentAt ?? m.createdAt };
+    const copy = hasSecrets(t) ? storedCopy(t, (m.vars ?? {}) as Record<string, unknown>) : { subject: m.subject, html: m.html };
+    return { kind: 'sent', subject: copy.subject, to: m.toEmail, html: copy.html, audience: m.audience as Audience, status: m.status, at: m.sentAt ?? m.createdAt };
   }
   const SAMPLE_TO: Record<Audience, string> = { client: 'maria.dimitrova@gmail.com', partner: 'studio.melodia@gmail.com', team: 'monika.kovacheva@eventat.bg' };
   return { kind: 'sample', content: t.render(SAMPLES[key]), audience: t.audience, optional: t.optional, to: SAMPLE_TO[t.audience] };

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import '@/styles/m-admin-money.css';
 import { PageChrome } from '../_money/chrome';
 import {
-  AUDIENCE_FILTERS, AUDIENCE_WHO, emailCatalogue, emailSource, outboxList, templateStats,
+  AUDIENCE_FILTERS, AUDIENCE_WHO, canReadOutbox, emailCatalogue, emailSource, outboxList, templateStats,
 } from '@/lib/domain/views-admin-money';
 import { CATALOGUE } from '@/lib/email/templates';
 import { dateTime, plural } from '@/lib/format';
@@ -20,12 +20,14 @@ const SEARCH = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
 export async function EmailsView({ selectedKey, sp }: { selectedKey: string | null; sp: SP }) {
   const audience = one(sp.audience) ?? null;
   const q = one(sp.q) ?? '';
-  const view = one(sp.izgled) === 'izprateni' ? 'sent' : 'templates';
-  const msg = one(sp.msg) ?? null;
-  await adminActor(selectedKey ? `/admin/imeyli/${selectedKey}` : '/admin/imeyli');
+  const actor = await adminActor(selectedKey ? `/admin/imeyli/${selectedKey}` : '/admin/imeyli');
+  // The real outbox (‹Изпратени›) is for manage_team_settings; the other roles see the catalogue.
+  const outbox = canReadOutbox(actor);
+  const view = outbox && one(sp.izgled) === 'izprateni' ? 'sent' : 'templates';
+  const msg = outbox ? one(sp.msg) ?? null : null;
 
   const cat = await emailCatalogue({ audience, q: view === 'templates' ? q : null });
-  const out = await outboxList({ audience, q: view === 'sent' ? q : null, limit: 60 });
+  const out: Awaited<ReturnType<typeof outboxList>> = outbox ? await outboxList(actor, { audience, q: view === 'sent' ? q : null, limit: 60 }) : { total: 0, rows: [] };
   const params = (patch: Record<string, string | null | undefined>) => {
     const u = new URLSearchParams();
     const base: Record<string, string | null | undefined> = { audience: cat.audience, q: q || null, izgled: view === 'sent' ? 'izprateni' : null };
@@ -68,8 +70,10 @@ export async function EmailsView({ selectedKey, sp }: { selectedKey: string | nu
             <nav className="tab-bar am-mail-tabs">
               <Link className={`tab-bar-item${view === 'templates' ? ' is-active' : ''}`} scroll={false}
                 href={selectedKey ? keyHref(selectedKey, { izgled: null, msg: null, q: null }) : `/admin/imeyli${params({ izgled: null, q: null })}`}>Шаблони <span className="tab-count">{cat.count}</span></Link>
-              <Link className={`tab-bar-item${view === 'sent' ? ' is-active' : ''}`} scroll={false}
-                href={`/admin/imeyli${params({ izgled: 'izprateni', q: null })}`}>Изпратени <span className="tab-count">{out.total}</span></Link>
+              {outbox && (
+                <Link className={`tab-bar-item${view === 'sent' ? ' is-active' : ''}`} scroll={false}
+                  href={`/admin/imeyli${params({ izgled: 'izprateni', q: null })}`}>Изпратени <span className="tab-count">{out.total}</span></Link>
+              )}
             </nav>
             <form className="search am-search" action={selectedKey ? `/admin/imeyli/${selectedKey}` : '/admin/imeyli'} role="search">
               {SEARCH}
