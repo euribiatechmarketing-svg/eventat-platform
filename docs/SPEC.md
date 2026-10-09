@@ -70,7 +70,9 @@ Money columns (GMV, commission) and the Плащания area render only with `
 | Sign-in redirect | Client → `next` if present, else `/tarsene`. Partner → the saved onboarding step `/partner/registratsiya/<onboarding_step>` while `partner.status ∈ {draft, returned}`, else `/partner`. Admin → `/admin`. |
 | Role guards | `/akaunt/*`, `/zayavka/*`, `/plashtane/*` need a client. `/partner/*` needs a partner (onboarding routes allow `draft`, `returned` and `submitted`; the rest of the panel needs `approved` or `deactivated`, D24). `/admin/*` needs an admin. A wrong role is redirected to its own home. A guest is sent to `/vhod?next=`. |
 | Blocked user | `user.banned = true` → sign-in refused and all sessions revoked. |
-| Two-factor | When `two_factor_enabled`, sign-in from a new device needs an SMS code to `user.phone` (§11.4). Admins must turn it on (DEPLOY.md). |
+| Unconfirmed email | No session until the address is confirmed: by the email code (A3) or by Google / Facebook vouching for it (A4). |
+| Revocation | Every request reads the session row (no cached session cookie), so revoking a session ends it at once on every device. |
+| Two-factor | When `two_factor_enabled`, sign-in from a new device needs an SMS code to `user.phone` (§11.4); a device that passed it is trusted for 30 days, until a password reset or ‹Излез навсякъде›. Admins must turn it on (DEPLOY.md). |
 | `/` | Guest: start page (start.html). Signed-in client → `/tarsene`; partner → `/partner`; admin → `/admin` (D47). |
 
 ---
@@ -208,18 +210,18 @@ Each machine lists:
 | A1 | ∅ → unverified | ‹Създай профил› on `/registratsiya` | guest | ‹Приемам Общите условия и Политиката за поверителност› ticked; email not taken; password ≥ 8 chars | `user` (role client, phone), `client_profile`, consent rows; 6-digit code → `client-verify-code` |
 | A2 | unverified → unverified | ‹Поискайте нов› (after the countdown, 60 s) | guest | cooldown passed | New code (the old one is invalidated); `client-verify-code`; toast ‹Изпратихме нов код› |
 | A3 | unverified → active | ‹Потвърди› with the correct code | guest | code valid (10 min, 5 attempts) | `email_verified = true`; session; `client-welcome`; toast ‹Профилът е създаден›; redirect `next` or `/tarsene` |
-| A4 | ∅ → active | ‹Продължи с Google› / ‹Продължи с Facebook› | guest | provider email verified | `account` row; `client-welcome`; toast ‹Профилът е създаден› |
+| A4 | ∅ → active | ‹Продължи с Google› / ‹Продължи с Facebook› | guest | provider email verified (otherwise no profile, no link to an existing one, no session; Facebook never reports it) | `account` row; first sign-in: `client_profile`, `client-welcome`, toast ‹Профилът е създаден› |
 | A5 | active → active | ‹Смени паролата› / ‹Забравена парола?› | client | — | Reset link → `client-password-link` (same response whether or not the email exists) |
-| A6 | active → active | New password saved via the link | client | token valid (60 min) | `password_changed_at`; all other sessions revoked; `client-password-changed` |
+| A6 | active → active | New password saved via the link | client | token valid (60 min) | `password_changed_at`; all other sessions and trusted devices revoked; `client-password-changed` |
 | A7 | active → active | Two-step toggle on | client | phone present | `two_factor_enabled = true`; `client-2fa-on`. Turning it off sends no email. |
-| A8 | active → active | ‹Излез навсякъде› | client | — | Every session revoked; `client-signout-all`; redirect `/` |
+| A8 | active → active | ‹Излез навсякъде› | client | — | Every session and trusted device revoked; `client-signout-all`; redirect `/` |
 | A9 | active → deletion_requested | ‹Изтрий профила› | client | — | `account_deletion_request` (24 h token); `client-delete-confirm`; toast ‹Изпратихме имейл за потвърждение на изтриването› |
 | A10 | deletion_requested → deleted | ‹Потвърди изтриването› (email link) | client | — | Anonymise the profile (name → ‹Изтрит профил›, new copy; email → `deleted+<id>@eventat.invalid`; phone null). Confirmed bookings stay valid until the event. Payments, invoices and ledger are kept (legal retention). Sessions are revoked. |
 | A11 | deletion_requested → active | link not used in 24 h | system | — | Request `expired` |
 | A12 | active → blocked | ‹Блокирай профила› (`/admin/klienti/[id]`) | admin | §1.2 | `banned = true`; sessions revoked; `client-account-blocked`; toast ‹Профилът е блокиран›. Open requests stay as they are; blocked clients cannot send new ones. |
 | A13 | blocked → active | not in the prototype (D39) | admin | — | — |
 
-Changing the email in ‹Настройки› sends a verification code to the new address, and the email changes only after it is confirmed (D55, new copy).
+Changing the email in ‹Настройки› sends a verification code to the new address, and the email changes only after it is confirmed (D55, new copy). Like the sign-up code: 10 minutes, 5 attempts per code, a new code at most every 60 s (the previous one stops working) and at most 10 an hour. Confirming ends the account's other sessions and trusted devices.
 
 ### 4.2 Partner account (`partner.status`)
 

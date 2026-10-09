@@ -13,11 +13,14 @@ export async function clientIp(): Promise<string | null> {
   return isIP(ip) ? ip : null;
 }
 
-/** Social sign-in buttons render only for configured providers (no dead controls). */
+/**
+ * Social sign-in buttons render only for providers that can sign someone in (no dead controls).
+ * Facebook never vouches for the address (Better Auth reads no verified flag from it), so lib/auth.ts
+ * admits no Facebook identity (SPEC §4.1 A4) and its button stays hidden even when it is configured.
+ */
 export function socialProviders(): ('google' | 'facebook')[] {
   const out: ('google' | 'facebook')[] = [];
   if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) out.push('google');
-  if (process.env.FACEBOOK_CLIENT_ID && process.env.FACEBOOK_CLIENT_SECRET) out.push('facebook');
   return out;
 }
 
@@ -36,10 +39,13 @@ export function authErrorCode(e: unknown): string {
 /** One query-string value. */
 export const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? '';
 
-/** Sign this browser out completely: the session rows may already be gone (deleted / revoked), so the cookies go too. */
+/**
+ * Sign this browser out completely: the session rows may already be gone (deleted / revoked), so the
+ * cookies go too, including `trust_device` (the next sign-in here passes the SMS step again).
+ */
 export async function clearAuthCookies() {
   const jar = await cookies();
-  for (const name of ['session_token', 'session_data', 'dont_remember', 'two_factor']) {
+  for (const name of ['session_token', 'session_data', 'dont_remember', 'two_factor', 'trust_device']) {
     for (const prefix of ['better-auth.', '__Secure-better-auth.']) if (jar.get(prefix + name)) jar.delete(prefix + name);
   }
 }

@@ -128,7 +128,7 @@ Until you answer, the platform does what the item describes under "Now". Bulgari
 - Why: consent is an active choice.
 
 **31. Google and Facebook buttons** — `/vhod`, `/registratsiya`
-- Now: hidden, because no Google or Facebook account is connected yet. Once connected they show, and on `/registratsiya` for clients only.
+- Now: hidden, because no Google or Facebook account is connected yet. Once connected, ‹Продължи с Google› shows, and on `/registratsiya` for clients only. ‹Продължи с Facebook› stays hidden: Facebook does not confirm that the email address belongs to the person, and a profile needs a confirmed address.
 
 **32. Company-invoice field labels** — `/akaunt/nastroyki`
 - Now: ‹Адрес› and ‹МОЛ›.

@@ -9,8 +9,11 @@ import { setFlash } from '@/lib/flash';
 import { requireRole } from '@/lib/session';
 import { actorFromUser } from '@/lib/domain/actor';
 import { DomainError } from '@/lib/domain/catalogue-kit';
-import { cancelEmailChange, confirmEmailChangeLimited, resendEmailChangeCode } from '@/lib/domain/views-auth-account';
+import { confirmEmailChange } from '@/lib/domain/clients';
+import { hitAll } from '@/lib/domain/throttle';
+import { cancelEmailChange, resendEmailChangeCode } from '@/lib/domain/views-auth-account';
 import { ERR, type FormState } from '../../../../(auth)/_ui/messages';
+import { clientIp } from '../../../../(auth)/_ui/server';
 
 const PATH = '/akaunt/nastroyki/imeyl';
 
@@ -18,8 +21,12 @@ export async function confirmEmailChangeAction(_prev: FormState, fd: FormData): 
   const actor = await actorFromUser(await requireRole('client', PATH));
   const code = z.string().regex(/^\d{6}$/).safeParse(String(fd.get('code') ?? ''));
   if (!code.success) return { error: ERR.code };
+  // Code entries per user and per IP, like the other code screens (lib/domain/throttle).
+  if (!(await hitAll([['codeKey', `email-change:${actor.userId}`], ['codeIp', await clientIp()]]))) return { error: ERR.generic };
+  const current = await auth.api.getSession({ headers: await headers() });
   try {
-    await confirmEmailChangeLimited(actor, code.data);
+    // The account's other sessions and trusted devices end with the change; this browser stays signed in.
+    await confirmEmailChange(actor, { code: code.data, keepSessionId: current?.session.id ?? null });
   } catch (e) {
     if (e instanceof DomainError) {
       if (e.code === 'email_taken') return { error: ERR.emailTaken };
@@ -27,7 +34,6 @@ export async function confirmEmailChangeAction(_prev: FormState, fd: FormData): 
     }
     throw e;
   }
-  try { await auth.api.getSession({ headers: await headers(), query: { disableCookieCache: true } }); } catch { /* ignore */ }
   revalidatePath('/', 'layout');
   await setFlash('Промените са запазени');
   redirect('/akaunt/nastroyki');

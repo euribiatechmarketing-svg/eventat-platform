@@ -101,9 +101,9 @@ export async function socialSignInAction(fd: FormData) {
   if (!socialProviders().includes(provider)) return;
   const next = safeNext(String(fd.get('next') ?? '')) ?? '';
   const as = fd.get('as') === 'partner' ? 'partner' : 'client';
-  const back = `/vhod/prodalzhi${carry(as, next)}`;
+  // New and returning users land on the same route: it tells a first sign-in from the data, never from the URL.
   const r = await auth.api.signInSocial({
-    body: { provider, callbackURL: back, newUserCallbackURL: `/vhod/prodalzhi${carry(as, next, { nov: '1' })}`, errorCallbackURL: `/vhod${carry(as, next)}` },
+    body: { provider, callbackURL: `/vhod/prodalzhi${carry(as, next)}`, errorCallbackURL: `/vhod${carry(as, next)}` },
     headers: await headers(),
   });
   if (r.url) redirect(r.url);
