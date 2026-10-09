@@ -20,12 +20,14 @@ button.wiz-top-link { padding-block: 0; padding-right: 0; border-block: 0; borde
 .wiz-top-right > :first-child + button.wiz-top-link { border-left-width: 1px; }
 .lang .ui-click:hover { color: var(--primary-700); }
 
-/* steps rail: a finished or next step is a button over the whole row */
+/* steps rail: a finished or next step is a button over the whole row — the row's
+   12px top and bottom band included, so nothing with the pointer cursor is dead */
 .wiz-step.ui-click:hover .wiz-step-label { color: var(--primary-700); }
+.wiz-step:has(> .m-step-btn) { padding: 0; }
 .m-step-btn {
   grid-column: 1 / -1;
   display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 14px;
-  width: 100%; padding: 0; border: 0; background: none;
+  width: 100%; padding: 12px 0; border: 0; background: none;
   font: inherit; color: inherit; text-align: left; cursor: pointer;
 }
 .m-step-btn:focus-visible { outline-offset: 4px; border-radius: 6px; }
@@ -39,8 +41,11 @@ button.wiz-top-link { padding-block: 0; padding-right: 0; border-block: 0; borde
 .m-section-error { margin: -6px 0 0; font-size: var(--fs-caption); color: var(--danger-600); }
 
 /* ---------- step 2: uploads, gallery, chips ---------- */
-.upload--cover .upload-preview { cursor: pointer; }
+.upload--cover .upload-preview, .upload--circle .m-avatar-pick { cursor: pointer; }
 .upload--cover .upload-preview:hover { box-shadow: inset 0 0 0 2px var(--primary-300); }
+.upload--circle .m-avatar-pick { flex-shrink: 0; padding: 0; border: 0; background: none; border-radius: 50%; }
+.upload--circle .m-avatar-pick:hover .avatar, .upload--circle .m-avatar-pick:hover .upload-preview { box-shadow: 0 0 0 2px var(--primary-300); }
+.upload--circle .m-avatar-pick:focus-visible { outline: 2px solid var(--primary-500); outline-offset: 3px; }
 .m-upload-avatar { position: relative; flex-shrink: 0; }
 .upload-preview--placeholder svg { width: 22px; height: 22px; color: var(--neutral-400); }
 .gallery-add[disabled] { opacity: .5; cursor: default; }
@@ -76,12 +81,16 @@ button.wiz-top-link { padding-block: 0; padding-right: 0; border-block: 0; borde
 .m-inline-amount:focus { outline: none; border-color: var(--primary-500); box-shadow: var(--shadow-focus); }
 .service-row-thumb:not([style]) { background-color: var(--app-bg); }
 .service-row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.service-row-meta { flex-wrap: nowrap; white-space: nowrap; min-width: 0; }
+.service-row-meta > * { flex-shrink: 0; }
+.service-row-meta > .m-meta-text { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .m-add-btn { align-self: flex-start; }
 
 /* ---------- step 4: calendar ---------- */
 button.calendar-day { width: 100%; padding: 0; border-top: 0; border-left: 0; font-family: inherit; }
 .calendar-day--off, .calendar-day.m-past { cursor: default; }
 .calendar-day.m-past { color: var(--neutral-300); }
+.calendar-grid > .calendar-day.m-past:not(.calendar-day--off):not(.calendar-day--booked):hover { background: #fff; }
 .calendar-day.m-pending { opacity: .6; }
 .calendar-head a.btn, .calendar-head button.btn { flex-shrink: 0; }
 .m-limit { margin-top: 14px; }
@@ -100,6 +109,9 @@ button.calendar-day { width: 100%; padding: 0; border-top: 0; border-left: 0; fo
 .m-check-error .check-box { border-color: var(--danger-500) !important; }
 
 /* ---------- pending (onboarding/pending.html) ---------- */
+.pending-title { text-wrap: balance; }
+/* a business name or an email moves to the next line whole instead of splitting */
+.pending-text strong { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
 .pending-icon--danger { background: var(--danger-50); color: var(--danger-600); }
 .m-reason { margin: 24px 0 0; padding: 16px 20px; text-align: left; background: var(--app-bg); border-radius: 12px; font-size: 14px; line-height: 1.6; color: var(--primary-900); }
 .m-reason b { display: block; margin-bottom: 4px; font-size: 12px; font-weight: var(--fw-semibold); color: var(--neutral-600); }
@@ -132,6 +144,7 @@ button.calendar-day { width: 100%; padding: 0; border-top: 0; border-left: 0; fo
   .wiz-step-meta { display: none; }
   .wiz-step:not(.wiz-step--current) .wiz-step-label { display: none; }
   .wiz-step, .m-step-btn { grid-template-columns: 28px auto; }
+  .m-step-btn { padding: 0; }
   .wiz-row--3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .gallery-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .wiz-footer { padding: 0 24px; }
@@ -140,6 +153,7 @@ button.calendar-day { width: 100%; padding: 0; border-top: 0; border-left: 0; fo
 
 @media (max-width: 640px) {
   .wiz-top { padding: 0 16px; gap: 10px; }
+  .wiz-logo img { height: 30px; }
   .wiz-top-btn { display: none; }
   .wiz-top-right > * + button.wiz-top-link { padding-left: 12px; }
   .wiz-steps { gap: 10px; margin-top: 12px; }
@@ -183,4 +197,22 @@ button.calendar-day { width: 100%; padding: 0; border-top: 0; border-left: 0; fo
   .option-card { padding: 16px; }
   .option-card-title { white-space: normal; }
   .m-chip-input { width: 150px; }
+
+  /* working days: one row of seven equal pills */
+  .dow-row { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+  .dow-pill { padding: 10px 0; text-align: center; }
+  .service-row-meta { font-size: 12.5px; gap: 6px; }
+
+  /* tap targets: small controls keep their drawn size and get a ≥ 44px hit area */
+  .wiz-steps { padding: 8px 4px; margin: 4px -4px -8px; }
+  .m-step-btn, .wiz-top-link, .lang .ui-click, .btn--sm, .calendar-head .btn, .review-section-head a { position: relative; }
+  .m-step-btn::before, .wiz-top-link::before, .lang .ui-click::before, .btn--sm::before,
+  .calendar-head .btn::before, .gallery-action::before, .review-section-head a::before { content: ''; position: absolute; }
+  .m-step-btn::before { inset: -8px -4px; }
+  .wiz-top-link::before { inset: -7px -6px; }
+  .lang .ui-click::before { inset: -9px -4px; }
+  .btn--sm::before { inset: -8px -3px; }
+  .calendar-head .btn::before { inset: -8px; }
+  .gallery-action::before { inset: -9px; }
+  .review-section-head a::before { inset: -12px -8px; }
 }

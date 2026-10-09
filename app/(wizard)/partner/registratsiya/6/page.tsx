@@ -1,6 +1,7 @@
 // Step 6 ‹Преглед и подаване› (prototype onboarding/review.html; SCREENS §6). A returned
 // application shows the team's note on top (vendor-application-returned: ‹Бележка от екипа›).
 import type { Metadata } from 'next';
+import { Fragment } from 'react';
 import Link from 'next/link';
 import { moneyShort } from '@/lib/format';
 import { stepReview } from '@/lib/domain/views-partner-onboarding';
@@ -98,17 +99,20 @@ export default async function ReviewStep() {
         <Section title="Пакети и услуги" step={3}>
           <div className="stack">
             {r.services.map(s => {
+              // ‹1 450 € · До 10 часа · Препоръчан› / ‹По запитване · {описание}›; the text item shortens on a phone.
               const meta = [
-                s.kind === 'on_request' ? 'По запитване' : s.priceCents ? moneyShort(s.priceCents) : null,
-                s.kind === 'on_request' ? s.description || null : s.durationLabel || null,
-                s === firstFixed ? 'Препоръчан' : null,
-              ].filter(Boolean) as string[];
+                { t: s.kind === 'on_request' ? 'По запитване' : s.priceCents ? moneyShort(s.priceCents) : null },
+                { t: s.kind === 'on_request' ? s.description || null : s.durationLabel || null, text: true },
+                { t: s === firstFixed ? 'Препоръчан' : null },
+              ].filter(m => m.t) as { t: string; text?: boolean }[];
               return (
                 <div key={s.id} className="service-row">
                   <div className="service-row-thumb" style={s.thumbUrl ? { backgroundImage: `url('${s.thumbUrl}')` } : undefined} />
                   <div className="service-row-info">
                     <p className="service-row-title">{s.name}</p>
-                    <div className="service-row-meta">{meta.map((m, i) => <span key={i} style={{ display: 'contents' }}>{i > 0 && <span>·</span>}<span>{m}</span></span>)}</div>
+                    <div className="service-row-meta">{meta.map((m, i) => (
+                      <Fragment key={i}>{i > 0 && <span>·</span>}<span className={m.text ? 'm-meta-text' : undefined}>{m.t}</span></Fragment>
+                    ))}</div>
                   </div>
                   {s.complete
                     ? <span className="badge badge--success badge--dot">Готов</span>

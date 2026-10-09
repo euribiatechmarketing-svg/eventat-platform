@@ -147,15 +147,19 @@ function Editor({ p, first, categories, defaultCategoryId, cityName, collapsed, 
   );
 }
 
+/** A collapsed package (onboarding/services.html): ‹640 € · {short description}›. */
 function Row({ p, onEdit, onRemove, busy }: { p: Pkg; onEdit: () => void; onRemove: () => void; busy: boolean }) {
-  const meta = [p.kind === 'on_request' ? 'По запитване' : p.priceCents ? moneyShort(p.priceCents) : null, p.durationLabel || p.description || null].filter(Boolean);
+  const price = p.kind === 'on_request' ? 'По запитване' : p.priceCents ? moneyShort(p.priceCents) : null;
+  const text = p.description || p.durationLabel || null;
   return (
     <div className={`service-row${busy ? ' m-busy' : ''}`} data-key={p.key}>
       <div className="service-row-thumb" style={bg(p.thumbUrl)} />
       <div className="service-row-info">
         <p className="service-row-title">{p.name}</p>
         <div className="service-row-meta">
-          {meta.map((m, i) => <span key={i} style={{ display: 'contents' }}>{i > 0 && <span>·</span>}<span>{m}</span></span>)}
+          {price && <span>{price}</span>}
+          {price && text && <span>·</span>}
+          {text && <span className="m-meta-text">{text}</span>}
         </div>
       </div>
       <div className="service-row-actions">

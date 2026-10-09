@@ -77,8 +77,9 @@ export function WizardForm({ action, children, onResult, className = 'wiz-form' 
         onChange={touch}
         onKeyDown={e => {
           const t = e.target as HTMLElement;
-          // Enter in a one-line field must not submit: the form's first submit button is ‹Запази и продължи по-късно›.
-          if (e.key === 'Enter' && t.tagName === 'INPUT' && (t as HTMLInputElement).type !== 'checkbox') e.preventDefault();
+          // Enter in any input (text, checkbox, radio) must not submit implicitly: the form's first
+          // submit button is the logo (‹Запази и продължи по-късно›), which would sign the partner out.
+          if (e.key === 'Enter' && t.tagName === 'INPUT') e.preventDefault();
         }}>
         {state.error && (
           <div className="alert alert--danger m-form-alert" role="alert">

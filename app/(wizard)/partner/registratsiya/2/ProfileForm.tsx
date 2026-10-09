@@ -148,8 +148,9 @@ function Gallery({ photos, galleryMax }: Pick<Props, 'photos' | 'galleryMax'>) {
 
 function Photos({ avatarUrl, coverUrl }: Pick<Props, 'avatarUrl' | 'coverUrl'>) {
   const { state } = useStepState();
-  const avatar = useUpload(uploadAvatarAction, 'Снимката е обновена', AVATAR_RULE);
-  const cover = useUpload(uploadCoverAction, 'Снимката е качена', PHOTO_RULE);
+  // ‹Качи снимка› → ‹Снимката е качена›; ‹Смени снимката› → ‹Снимката е обновена› (proto.js).
+  const avatar = useUpload(uploadAvatarAction, avatarUrl ? 'Снимката е обновена' : 'Снимката е качена', AVATAR_RULE);
+  const cover = useUpload(uploadCoverAction, coverUrl ? 'Снимката е обновена' : 'Снимката е качена', PHOTO_RULE);
   return (
     <section className="wiz-fieldset">
       <div className="wiz-fieldset-head">
@@ -162,9 +163,11 @@ function Photos({ avatarUrl, coverUrl }: Pick<Props, 'avatarUrl' | 'coverUrl'>) 
         <div className={`field${state.fields?.avatar ? ' field--error' : ''}`}>
           <label className="field-label">Профилна снимка<span className="required-mark">*</span></label>
           <div className={`upload upload--circle${avatar.pending ? ' m-busy' : ''}`}>
-            {avatarUrl
-              ? <span className="avatar avatar--xl"><img src={avatarUrl} alt="" /></span>
-              : <span className="upload-preview upload-preview--placeholder" aria-hidden="true" />}
+            <button type="button" className="m-avatar-pick" onClick={avatar.open} aria-label={avatarUrl ? 'Смени снимката' : 'Качи снимка'} tabIndex={-1}>
+              {avatarUrl
+                ? <span className="avatar avatar--xl"><img src={avatarUrl} alt="" /></span>
+                : <span className="upload-preview upload-preview--placeholder" aria-hidden="true" />}
+            </button>
             <div className="upload-meta">
               <button type="button" className="btn btn--outline btn--sm" onClick={avatar.open}>{avatarUrl ? 'Смени снимката' : 'Качи снимка'}</button>
               <p className="t-caption t-muted">{AVATAR_RULE}</p>

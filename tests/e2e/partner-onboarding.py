@@ -67,6 +67,37 @@ def continue_(page):
     page.locator('.wiz-footer-actions .btn--primary').click()
 
 
+# Phone checks (390 px). A control's hit area: walk out from its centre while the hit-test
+# still lands on it (an invisible ::before can enlarge a small drawn control).
+HIT_JS = """sel => [...document.querySelectorAll(sel)].filter(e => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden').map(el => {
+  el.scrollIntoView({ block: 'center' });
+  const r = el.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  const hits = (x, y) => { const h = document.elementFromPoint(x, y); return !!h && (h === el || el.contains(h)); };
+  const reach = (dx, dy) => { let d = 0; while (d < 40 && hits(cx + dx * (d + 1), cy + dy * (d + 1))) d++; return d; };
+  return { what: (el.innerText || el.getAttribute('aria-label') || el.className).trim().slice(0, 30), w: reach(-1, 0) + reach(1, 0) + 1, h: reach(0, -1) + reach(0, 1) + 1 };
+})"""
+OVERFLOW_JS = """() => {
+  const vw = innerWidth, out = [];
+  for (const el of document.querySelectorAll('body *')) {
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height || getComputedStyle(el).visibility === 'hidden') continue;
+    if (r.right <= vw + 0.5 && r.left >= -0.5) continue;
+    let p = el.parentElement, scroller = false;
+    for (; p; p = p.parentElement) { const o = getComputedStyle(p).overflowX; if (/(auto|scroll|hidden|clip)/.test(o) && p.scrollWidth > p.clientWidth + 1) { scroller = true; break; } }
+    if (!scroller) out.push(el.tagName + '.' + el.className);
+  }
+  return { sw: document.documentElement.scrollWidth, cut: out.slice(0, 5) };
+}"""
+SMALL_CONTROLS = '.m-step-btn, .wiz-top-link, .lang .ui-click, .btn--sm, .calendar-head .btn, .gallery-action, .review-section-head a'
+
+
+def phone_layout(page, path):
+    r = page.evaluate(OVERFLOW_JS)
+    assert r['sw'] <= 390 and not r['cut'], (path, r)
+    small = [c for c in page.evaluate(HIT_JS, SMALL_CONTROLS) if c['h'] < 40 or c['w'] < 32]
+    assert not small, (path, small)
+
+
 def run():
     email = f'onb-{STAMP}@example.test'
     tsx('onboarding-setup.ts', email, 'Студио Тест', 'Иван Петров', '+359887001122')
@@ -143,6 +174,15 @@ def run():
         wait_url(page, R + '/2$')
         ok('‹Назад› and the steps rail navigate')
 
+        # Review fix: the whole rail row has the pointer cursor, so its top band must navigate too.
+        page.locator('.wiz-footer-actions .btn--ghost').click()
+        wait_url(page, R + '/1$')
+        box = page.locator('.wiz-step').nth(1).bounding_box()
+        assert page.evaluate('([x, y]) => getComputedStyle(document.elementFromPoint(x, y)).cursor', [box['x'] + 60, box['y'] + 3]) == 'pointer'
+        page.mouse.click(box['x'] + 60, box['y'] + 3)
+        wait_url(page, R + '/2$')
+        ok('the rail row band (pointer cursor) navigates, not only the label')
+
         page.fill('#f-shortDescription', 'DJ и озвучаване за сватби и фирмени събития.')
         expect(page.locator('.field:has(#f-shortDescription) .m-counter')).to_have_text('44')
         expect(page.locator('.wiz-save-status')).to_have_text('Запазено току-що', timeout=15000)
@@ -153,13 +193,26 @@ def run():
         assert partner(email)['short_description'] == 'DJ и озвучаване за сватби и фирмени събития.'
         ok('typing saves the draft by itself (‹Запазено току-що›)')
 
+        # Review fix: the dashed avatar circle looks like the cover's drop area, so it opens the picker too.
         with page.expect_file_chooser() as fc:
-            page.get_by_role('button', name='Качи снимка').first.click()
+            page.locator('.upload--circle .m-avatar-pick').click()
         fc.value.set_files(PHOTOS[1])
-        toast(page, 'Снимката е обновена')
+        toast(page, 'Снимката е качена')
         expect(page.locator('.upload--circle .avatar img')).to_be_visible()
-        assert partner(email)['avatar_media_id']
-        ok('profile photo upload')
+        expect(page.locator('.upload-meta .btn')).to_have_text('Смени снимката')
+        first_avatar = partner(email)['avatar_media_id']
+        assert first_avatar
+        page.wait_for_timeout(3500)
+        with page.expect_file_chooser() as fc:
+            page.locator('.upload-meta .btn').click()
+        fc.value.set_files(PHOTOS[2])
+        toast(page, 'Снимката е обновена')
+        for _ in range(20):
+            if partner(email)['avatar_media_id'] != first_avatar:
+                break
+            time.sleep(0.5)
+        assert partner(email)['avatar_media_id'] != first_avatar
+        ok('profile photo: the circle uploads (‹Снимката е качена›), ‹Смени снимката› replaces (‹Снимката е обновена›)')
 
         with page.expect_file_chooser() as fc:
             page.locator('.upload--cover .upload-preview').click()
@@ -167,7 +220,12 @@ def run():
         toast(page, 'Снимката е качена')
         expect(page.locator('.upload--cover .upload-preview--placeholder')).to_have_count(0)
         assert partner(email)['cover_media_id']
-        ok('cover upload')
+        page.wait_for_timeout(3500)
+        with page.expect_file_chooser() as fc:
+            page.locator('.upload--cover .upload-preview').click()
+        fc.value.set_files(PHOTOS[3])
+        toast(page, 'Снимката е обновена')
+        ok('cover upload, and a replaced cover toasts ‹Снимката е обновена›')
 
         with page.expect_file_chooser() as fc:
             page.locator('.gallery-add').click()
@@ -289,6 +347,18 @@ def run():
         ok('step 3 rows open with ‹Редактирай›')
 
         # ── step 4 ───────────────────────────────────────────────────────
+        # Review fix: a past day is not a control, so it must not light up on hover.
+        page.goto(BASE + R + '/4?mesec=2025-08')
+        past = page.locator('.calendar-day.m-past').first
+        expect(past).to_be_visible()
+        assert past.evaluate('e => e.tagName') == 'DIV'
+        past.hover()
+        assert past.evaluate('e => getComputedStyle(e).backgroundColor') == 'rgb(255, 255, 255)'
+        assert past.evaluate('e => getComputedStyle(e).cursor') == 'default'
+        page.get_by_role('link', name='Следващ месец').click()
+        expect(page.locator('.calendar-head strong')).to_have_text('Септември 2025')
+        ok('past calendar days look inert (no hover, no pointer)')
+
         page.locator('.option-card', has_text='Лимит на ден').click()
         page.select_option('#f-maxBookingsPerDate', '3')
         page.locator('.dow-pill', has_text='Нд').click()
@@ -346,6 +416,15 @@ def run():
         wait_url(page, R + '/5$')
         page.goto(BASE + R + '/6')
         ok('review summary and ‹Редактирай›')
+
+        # Review fix: Enter on a focused checkbox used to submit the form through its first submit
+        # button (the logo = ‹Запази и продължи по-късно›) and sign the partner out.
+        page.locator('input[name=confirmInfo]').focus()
+        page.keyboard.press('Enter')
+        page.wait_for_timeout(2500)
+        assert page.url.endswith(R + '/6'), page.url
+        expect(page.locator('.ui-toast.is-on', has_text='Черновата е запазена')).to_have_count(0)
+        ok('Enter on a consent checkbox does not sign the partner out')
 
         page.get_by_role('button', name='Подай за одобрение').click()
         expect(page.locator('.m-form-alert')).to_be_visible()
@@ -433,6 +512,58 @@ def run():
         page.locator('.wiz-top button.wiz-top-link', has_text='Изход').click()
         wait_url(page, BASE.replace('.', r'\.') + '/$')
         ok('rejected variant shows the motive; ‹Изход› signs out')
+
+        ctx.clear_cookies()
+
+        # ── review fixes: package rows (prototype ‹640 € · {описание}›) ─────
+        email5 = f'onb5-{STAMP}@example.test'
+        tsx('onboarding-setup.ts', email5, 'Студио Мелодия Тест', 'Мартин Стоянов', '+359881234567', '--complete')
+        sign_in(page, email5)
+        page.goto(BASE + R + '/3')
+        meta = page.locator('.service-row', has_text='Пакет „Вечер“').locator('.service-row-meta')
+        expect(meta).to_have_text(re.compile(r'^640\s€\s*·\s*Музика и озвучаване за вечерното парти\.$'))
+        ok('a collapsed package reads ‹цена · кратко описание› as in the prototype')
+        ctx.clear_cookies()
+
+        # ── phone (390 px): every route, no sideways scroll, tap targets, one-line rows ──
+        phone = browser.new_context(viewport={'width': 390, 'height': 844}, locale='bg-BG', timezone_id='Europe/Sofia')
+        ph = phone.new_page()
+        ph.on('pageerror', lambda e: errors.append(str(e)))
+        sign_in(ph, email5)
+        for n in range(1, 7):
+            ph.goto(BASE + R + f'/{n}')
+            wait_url(ph, R + f'/{n}$')
+            phone_layout(ph, n)
+            if n in (3, 6):
+                for m in ph.locator('.service-row-meta').all():
+                    tops = m.evaluate("e => new Set([...e.children].map(c => Math.round(c.getBoundingClientRect().top))).size")
+                    assert tops == 1, (n, m.inner_text())
+            if n == 4:
+                tops = ph.evaluate("() => new Set([...document.querySelectorAll('.dow-pill')].map(p => Math.round(p.getBoundingClientRect().top))).size")
+                assert tops == 1, 'working-day pills wrap'
+        ok('phone: steps 1–6 have no sideways scroll, ≥ 40 px tap targets, one-line package rows, one row of working days')
+        phone.clear_cookies()
+
+        for who, title in [(email3, 'Благодарим, Петя.'), (email4, 'Не можем да одобрим профила ви')]:
+            sign_in(ph, who)
+            ph.goto(BASE + R + '/podadeno')
+            expect(ph.locator('.pending-title')).to_have_text(title)
+            phone_layout(ph, 'podadeno')
+            assert ph.locator('.pending-text strong').first.evaluate('e => e.getClientRects().length') == 1
+            phone.clear_cookies()
+        page.set_viewport_size({'width': 1440, 'height': 900})
+        sign_in(page, email4)
+        page.goto(BASE + R + '/podadeno')
+        # words on the heading's last line (text-wrap: balance — no orphan ‹ви›)
+        last_line_words = page.locator('.pending-title').evaluate('''e => {
+          const t = e.firstChild, rg = document.createRange(), tops = [];
+          for (const m of t.textContent.matchAll(/\\S+/g)) { rg.setStart(t, m.index); rg.setEnd(t, m.index + m[0].length); tops.push(Math.round(rg.getBoundingClientRect().top)); }
+          const last = Math.max(...tops);
+          return tops.filter(x => x === last).length;
+        }''')
+        assert last_line_words > 1, 'the rejected heading leaves one word on its last line'
+        ok('pending page on a phone: no sideways scroll, names and emails never split; headings balanced')
+        phone.close()
 
         assert not errors, errors
         browser.close()
