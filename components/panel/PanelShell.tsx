@@ -35,7 +35,7 @@ export function PanelShell({ area, groups, titles, aliases, userName, userRole, 
         </Link>
         <RailNav groups={groups} home={home} aliases={aliases} />
         <div className="side-foot">
-          <Menu align="up" label="Акаунт" className="side-user-menu" items={[...menu, null, { label: 'Изход', onSelect: signOutAction }]}
+          <Menu align="up" className="side-user-menu" items={[...menu, null, { label: 'Изход', onSelect: signOutAction }]}
             trigger={
               <span className="side-user" style={{ cursor: 'pointer' }}>
                 <span className="side-user-av">{avatarUrl ? <img src={avatarUrl} alt="" /> : initials(userName)}</span>
@@ -54,7 +54,7 @@ export function PanelShell({ area, groups, titles, aliases, userName, userRole, 
             <Bell items={bell} />
           </div>
         </header>
-        <div className="content"><div className="content-inner" id="main">{children}</div></div>
+        <div className="content"><div className="content-inner" id="main" role="main">{children}</div></div>
       </div>
     </div>
   );

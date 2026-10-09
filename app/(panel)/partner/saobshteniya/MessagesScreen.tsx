@@ -54,18 +54,18 @@ export async function PartnerMessagesScreen({ id, q, unreadOnly }: { id?: string
         </div>
         <div className="page-head-right">
           <Link className={`btn ${unreadOnly ? 'btn--primary' : 'btn--outline'} btn--sm`} href={toggleHref}
-            aria-pressed={unreadOnly} scroll={false}>Само непрочетени</Link>
+            aria-current={unreadOnly ? 'true' : undefined} scroll={false}>Само непрочетени</Link>
         </div>
       </div>
 
       <div className={`vmsg-shell ${id ? 'ms-open' : 'ms-index'}`}>
         <aside className="vmsg-list">
           <div className="vmsg-list-head">
-            <span className="vmsg-list-t">Разговори</span>
+            <span className="vmsg-list-t" role="heading" aria-level={2}>Разговори</span>
             <span className="vmsg-list-c">{unreadOnly ? 'Непрочетени' : 'Всички'}</span>
           </div>
           <ListSearch className="vmsg-find" placeholder="Търсене по клиент или събитие" />
-          <div className="vmsg-convs">
+          <nav className="vmsg-convs" aria-label="Разговори">
             {list.items.map(c => (
               <Link key={c.id} className={`vmsg-conv${c.id === activeId ? ' is-on' : ''}${c.unread ? ' is-unread' : ''}`}
                 href={`/partner/saobshteniya/${c.id}${params({})}`} aria-current={c.id === activeId ? 'page' : undefined}>
@@ -81,7 +81,7 @@ export async function PartnerMessagesScreen({ id, q, unreadOnly }: { id?: string
               </Link>
             ))}
             {!list.items.length && <div className="ui-empty">Няма записи в този изглед.</div>}
-          </div>
+          </nav>
         </aside>
 
         {view ? (
@@ -90,7 +90,7 @@ export async function PartnerMessagesScreen({ id, q, unreadOnly }: { id?: string
             <div className="vmsg-head">
               <span className="avatar avatar--lg">{view.otherInitials}</span>
               <div className="ms-head-main">
-                <div className="vmsg-head-n"><Num text={view.otherName} /></div>
+                <div className="vmsg-head-n" role="heading" aria-level={2}><Num text={view.otherName} /></div>
                 {view.contextLink
                   ? <Link className="vmsg-ctx" href={view.contextLink.href}>{view.summary}{CHEVRON}</Link>
                   : view.summary && <span className="vmsg-ctx">{view.summary}</span>}
@@ -100,10 +100,10 @@ export async function PartnerMessagesScreen({ id, q, unreadOnly }: { id?: string
                 {view.contextLink && <Link className="btn btn--outline btn--sm" href={view.contextLink.href}>{view.contextLink.label}</Link>}
               </div>
             </div>
-            <ThreadBody className="vmsg-thread" lastId={view.lastMessageId}>
+            <ThreadBody className="vmsg-thread" lastId={view.lastMessageId} label={`Съобщения · ${view.otherName}`}>
               {view.days.map(d => (
                 <Fragment key={d.label}>
-                  <div className="vmsg-day"><span>{d.label}</span></div>
+                  <div className="vmsg-day" role="heading" aria-level={3}><span>{d.label}</span></div>
                   {d.messages.map(m => (
                     <div key={m.id} className={`vmsg-m${m.mine ? ' vmsg-m--out' : ''}`}>
                       {m.body && <div className="vmsg-b">{m.body}</div>}

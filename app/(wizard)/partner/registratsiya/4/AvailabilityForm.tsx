@@ -52,13 +52,13 @@ function Calendar({ calendar }: Pick<Props, 'calendar'>) {
           : <button type="button" className="btn btn--outline btn--icon btn--sm" disabled aria-label="Следващ месец"><ChevronRight /></button>}
       </div>
       <div className="calendar-grid">
-        {WEEKDAYS_SHORT.map(d => <div key={d} className="calendar-dow">{d}</div>)}
+        {WEEKDAYS_SHORT.map(d => <div key={d} className="calendar-dow" aria-hidden="true">{d}</div>)}
         {calendar.cells.map(c => {
           if (c.out) return <div key={c.date} className="calendar-day calendar-day--off">{c.day}</div>;
           if (c.past) return <div key={c.date} className={`calendar-day m-past${c.blocked ? ' calendar-day--blocked' : ''}`}>{c.day}</div>;
           const blocked = override[c.date] ?? c.blocked;
           return (
-            <button key={c.date} type="button" data-date={c.date} aria-pressed={blocked}
+            <button key={c.date} type="button" data-date={c.date} aria-pressed={blocked} aria-label={`${c.day} ${calendar.title}`}
               className={`calendar-day${blocked ? ' calendar-day--blocked' : ''}${c.today ? ' calendar-day--today' : ''}${pendingDate === c.date ? ' m-pending' : ''}`}
               onClick={() => toggle(c)}>{c.day}</button>
           );
@@ -75,20 +75,21 @@ function ModeCards({ initial, max }: { initial: Mode; max: number }) {
     <section className="wiz-fieldset">
       <div className="wiz-fieldset-head">
         <div>
-          <h3 className="wiz-fieldset-title">Колко резервации приемате на ден?</h3>
+          <h2 className="wiz-fieldset-title" id="m-mode-t">Колко резервации приемате на ден?</h2>
           <p className="wiz-fieldset-sub">Изберете една на ден, ако услугата ви изключва друго събитие — например DJ на сватба.</p>
         </div>
       </div>
-      <div className="wiz-row--3">
+      <div className="wiz-row--3" role="radiogroup" aria-labelledby="m-mode-t" aria-describedby={state.fields?.bookingsPerDayMode ? 'm-mode-e' : undefined}>
         {MODES.map(m => (
           <label key={m.mode} className={`option-card${mode === m.mode ? ' is-selected' : ''}`}>
-            <input type="radio" name="bookingsPerDayMode" value={m.mode} checked={mode === m.mode} onChange={() => setMode(m.mode)} />
+            <input type="radio" name="bookingsPerDayMode" value={m.mode} checked={mode === m.mode} onChange={() => setMode(m.mode)}
+              aria-labelledby={`m-mode-${m.mode}`} aria-describedby={`m-mode-${m.mode}-d`} />
             <div className="option-card-head">
               <div className="option-card-icon">{m.icon}</div>
-              <div><p className="option-card-title">{m.title}</p><p className="option-card-sub">{m.sub}</p></div>
+              <div><p className="option-card-title" id={`m-mode-${m.mode}`}>{m.title}</p><p className="option-card-sub">{m.sub}</p></div>
               {CHECK}
             </div>
-            <p className="option-card-body">{m.body}</p>
+            <p className="option-card-body" id={`m-mode-${m.mode}-d`}>{m.body}</p>
           </label>
         ))}
       </div>
@@ -104,7 +105,7 @@ function ModeCards({ initial, max }: { initial: Mode; max: number }) {
           </Field>
         </div>
       )}
-      {state.fields?.bookingsPerDayMode && <p className="m-section-error" role="alert">{state.fields.bookingsPerDayMode}</p>}
+      {state.fields?.bookingsPerDayMode && <p className="m-section-error" role="alert" id="m-mode-e">{state.fields.bookingsPerDayMode}</p>}
     </section>
   );
 }
@@ -117,7 +118,7 @@ export function AvailabilityForm({ values: v, calendar }: Props) {
       <section className="wiz-fieldset">
         <div className="wiz-fieldset-head">
           <div>
-            <h3 className="wiz-fieldset-title">Кога приемате заявки</h3>
+            <h2 className="wiz-fieldset-title">Кога приемате заявки</h2>
             <p className="wiz-fieldset-sub">Минимално време преди събитието и дните, в които работите.</p>
           </div>
         </div>
@@ -141,7 +142,7 @@ export function AvailabilityForm({ values: v, calendar }: Props) {
         </div>
         <div className="wiz-row--full">
           <Field name="workingDays" label="Работни дни" message="Дните от седмицата, в които приемате събития. Останалите се показват като заети.">
-            <div className="dow-row">
+            <div className="dow-row" role="group" aria-labelledby="f-workingDays-label" aria-describedby="f-workingDays-msg">
               {WEEKDAYS_SHORT.map((d, i) => (
                 <label key={d} className="dow-pill ui-click"><input type="checkbox" name="workingDays" value={i + 1} defaultChecked={v.workingDays.includes(i + 1)} /><span>{d}</span></label>
               ))}
@@ -153,10 +154,10 @@ export function AvailabilityForm({ values: v, calendar }: Props) {
       <section className="wiz-fieldset">
         <div className="wiz-fieldset-head">
           <div>
-            <h3 className="wiz-fieldset-title">Блокирани дати</h3>
+            <h2 className="wiz-fieldset-title">Блокирани дати</h2>
             <p className="wiz-fieldset-sub">Кликнете върху ден, за да го блокирате.</p>
           </div>
-          <div className="cal-legend">
+          <div className="cal-legend" aria-hidden="true">
             <span className="cal-legend-item"><span className="cal-dot cal-dot--free" />Свободно</span>
             <span className="cal-legend-item"><span className="cal-dot cal-dot--blocked" />Блокирано</span>
           </div>

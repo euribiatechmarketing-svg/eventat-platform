@@ -309,7 +309,7 @@ export async function dashboardView(actor: AnyActor, a: { month?: string }, q: Q
     revenue: {
       cents: earnings.month.cents, deltaPct: earnings.month.deltaPct, prevMonthName: monthName(prevMonthNum),
       bars: earnings.month.bars.map((b, i, arr) => ({
-        label: MONTH_SHORT[Number(b.month.slice(5)) - 1], pct: maxBar > 0 ? Math.round((b.cents / maxBar) * 100) : 0, now: i === arr.length - 1,
+        label: MONTH_SHORT[Number(b.month.slice(5)) - 1], cents: b.cents, pct: maxBar > 0 ? Math.round((b.cents / maxBar) * 100) : 0, now: i === arr.length - 1,
       })),
       toBePaidCents: earnings.toBePaidCents,
     },

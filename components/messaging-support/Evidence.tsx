@@ -4,6 +4,7 @@
 // Client look: client/dispute.html .rw-drop with .rw-shots; partner look: vendor/dispute.html .dp-drop + .gal.dp-ev.
 import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { toast } from '@/components/ui/client';
+import { focusSoon } from '@/components/ui/a11y';
 
 type Upload = { ok: true; id: string; name: string; mime: string } | { ok: false; error: string };
 type Shot = { id: string; name: string; preview: string | null };
@@ -20,6 +21,7 @@ export function Evidence({ variant, upload, max, maxMb }: {
   const [shots, setShots] = useState<Shot[]>([]);
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  const zone = useRef<HTMLDivElement>(null);
   const live = useRef(shots);
   live.current = shots;
   useEffect(() => () => live.current.forEach(s => s.preview && URL.revokeObjectURL(s.preview)), []);
@@ -65,6 +67,8 @@ export function Evidence({ variant, upload, max, maxMb }: {
   const remove = (id: string) => {
     setShots(s => s.filter(x => x.id !== id));
     toast('Снимката е премахната');
+    // The × is gone with its photo: focus goes to the zone's own button (the client's zone is the button).
+    focusSoon(() => zone.current?.querySelector<HTMLElement>('button.btn') ?? zone.current);
   };
 
   const hidden = (
@@ -84,7 +88,7 @@ export function Evidence({ variant, upload, max, maxMb }: {
   if (variant === 'client') {
     return (
       <>
-        <div className={`rw-drop ms-drop${over ? ' is-over' : ''}`} role="button" tabIndex={0} aria-busy={busy} onClick={pick} {...drop}
+        <div ref={zone} className={`rw-drop ms-drop${over ? ' is-over' : ''}`} role="button" tabIndex={0} aria-busy={busy} onClick={pick} {...drop}
           onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } }}>
           {PHOTO}
           <div>
@@ -100,7 +104,7 @@ export function Evidence({ variant, upload, max, maxMb }: {
   return (
     <>
       {/* The whole dashed zone opens the file picker (vendor/dispute.html), as does its button for the keyboard. */}
-      <div className={`dp-drop ms-drop${over ? ' is-over' : ''}`} aria-busy={busy} onClick={pick} {...drop}>
+      <div ref={zone} className={`dp-drop ms-drop${over ? ' is-over' : ''}`} aria-busy={busy} onClick={pick} {...drop}>
         <span className="dp-drop-ic">{UP}</span>
         <div>
           <div className="dp-drop-t">Добавете снимки към сигнала</div>

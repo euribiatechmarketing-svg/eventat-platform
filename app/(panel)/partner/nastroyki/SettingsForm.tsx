@@ -1,11 +1,12 @@
 'use client';
 // vendor/settings.html: account fields, name change, password link, notification switches,
 // deactivate / delete, language, payout summary.
-import { useState, useTransition } from 'react';
+import { useEffect, useId, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from '@/components/ui/client';
 import { Switch } from '../_catalogue/ui';
+import { focusSoon } from '@/components/ui/a11y';
 import {
   changeNameAction, deactivateAction, reactivateAction, requestDeletionAction, requestPasswordResetAction, saveSettingsAction, setLocaleAction,
 } from './actions';
@@ -36,6 +37,14 @@ export function SettingsForm({ d }: { d: SettingsData }) {
   const [naming, setNaming] = useState(false);
   const [newName, setNewName] = useState(d.businessName);
   const [pending, start] = useTransition();
+  const uid = useId();
+  const formRef = useRef<HTMLFormElement>(null);
+  const nameBtn = useRef<HTMLButtonElement>(null);
+  // Field names and errors for screen readers: the visible label names the field, its error describes it.
+  const field = (n: string) => ({ 'aria-labelledby': `${uid}-${n}-l`, 'aria-describedby': fields[n] ? `${uid}-${n}-e` : undefined, 'aria-invalid': !!fields[n] });
+  // A refused save: focus goes to the first field with an error.
+  useEffect(() => { if (Object.keys(fields).length) focusSoon(() => formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')); }, [fields]);
+  const closeNaming = () => { setNaming(false); focusSoon(() => nameBtn.current); };
 
   const run = (fn: () => Promise<Result>, after?: (r: Result) => void) => start(async () => {
     const r = await fn();
@@ -64,43 +73,46 @@ export function SettingsForm({ d }: { d: SettingsData }) {
 
       <div className="dash-grid">
         <div>
-          <form id="settings-form" action={save} noValidate>
+          <form id="settings-form" ref={formRef} action={save} noValidate>
             <section className="dcard">
               <div className="dcard-head"><h2 className="dcard-title">Данни за акаунта</h2></div>
               <div className="field-row">
-                <label className="fld"><span className="fld-l">Лице за контакт</span>
-                  <input className="fld-i" name="contactName" value={contactName} onChange={e => setContactName(e.target.value)} aria-invalid={!!fields.contactName} />
-                  {fields.contactName && <span className="form-error">{fields.contactName}</span>}
+                <label className="fld"><span className="fld-l" id={`${uid}-contactName-l`}>Лице за контакт</span>
+                  <input className="fld-i" name="contactName" value={contactName} onChange={e => setContactName(e.target.value)} autoComplete="name" {...field('contactName')} />
+                  {fields.contactName && <span className="form-error" id={`${uid}-contactName-e`}>{fields.contactName}</span>}
                 </label>
-                <label className="fld"><span className="fld-l">Имейл</span>
-                  <input className="fld-i" name="notificationEmail" type="email" value={email} onChange={e => setEmail(e.target.value)} aria-invalid={!!fields.notificationEmail} />
-                  {fields.notificationEmail && <span className="form-error">{fields.notificationEmail}</span>}
+                <label className="fld"><span className="fld-l" id={`${uid}-notificationEmail-l`}>Имейл</span>
+                  <input className="fld-i" name="notificationEmail" type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" {...field('notificationEmail')} />
+                  {fields.notificationEmail && <span className="form-error" id={`${uid}-notificationEmail-e`}>{fields.notificationEmail}</span>}
                 </label>
               </div>
               <div className="field-row" style={{ marginTop: 16 }}>
-                <label className="fld"><span className="fld-l">Телефон</span>
-                  <input className="fld-i" name="phone" type="tel" value={phone} onChange={e => setPhone(e.target.value)} aria-invalid={!!fields.phone} />
-                  {fields.phone && <span className="form-error">{fields.phone}</span>}
+                <label className="fld"><span className="fld-l" id={`${uid}-phone-l`}>Телефон</span>
+                  <input className="fld-i" name="phone" type="tel" value={phone} onChange={e => setPhone(e.target.value)} autoComplete="tel" {...field('phone')} />
+                  {fields.phone && <span className="form-error" id={`${uid}-phone-e`}>{fields.phone}</span>}
                 </label>
                 <div className="fld"><span className="fld-l">ЕИК / Булстат</span><span className="fld-i is-ro">{d.eik}</span></div>
               </div>
               <div className="field-row" style={{ marginTop: 16 }}>
-                <label className="fld"><span className="fld-l">Instagram / Facebook<span className="required-mark">*</span></span>
-                  <input className="fld-i" name="socialHandle" value={social} onChange={e => setSocial(e.target.value)} aria-invalid={!!fields.socialHandle} />
-                  {fields.socialHandle && <span className="form-error">{fields.socialHandle}</span>}
+                <label className="fld"><span className="fld-l" id={`${uid}-socialHandle-l`}>Instagram / Facebook<span className="required-mark">*</span></span>
+                  <input className="fld-i" name="socialHandle" value={social} onChange={e => setSocial(e.target.value)} required {...field('socialHandle')} />
+                  {fields.socialHandle && <span className="form-error" id={`${uid}-socialHandle-e`}>{fields.socialHandle}</span>}
                 </label>
               </div>
               <div className="set-row" style={{ marginTop: 8 }}>
                 <div className="set-t"><div className="set-n">Име на бизнеса</div><div className="set-d">{d.businessName} · сменя се веднъж месечно.{nameNote}</div></div>
-                {!naming && <button type="button" className="btn btn--outline btn--sm" disabled={!d.nameWindow.allowed || pending} onClick={() => setNaming(true)}>Смени името</button>}
+                {!naming && <button ref={nameBtn} type="button" className="btn btn--outline btn--sm" disabled={!d.nameWindow.allowed || pending} onClick={() => setNaming(true)}>Смени името</button>}
               </div>
               {naming && (
                 <div className="pc-name-form">
                   <input className="fld-i" aria-label="Име на бизнеса" value={newName} maxLength={120} autoFocus onChange={e => setNewName(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); run(() => changeNameAction(newName), () => setNaming(false)); } }} />
-                  <button type="button" className="btn btn--ghost btn--sm" onClick={() => { setNaming(false); setNewName(d.businessName); }} disabled={pending}>Откажи</button>
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') { e.preventDefault(); run(() => changeNameAction(newName), closeNaming); }
+                      if (e.key === 'Escape') { setNewName(d.businessName); closeNaming(); }
+                    }} />
+                  <button type="button" className="btn btn--ghost btn--sm" onClick={() => { closeNaming(); setNewName(d.businessName); }} disabled={pending}>Откажи</button>
                   <button type="button" className="btn btn--primary btn--sm" disabled={pending || !newName.trim() || newName.trim() === d.businessName}
-                    onClick={() => run(() => changeNameAction(newName), () => setNaming(false))}>Смени името</button>
+                    onClick={() => run(() => changeNameAction(newName), closeNaming)}>Смени името</button>
                 </div>
               )}
               <div className="set-row">
@@ -113,8 +125,8 @@ export function SettingsForm({ d }: { d: SettingsData }) {
               <div className="dcard-head"><h2 className="dcard-title">Известия</h2></div>
               {PREFS.map((p, i) => (
                 <div key={p.key} className="set-row" style={i === 0 ? { paddingTop: 0 } : undefined}>
-                  <div className="set-t"><div className="set-n">{p.name}</div><div className="set-d">{p.desc}</div></div>
-                  <Switch on={!!prefs[p.key]} onChange={v => setPrefs(x => ({ ...x, [p.key]: v }))} label={p.name} />
+                  <div className="set-t"><div className="set-n">{p.name}</div><div className="set-d" id={`${uid}-${i}-d`}>{p.desc}</div></div>
+                  <Switch on={!!prefs[p.key]} onChange={v => setPrefs(x => ({ ...x, [p.key]: v }))} label={p.name} describedBy={`${uid}-${i}-d`} />
                 </div>
               ))}
               <p className="panel-note" style={{ marginTop: 14 }}>Имейлите за одобрение на профила и на услугите, потвърдени и анулирани резервации, изплащания и сигнали идват винаги — те са служебни.</p>

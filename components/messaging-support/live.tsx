@@ -37,7 +37,7 @@ export function OpenWhenShown({ href }: { href: string }) {
  * there when it gets shorter (a file chip or a taller reply box under it), so the newest message never
  * slides out of view.
  */
-export function ThreadBody({ className, lastId, children }: { className: string; lastId: string | null; children: ReactNode }) {
+export function ThreadBody({ className, lastId, label, children }: { className: string; lastId: string | null; label?: string; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
   useEffect(() => {
@@ -53,7 +53,10 @@ export function ThreadBody({ className, lastId, children }: { className: string;
     ro.observe(el);
     return () => { el.removeEventListener('scroll', onScroll); ro.disconnect(); };
   }, []);
-  return <div className={className} ref={ref}>{children}</div>;
+  // With a `label` the thread is a named log: reachable by keyboard to scroll it, new messages announced politely.
+  return label
+    ? <div className={className} ref={ref} role="log" aria-label={label} tabIndex={0}>{children}</div>
+    : <div className={className} ref={ref}>{children}</div>;
 }
 
 /** ‹Търсене по изпълнител или събитие›: filters the list through ?q= (shareable), keeping other params. */

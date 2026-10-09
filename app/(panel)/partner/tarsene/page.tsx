@@ -18,6 +18,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
 
   return (
     <div className="po">
+      {!v.term && <h1 className="a11y-only">Търсене</h1>}
       <form className={`search po-search po-search--page${v.term ? '' : ' po-search--start'}`} action="/partner/tarsene" role="search">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
         <input name="q" type="search" defaultValue={v.term} placeholder="Търси по клиент, услуга или дата" aria-label="Търси по клиент, услуга или дата" autoComplete="off" autoFocus={!v.term} />
@@ -37,7 +38,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
       {nr > 0 && (
         <section className="group">
           <header className="group-head">
-            <span className="group-title">Заявки</span>
+            <span className="group-title" role="heading" aria-level={2}>Заявки</span>
             <span className="group-count">{nr}</span>
           </header>
           <div className="req-panel"><div className="req-list">

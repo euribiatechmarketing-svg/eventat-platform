@@ -53,6 +53,7 @@ export function WizardChrome({ steps, elapsedMs, savedLongLabel, children }: {
   return (
     <WizardCtx.Provider value={ctx}>
       <div className="wiz-shell">
+        <a className="ui-skip" href="#main">Към съдържанието</a>
         <header className="wiz-top">
           <button type="submit" form="wiz-form" name="intent" value="later" className="wiz-logo"><img src="/assets/eventat-logo.png" alt="EventAT" /></button>
           <div className="wiz-top-right">
@@ -64,9 +65,9 @@ export function WizardChrome({ steps, elapsedMs, savedLongLabel, children }: {
         </header>
 
         <main className="wiz-body">
-          <aside className="wiz-stepper">
+          <aside className="wiz-stepper" aria-labelledby="wiz-stepper-t">
             <span className="wiz-stepper-eyebrow">Изпълнител</span>
-            <h2 className="wiz-stepper-title">Настройте профила си</h2>
+            <h2 className="wiz-stepper-title" id="wiz-stepper-t">Настройте профила си</h2>
             <p className="wiz-stepper-sub">Шест стъпки до първите ви заявки. Напредъкът се запазва автоматично.</p>
             <ol className="wiz-steps">
               {steps.map(s => {
@@ -75,27 +76,28 @@ export function WizardChrome({ steps, elapsedMs, savedLongLabel, children }: {
                 const inner = (
                   <>
                     <span className="wiz-step-bullet">{s.done && !isCurrent ? <Check /> : s.step}</span>
-                    <span className="wiz-step-label">{s.title}<span className="wiz-step-meta">{s.meta}</span></span>
+                    <span className="wiz-step-label">{s.title}<span className="wiz-step-meta" id={`wiz-step-${s.step}-m`}>{s.meta}</span></span>
                   </>
                 );
                 return (
                   <li key={s.step} className={`wiz-step${s.done ? ' wiz-step--done' : ''}${isCurrent ? ' wiz-step--current' : ''}${clickable ? ' ui-click' : ''}`}
                     aria-current={isCurrent ? 'step' : undefined}>
                     {clickable
-                      ? <button type="submit" form="wiz-form" name="intent" value={`goto:${s.step}`} className="m-step-btn">{inner}</button>
+                      ? <button type="submit" form="wiz-form" name="intent" value={`goto:${s.step}`} className="m-step-btn"
+                          aria-label={`${s.step}. ${s.title}`} aria-describedby={`wiz-step-${s.step}-m`}>{inner}</button>
                       : inner}
                   </li>
                 );
               })}
             </ol>
           </aside>
-          <div className="wiz-content">{children}</div>
+          <div className="wiz-content" id="main">{children}</div>
         </main>
 
         <footer className="wiz-footer">
           <div className="wiz-footer-inner">
             <div className="wiz-progress">
-              <div className="wiz-progress-bar"><span style={{ width: `${pct}%` }} /></div>
+              <div className="wiz-progress-bar" aria-hidden="true"><span style={{ width: `${pct}%` }} /></div>
               <span>Стъпка {current} от 6</span>
             </div>
             <div className="wiz-footer-actions">

@@ -12,8 +12,8 @@ import { blockDateAction, blockRangeAction, setRulesAction, unblockAction } from
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Календар и наличност' };
 
-const prevIcon = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M15 6l-6 6 6 6" /></svg>;
-const nextIcon = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M9 6l6 6-6 6" /></svg>;
+const prevIcon = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>;
+const nextIcon = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>;
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -53,7 +53,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
             <span className="month-today"><TodayButton href={`/partner/kalendar?mesec=${view.today.slice(0, 7)}`} /></span>
           </div>
           <MonthGrid cells={view.cells} back={back} />
-          <div className="cal-legend">
+          <div className="cal-legend" aria-hidden="true">
             <span><i style={{ background: 'var(--primary-600)' }} />Потвърдено събитие</span>
             <span><i style={{ background: 'var(--gold-50)', border: '1px solid var(--gold-200)' }} />Запазена дата (24ч)</span>
             <span><i style={{ border: '1px dashed var(--neutral-300)' }} />Блокирана ръчно</span>
@@ -63,7 +63,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
 
         <aside>
           <div className="panel">
-            <h3 className="panel-title">Правила за наличност</h3>
+            <h2 className="panel-title">Правила за наличност</h2>
             <p className="panel-text">Определете колко събития приемате за един ден. Правилата важат за всички услуги.</p>
 
             <form className="rule-row" action={setRulesAction}>
@@ -81,13 +81,13 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
             <form className="rule-row" action={setRulesAction}>
               <input type="hidden" name="back" value={back} />
               <div className="rule-text">
-                <div className="rule-name">Максимум резервации за дата</div>
+                <div className="rule-name" id="rule-max">Максимум резервации за дата</div>
                 <div className="rule-desc">Важи само ако допускате повече от едно събитие.</div>
               </div>
               {/* ‹+› from ‹Само едно събитие на ден› allows two (the switch turns off); ‹−› down to 1 keeps the limit mode. */}
-              <span className="stepper">
+              <span className="stepper" role="group" aria-labelledby="rule-max">
                 <button type="submit" name="max" value={Math.max(1, max - 1)} disabled={max <= 1} aria-label="−">−</button>
-                <span>{max}</span>
+                <span aria-live="polite">{max}</span>
                 <button type="submit" name="max" value={Math.min(9, max + 1)} disabled={max >= 9} aria-label="+">+</button>
               </span>
             </form>
@@ -106,7 +106,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
           </div>
 
           <div className="panel">
-            <h3 className="panel-title">Блокирани дати</h3>
+            <h2 className="panel-title">Блокирани дати</h2>
             {grid.blocks.length === 0 && <div className="ui-empty">Няма записи в този изглед.</div>}
             {grid.blocks.map(b => (
               <form key={b.id} className="blk" action={unblockAction}>

@@ -1,5 +1,6 @@
 'use client';
 import { useRef, useState, useTransition } from 'react';
+import { focusSoon } from '@/components/ui/a11y';
 import { toast } from '@/components/ui/client';
 import { Field, WizardForm, useStepState } from '../_ui/WizardForm';
 import { Close, Plus } from '../_ui/icons';
@@ -61,11 +62,15 @@ function Specialisations({ eventTypes, tags: initialTags }: Pick<Props, 'eventTy
   const [tags, setTags] = useState<Chip[]>(initialTags);
   const [adding, setAdding] = useState(false);
   const addRef = useRef<HTMLInputElement>(null);
+  const chips = useRef<HTMLDivElement>(null);
+  // The ‹Друго› field replaces its chip while typing: Enter or Escape gives focus back to ‹Друго›.
+  const backToAdd = () => focusSoon(() => chips.current?.querySelector<HTMLElement>('.chip--add'));
   const toggleType = (id: string) => { setTypes(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; }); touch(); };
   const toggleTag = (label: string) => { setTags(ts => ts.map(t => (t.label === label ? { ...t, on: !t.on } : t))); touch(); };
-  const commit = () => {
+  const commit = (refocus = false) => {
     const label = addRef.current?.value.trim().slice(0, 60) ?? '';
     setAdding(false);
+    if (refocus) backToAdd();
     if (!label) return;
     const exists = tags.find(t => t.label.toLowerCase() === label.toLowerCase());
     setTags(ts => (exists ? ts.map(t => (t === exists ? { ...t, on: true } : t)) : [...ts, { label, custom: true, on: true }]));
@@ -77,11 +82,11 @@ function Specialisations({ eventTypes, tags: initialTags }: Pick<Props, 'eventTy
     <section className="wiz-fieldset">
       <div className="wiz-fieldset-head">
         <div>
-          <h3 className="wiz-fieldset-title">Специализации</h3>
+          <h2 className="wiz-fieldset-title" id="m-spec-t">Специализации</h2>
           <p className="wiz-fieldset-sub">Помагат на клиентите да ви открият по-точно.</p>
         </div>
       </div>
-      <div className="chips">
+      <div className="chips" ref={chips} role="group" aria-labelledby="m-spec-t" aria-describedby={err ? 'm-spec-e' : undefined}>
         {eventTypes.map(t => (
           <button key={t.id} type="button" className={`chip${types.has(t.id) ? ' chip--active' : ''}`} aria-pressed={types.has(t.id)} onClick={() => toggleType(t.id)}>{t.label}</button>
         ))}
@@ -90,15 +95,15 @@ function Specialisations({ eventTypes, tags: initialTags }: Pick<Props, 'eventTy
         ))}
         {adding ? (
           <input ref={addRef} className="m-chip-input" aria-label="Друго" maxLength={60} autoFocus
-            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit(); } if (e.key === 'Escape') setAdding(false); }}
-            onBlur={commit} />
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit(true); } if (e.key === 'Escape') { setAdding(false); backToAdd(); } }}
+            onBlur={() => commit()} />
         ) : (
           <button type="button" className="chip chip--add" onClick={() => setAdding(true)}><Plus size={12} sw={2.5} />Друго</button>
         )}
       </div>
       {[...types].map(id => <input key={id} type="hidden" name="eventTypeIds" value={id} />)}
       {tags.filter(t => t.on).map(t => <input key={t.label} type="hidden" name={t.custom ? 'customTags' : 'tags'} value={t.label} />)}
-      {err && <p className="m-section-error" role="alert">{err}</p>}
+      {err && <p className="m-section-error" role="alert" id="m-spec-e">{err}</p>}
     </section>
   );
 }
@@ -108,12 +113,21 @@ function Gallery({ photos, galleryMax }: Pick<Props, 'photos' | 'galleryMax'>) {
   const add = useUpload(addPhotosAction, 'Снимката е добавена', PHOTO_RULE);
   const [removing, setRemoving] = useState<string | null>(null);
   const [, start] = useTransition();
+  const grid = useRef<HTMLDivElement>(null);
   const remove = (id: string) => {
+    const i = photos.findIndex(p => p.id === id);
     setRemoving(id);
     start(async () => {
       const r = await removePhotoAction(id);
       setRemoving(null);
-      if (r.ok) toast('Снимката е премахната');
+      if (r.ok) {
+        toast('Снимката е премахната');
+        // Its × is gone with the photo: focus moves to the next photo's ×, else to ‹Добави снимка›.
+        focusSoon(() => {
+          const xs = [...(grid.current?.querySelectorAll<HTMLElement>('.gallery-action') ?? [])];
+          return xs[Math.min(i, xs.length - 1)] ?? grid.current?.querySelector<HTMLElement>('.gallery-add');
+        });
+      }
     });
   };
   const err = state.fields?.gallery;
@@ -121,27 +135,28 @@ function Gallery({ photos, galleryMax }: Pick<Props, 'photos' | 'galleryMax'>) {
     <section className="wiz-fieldset">
       <div className="wiz-fieldset-head">
         <div>
-          <h3 className="wiz-fieldset-title">Галерия</h3>
+          <h2 className="wiz-fieldset-title">Галерия</h2>
           <p className="wiz-fieldset-sub">Поне 4 снимки от ваши събития. Първата е главна и се показва в каталога.</p>
         </div>
         <span className="badge badge--primary">{photos.length} / {galleryMax}</span>
       </div>
-      <div className="gallery-grid">
+      <div className="gallery-grid" ref={grid}>
         {photos.map((ph, i) => (
-          <div key={ph.id} className={`gallery-item${i === 0 ? ' gallery-item--cover' : ''}${removing === ph.id ? ' m-busy' : ''}`} style={bg(ph.url)}>
+          <div key={ph.id} className={`gallery-item${i === 0 ? ' gallery-item--cover' : ''}${removing === ph.id ? ' m-busy' : ''}`} style={bg(ph.url)}
+            role="group" aria-label={`Снимка ${i + 1} от ${photos.length}`}>
             {i === 0 && <span className="gallery-tag">Главна</span>}
             <button type="button" className="gallery-action" aria-label="Премахни" onClick={() => remove(ph.id)}><Close /></button>
           </div>
         ))}
         {photos.length < galleryMax && (
-          <button type="button" className={`gallery-add${add.pending ? ' m-busy' : ''}`} onClick={add.open}>
+          <button type="button" className={`gallery-add${add.pending ? ' m-busy' : ''}`} onClick={add.open} aria-describedby={err ? 'm-gal-e' : undefined}>
             <Plus size={22} sw={1.8} />
             <span>Добави снимка</span>
           </button>
         )}
         <input ref={add.input} type="file" accept="image/jpeg,image/png" multiple hidden onChange={e => add.onFiles(e.target.files)} aria-label="Добави снимка" />
       </div>
-      {err && <p className="m-section-error" role="alert">{err}</p>}
+      {err && <p className="m-section-error" role="alert" id="m-gal-e">{err}</p>}
     </section>
   );
 }
@@ -155,14 +170,15 @@ function Photos({ avatarUrl, coverUrl }: Pick<Props, 'avatarUrl' | 'coverUrl'>) 
     <section className="wiz-fieldset">
       <div className="wiz-fieldset-head">
         <div>
-          <h3 className="wiz-fieldset-title">Профилна и заглавна снимка</h3>
+          <h2 className="wiz-fieldset-title">Профилна и заглавна снимка</h2>
           <p className="wiz-fieldset-sub">Профилната снимка се показва до името ви, а заглавната — най-горе в профила.</p>
         </div>
       </div>
       <div className="wiz-row">
         <div className={`field${state.fields?.avatar ? ' field--error' : ''}`}>
-          <label className="field-label">Профилна снимка<span className="required-mark">*</span></label>
-          <div className={`upload upload--circle${avatar.pending ? ' m-busy' : ''}`}>
+          <label className="field-label" id="m-avatar-l">Профилна снимка<span className="required-mark">*</span></label>
+          <div className={`upload upload--circle${avatar.pending ? ' m-busy' : ''}`} role="group" aria-labelledby="m-avatar-l"
+            aria-describedby={state.fields?.avatar ? 'm-avatar-e' : undefined}>
             <button type="button" className="m-avatar-pick" onClick={avatar.open} aria-label={avatarUrl ? 'Смени снимката' : 'Качи снимка'} tabIndex={-1}>
               {avatarUrl
                 ? <span className="avatar avatar--xl"><img src={avatarUrl} alt="" /></span>
@@ -174,19 +190,19 @@ function Photos({ avatarUrl, coverUrl }: Pick<Props, 'avatarUrl' | 'coverUrl'>) 
             </div>
             <input ref={avatar.input} type="file" accept="image/jpeg,image/png" hidden onChange={e => avatar.onFiles(e.target.files)} aria-label="Профилна снимка" />
           </div>
-          {state.fields?.avatar && <span className="field-message">{state.fields.avatar}</span>}
+          {state.fields?.avatar && <span className="field-message" id="m-avatar-e">{state.fields.avatar}</span>}
         </div>
         <div className={`field${state.fields?.cover ? ' field--error' : ''}`}>
-          <label className="field-label">Заглавна снимка<span className="required-mark">*</span></label>
-          <div className={`upload upload--cover${cover.pending ? ' m-busy' : ''}`}>
+          <label className="field-label" id="m-cover-l">Заглавна снимка<span className="required-mark">*</span></label>
+          <div className={`upload upload--cover${cover.pending ? ' m-busy' : ''}`} role="group" aria-labelledby="m-cover-l">
             <div className={`upload-preview${coverUrl ? '' : ' upload-preview--placeholder'}`} style={bg(coverUrl)}
-              role="button" tabIndex={0} aria-label={coverUrl ? 'Смени снимката' : 'Качи снимка'} onClick={cover.open}
+              role="button" tabIndex={0} aria-label={coverUrl ? 'Смени снимката' : 'Качи снимка'} aria-describedby="m-cover-m" onClick={cover.open}
               onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cover.open(); } }}>
               {!coverUrl && <><Plus size={22} sw={1.8} /><span>Качи снимка</span></>}
             </div>
             <input ref={cover.input} type="file" accept="image/jpeg,image/png" hidden onChange={e => cover.onFiles(e.target.files)} aria-label="Заглавна снимка" />
           </div>
-          <span className="field-message">{state.fields?.cover ?? 'Препоръчителен размер 1600 × 900.'}</span>
+          <span className="field-message" id="m-cover-m">{state.fields?.cover ?? 'Препоръчителен размер 1600 × 900.'}</span>
         </div>
       </div>
     </section>
@@ -203,7 +219,7 @@ export function ProfileForm(p: Props) {
       <section className="wiz-fieldset">
         <div className="wiz-fieldset-head">
           <div>
-            <h3 className="wiz-fieldset-title">Представяне</h3>
+            <h2 className="wiz-fieldset-title">Представяне</h2>
             <p className="wiz-fieldset-sub">Едно изречение за каталога и по-дълъг текст за профила ви.</p>
           </div>
         </div>
@@ -228,7 +244,7 @@ export function ProfileForm(p: Props) {
       <section className="wiz-fieldset">
         <div className="wiz-fieldset-head">
           <div>
-            <h3 className="wiz-fieldset-title">Видео презентация <span className="t-caption t-muted">(незадължително)</span></h3>
+            <h2 className="wiz-fieldset-title">Видео презентация <span className="t-caption t-muted">(незадължително)</span></h2>
             <p className="wiz-fieldset-sub">Линк към YouTube или Vimeo. Показва се в галерията на профила ви.</p>
           </div>
         </div>

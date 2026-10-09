@@ -99,13 +99,25 @@ export function Field({ name, label, required, hint, message, children, classNam
 }) {
   const { state } = useStepState();
   const err = name ? state.fields?.[name] : undefined;
+  const shown = !!(err || message);
+  // The field's message (its error, else its hint) describes the control `#f-{name}`, which is marked
+  // invalid while it has an error; a field without one control (a group) is labelled by `#f-{name}-label`.
+  useEffect(() => {
+    if (!name) return;
+    const el = document.getElementById(`f-${name}`);
+    if (!el) return;
+    if (shown) el.setAttribute('aria-describedby', `f-${name}-msg`); else el.removeAttribute('aria-describedby');
+    if (err) el.setAttribute('aria-invalid', 'true'); else el.removeAttribute('aria-invalid');
+    if (required) el.setAttribute('aria-required', 'true');
+  }, [name, err, shown, required]);
   return (
     <div className={`field${err ? ' field--error' : ''}${className ? ` ${className}` : ''}`}>
-      <label className="field-label" htmlFor={name ? `f-${name}` : undefined}>
+      <label className="field-label" htmlFor={name ? `f-${name}` : undefined} id={name ? `f-${name}-label` : undefined}>
         {label}{required && <span className="required-mark">*</span>}{hint && <span className="field-label-hint">{hint}</span>}
       </label>
       {children}
-      {err ? <span className="field-message">{err}</span> : message ? <span className="field-message">{message}</span> : null}
+      {err ? <span className="field-message" id={name ? `f-${name}-msg` : undefined}>{err}</span>
+        : message ? <span className="field-message" id={name ? `f-${name}-msg` : undefined}>{message}</span> : null}
     </div>
   );
 }

@@ -18,7 +18,7 @@ export function BusinessForm({ values: v, categories, cities }: Props) {
       <section className="wiz-fieldset">
         <div className="wiz-fieldset-head">
           <div>
-            <h3 className="wiz-fieldset-title">Бизнес информация</h3>
+            <h2 className="wiz-fieldset-title">Бизнес информация</h2>
             <p className="wiz-fieldset-sub">Това, което клиентите ще видят първо.</p>
           </div>
         </div>
@@ -99,7 +99,7 @@ export function BusinessForm({ values: v, categories, cities }: Props) {
       <section className="wiz-fieldset">
         <div className="wiz-fieldset-head">
           <div>
-            <h3 className="wiz-fieldset-title">Контакти</h3>
+            <h2 className="wiz-fieldset-title">Контакти</h2>
             <p className="wiz-fieldset-sub">Използваме ги за проверката на профила и за известия по резервации.</p>
           </div>
         </div>

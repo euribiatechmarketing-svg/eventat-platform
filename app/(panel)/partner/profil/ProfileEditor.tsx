@@ -1,10 +1,12 @@
 'use client';
 // vendor/profile.html: the public profile form (saved at once), the gallery and the listing toggles.
-import { useActionState, useEffect, useRef, useState, useTransition } from 'react';
+import { useActionState, useEffect, useId, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from '@/components/ui/client';
 import { Num, Segs } from '../_catalogue/num';
 import { FilePick, Stars, Switch } from '../_catalogue/ui';
+import { focusSoon, onRadioKeys } from '@/components/ui/a11y';
+import { usePopup } from '@/components/ui/popup';
 import {
   addGalleryPhotoAction, removeGalleryPhotoAction, reorderGalleryAction, setListingAction, updateProfileAction, type ProfileState,
 } from './actions';
@@ -44,12 +46,23 @@ export function ProfileEditor({ d }: { d: ProfileData }) {
   const [accepting, setAccepting] = useState(d.acceptingRequests);
   const [busy, start] = useTransition();
   const f = state.fields ?? {};
+  const uid = useId();
+  const formRef = useRef<HTMLFormElement>(null);
+  const chipsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (state.ok && state.message) { toast(state.message); router.refresh(); }
     else if (state.error) toast(state.error, 'error');
-    else if (state.fields && Object.keys(state.fields).length) toast('Проверете попълнените полета.', 'error');
+    else if (state.fields && Object.keys(state.fields).length) {
+      toast('Проверете попълнените полета.', 'error');
+      focusSoon(() => formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]'));
+    }
   }, [state, router]);
+  /** After a chip's × removes it, focus moves to the next chip's ×, else to ‹+ Добави›. */
+  const chipGone = (i: number) => focusSoon(() => {
+    const xs = [...(chipsRef.current?.querySelectorAll<HTMLElement>('.pc-chip-x') ?? [])];
+    return xs[Math.min(i, xs.length - 1)] ?? chipsRef.current?.querySelector<HTMLElement>('.chip-add');
+  });
 
   const payload = JSON.stringify({ description, socialHandle: social, cityId, radius, eventTypeIds, tags, cancellationPolicy: policy });
   const cityName = d.cities.find(c => c.id === cityId)?.name ?? '';
@@ -85,7 +98,7 @@ export function ProfileEditor({ d }: { d: ProfileData }) {
         </div>
       </div>
 
-      <form id="profile-form" action={formAction} noValidate>
+      <form id="profile-form" ref={formRef} action={formAction} noValidate>
         <input type="hidden" name="payload" value={payload} />
         <div className="dash-grid">
           <div>
@@ -100,14 +113,16 @@ export function ProfileEditor({ d }: { d: ProfileData }) {
                 {d.nameWindow.lastChangedOn && d.nameWindow.nextFrom ? ` Последна промяна на ${d.nameWindow.lastChangedOn} — следваща от ${d.nameWindow.nextFrom}.` : ''}
               </div>
               <label className="fld" style={{ marginTop: 16 }}><span className="fld-l">Описание</span>
-                <textarea className="fld-i fld-i--area" name="description" value={description} maxLength={600} onChange={e => setDescription(e.target.value)} aria-invalid={!!f.description} />
+                <textarea className="fld-i fld-i--area" name="description" value={description} maxLength={600} onChange={e => setDescription(e.target.value)} aria-invalid={!!f.description}
+                  aria-describedby={[f.description && `${uid}-desc-e`, `${uid}-desc-n`].filter(Boolean).join(' ')} />
               </label>
-              <div className="fld-hint">{description.length} / 600 знака</div>
-              {f.description && <span className="form-error">{f.description}</span>}
+              <div className="fld-hint" id={`${uid}-desc-n`}>{description.length} / 600 знака</div>
+              {f.description && <span className="form-error" id={`${uid}-desc-e`}>{f.description}</span>}
               <div className="field-row" style={{ marginTop: 16 }}>
-                <label className="fld"><span className="fld-l">Instagram / Facebook<span className="required-mark">*</span></span>
-                  <input className="fld-i" name="socialHandle" value={social} maxLength={200} onChange={e => setSocial(e.target.value)} aria-invalid={!!f.socialHandle} />
-                  {f.socialHandle && <span className="form-error">{f.socialHandle}</span>}
+                <label className="fld"><span className="fld-l" id={`${uid}-soc-l`}>Instagram / Facebook<span className="required-mark">*</span></span>
+                  <input className="fld-i" name="socialHandle" value={social} maxLength={200} onChange={e => setSocial(e.target.value)} aria-invalid={!!f.socialHandle} required
+                    aria-labelledby={`${uid}-soc-l`} aria-describedby={f.socialHandle ? `${uid}-soc-e` : undefined} />
+                  {f.socialHandle && <span className="form-error" id={`${uid}-soc-e`}>{f.socialHandle}</span>}
                 </label>
               </div>
             </section>
@@ -134,20 +149,20 @@ export function ProfileEditor({ d }: { d: ProfileData }) {
                   </span>
                 </label>
               </div>
-              <div style={{ marginTop: 18 }}>
-                <span className="fld-l">Умения и специализации</span>
-                <div className="chips">
-                  {eventTypeIds.map(id => {
+              <div style={{ marginTop: 18 }} role="group" aria-labelledby={`${uid}-skills`} aria-describedby={f.eventTypeIds ? `${uid}-skills-e` : undefined}>
+                <span className="fld-l" id={`${uid}-skills`}>Умения и специализации</span>
+                <div className="chips" ref={chipsRef}>
+                  {eventTypeIds.map((id, i) => {
                     const t = d.eventTypes.find(x => x.id === id);
                     return t ? (
                       <span key={id} className="chip-tag">{t.label}
-                        <button type="button" className="pc-chip-x" aria-label={`Премахни ${t.label}`} onClick={() => setEventTypeIds(ids => ids.filter(x => x !== id))}>{X}</button>
+                        <button type="button" className="pc-chip-x" aria-label={`Премахни ${t.label}`} onClick={() => { setEventTypeIds(ids => ids.filter(x => x !== id)); chipGone(i); }}>{X}</button>
                       </span>
                     ) : null;
                   })}
-                  {tags.map(t => (
+                  {tags.map((t, i) => (
                     <span key={t.label} className="chip-tag">{t.label}
-                      <button type="button" className="pc-chip-x" aria-label={`Премахни ${t.label}`} onClick={() => setTags(list => list.filter(x => x.label !== t.label))}>{X}</button>
+                      <button type="button" className="pc-chip-x" aria-label={`Премахни ${t.label}`} onClick={() => { setTags(list => list.filter(x => x.label !== t.label)); chipGone(eventTypeIds.length + i); }}>{X}</button>
                     </span>
                   ))}
                   <AddChip
@@ -156,7 +171,7 @@ export function ProfileEditor({ d }: { d: ProfileData }) {
                     onType={id => setEventTypeIds(ids => [...ids, id])}
                     onTag={(label, isCustom) => setTags(list => (list.some(t => t.label.toLocaleLowerCase('bg') === label.toLocaleLowerCase('bg')) ? list : [...list, { label, isCustom }]))} />
                 </div>
-                {f.eventTypeIds && <span className="form-error">{f.eventTypeIds}</span>}
+                {f.eventTypeIds && <span className="form-error" id={`${uid}-skills-e`}>{f.eventTypeIds}</span>}
               </div>
             </section>
           </div>
@@ -187,9 +202,9 @@ export function ProfileEditor({ d }: { d: ProfileData }) {
             <div className="panel">
               <h3 className="panel-title">Политика за анулиране</h3>
               <p className="panel-text">Клиентът вижда политиката още преди да изпрати заявка.</p>
-              <div className="pol" role="radiogroup" aria-label="Политика за анулиране">
+              <div className="pol" role="radiogroup" aria-label="Политика за анулиране" onKeyDown={onRadioKeys}>
                 {POLICIES.map(p => (
-                  <button key={p.key} type="button" role="radio" aria-checked={policy === p.key} className={`pol-opt${policy === p.key ? ' is-on' : ''}`} onClick={() => setPolicy(p.key)}>
+                  <button key={p.key} type="button" role="radio" aria-checked={policy === p.key} tabIndex={policy === p.key ? 0 : -1} className={`pol-opt${policy === p.key ? ' is-on' : ''}`} onClick={() => setPolicy(p.key)}>
                     <span className="pol-dot" />
                     <div><div className="pol-name">{p.name}</div><div className="pol-desc">{p.desc}</div></div>
                   </button>
@@ -200,13 +215,13 @@ export function ProfileEditor({ d }: { d: ProfileData }) {
             <div className="panel">
               <h3 className="panel-title">Видимост</h3>
               <div className="set-row" style={{ paddingTop: 0 }}>
-                <div className="set-t"><div className="set-n">Профилът е активен</div><div className="set-d">Виден в каталога и търсенето.</div></div>
+                <div className="set-t"><div className="set-n">Профилът е активен</div><div className="set-d" id={`${uid}-listed`}>Виден в каталога и търсенето.</div></div>
                 {/* a deactivated profile is hidden whatever this says: it comes back with ‹Активирай› in Настройки (P9) */}
-                <Switch on={listed && !d.deactivated} onChange={v => listing({ isListed: v })} label="Профилът е активен" disabled={busy || d.deactivated} />
+                <Switch on={listed && !d.deactivated} onChange={v => listing({ isListed: v })} label="Профилът е активен" disabled={busy || d.deactivated} describedBy={`${uid}-listed`} />
               </div>
               <div className="set-row">
-                <div className="set-t"><div className="set-n">Приемам нови заявки</div><div className="set-d">Изключете временно, ако сте заети.</div></div>
-                <Switch on={accepting} onChange={v => listing({ acceptingRequests: v })} label="Приемам нови заявки" disabled={busy} />
+                <div className="set-t"><div className="set-n">Приемам нови заявки</div><div className="set-d" id={`${uid}-acc`}>Изключете временно, ако сте заети.</div></div>
+                <Switch on={accepting} onChange={v => listing({ acceptingRequests: v })} label="Приемам нови заявки" disabled={busy} describedBy={`${uid}-acc`} />
               </div>
             </div>
           </aside>
@@ -223,30 +238,28 @@ function AddChip({ types, suggestions, onType, onTag }: {
   const [open, setOpen] = useState(false);
   const [other, setOther] = useState('');
   const ref = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent | KeyboardEvent) => {
-      if (e instanceof KeyboardEvent ? e.key === 'Escape' : !ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', close);
-    document.addEventListener('keydown', close);
-    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', close); };
-  }, [open]);
+  const btn = useRef<HTMLButtonElement>(null);
+  const id = useId();
+  // The list mixes choices with a text field, so it is a disclosure (components/ui/popup.ts), not a menu:
+  // Tab moves through it, Escape or a choice closes it and gives focus back to ‹+ Добави›.
+  usePopup({ open, setOpen, wrap: ref, trigger: btn });
+  const done = () => { setOpen(false); focusSoon(() => btn.current); };
   const addOther = () => {
     const t = other.trim().slice(0, 60);
     if (!t) return;
     onTag(t, true);
     setOther('');
-    setOpen(false);
+    done();
   };
   return (
     <span ref={ref} className="ui-menu-wrap">
-      <button type="button" className="chip-tag chip-add pc-click" aria-expanded={open} onClick={() => setOpen(o => !o)}>+ Добави</button>
+      <button ref={btn} type="button" className="chip-tag chip-add pc-click" aria-expanded={open} aria-controls={open ? id : undefined}
+        onClick={() => setOpen(o => !o)}>+ Добави</button>
       {open && (
-        <div className="ui-menu ui-menu--down pc-add-menu" role="menu">
-          {types.map(t => <button key={t.id} type="button" role="menuitem" className="ui-menu-item" onClick={() => { onType(t.id); setOpen(false); }}>{t.label}</button>)}
+        <div id={id} className="ui-menu ui-menu--down pc-add-menu" role="group" aria-label="Умения и специализации">
+          {types.map(t => <button key={t.id} type="button" className="ui-menu-item" onClick={() => { onType(t.id); done(); }}>{t.label}</button>)}
           {types.length > 0 && suggestions.length > 0 && <hr />}
-          {suggestions.map(s => <button key={s} type="button" role="menuitem" className="ui-menu-item" onClick={() => { onTag(s, false); setOpen(false); }}>{s}</button>)}
+          {suggestions.map(s => <button key={s} type="button" className="ui-menu-item" onClick={() => { onTag(s, false); done(); }}>{s}</button>)}
           <hr />
           <div className="pc-add-other">
             <input className="fld-i" placeholder="Друго" aria-label="Друго" value={other} maxLength={60} onChange={e => setOther(e.target.value)}
@@ -266,7 +279,17 @@ function Gallery({ photos, min, max }: { photos: Photo[]; min: number; max: numb
   const [drag, setDrag] = useState<number | null>(null);
   const [over, setOver] = useState<number | null>(null);
   const [busy, start] = useTransition();
+  const box = useRef<HTMLDivElement>(null);
+  // The buttons are disabled while a change is saved, which drops keyboard focus: once it is saved,
+  // focus goes back to where the partner was (the moved photo's arrow, the next photo, ‹Добави снимка›).
+  const after = useRef<(() => HTMLElement | null | undefined) | null>(null);
   useEffect(() => { setList(photos); }, [photos]);
+  useEffect(() => {
+    if (busy || !after.current) return;
+    const get = after.current;
+    after.current = null;
+    if (document.activeElement === document.body || document.activeElement === null) focusSoon(get);
+  }, [busy, list]);
 
   const run = (fn: () => Promise<{ ok: true; message: string } | { ok: false; error: string }>, rollback?: () => void) => start(async () => {
     const r = await fn();
@@ -274,45 +297,57 @@ function Gallery({ photos, min, max }: { photos: Photo[]; min: number; max: numb
     toast(r.message);
     router.refresh();
   });
-  const move = (from: number, to: number) => {
+  const photoButton = (id: string, label: string) => () => {
+    const item = box.current?.querySelector<HTMLElement>(`[data-photo="${id}"]`);
+    const want = item?.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+    return want && !want.disabled ? want : item?.querySelector<HTMLElement>('button:not([disabled])');
+  };
+  const move = (from: number, to: number, label?: string) => {
     if (to < 0 || to >= list.length || from === to) return;
     const before = list;
     const next = [...list];
     const [it] = next.splice(from, 1);
     next.splice(to, 0, it);
     setList(next);
+    if (label) after.current = photoButton(it.id, label);
     run(() => reorderGalleryAction(next.map(p => p.id)), () => setList(before));
+  };
+  const remove = (i: number, id: string) => {
+    const nextId = list[i + 1]?.id ?? list[i - 1]?.id;
+    after.current = () => (nextId ? photoButton(nextId, 'Премахни')() : null) ?? box.current?.querySelector<HTMLElement>('.gal-add');
+    run(() => removeGalleryPhotoAction(id));
   };
   const add = (file: File) => {
     const fd = new FormData();
     fd.set('file', file);
+    after.current = () => box.current?.querySelector<HTMLElement>('.gal-add') ?? box.current?.querySelector<HTMLElement>('[data-photo]:last-of-type button:not([disabled])');
     run(() => addGalleryPhotoAction(fd));
   };
   const n = list.length;
   return (
     <section className="dcard">
       <div className="dcard-head"><h2 className="dcard-title">Галерия</h2><span className="badge badge--primary">{n === 1 ? '1 снимка' : `${n} снимки`}</span></div>
-      <div className="gal">
+      <div className="gal" ref={box}>
         {list.map((p, i) => (
           <span key={p.id} className={`gal-item${i === 0 ? ' is-cover' : ''}${over === i ? ' is-over' : ''}`} style={{ backgroundImage: `url('${p.url}')` }}
-            data-photo={p.id} draggable={!busy}
+            data-photo={p.id} draggable={!busy} role="group" aria-label={`Снимка ${i + 1} от ${n}`}
             onDragStart={() => setDrag(i)} onDragEnd={() => { setDrag(null); setOver(null); }}
             onDragOver={e => { e.preventDefault(); setOver(i); }} onDragLeave={() => setOver(o => (o === i ? null : o))}
             onDrop={e => { e.preventDefault(); setOver(null); if (drag !== null) move(drag, i); setDrag(null); }}>
             <span className="pc-gal-acts">
-              <button type="button" aria-label="Премести наляво" disabled={i === 0 || busy} onClick={() => move(i, i - 1)}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M15 18l-6-6 6-6" /></svg>
+              <button type="button" aria-label="Премести наляво" disabled={i === 0 || busy} onClick={() => move(i, i - 1, 'Премести наляво')}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
               </button>
-              <button type="button" aria-label="Премести надясно" disabled={i === n - 1 || busy} onClick={() => move(i, i + 1)}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M9 6l6 6-6 6" /></svg>
+              <button type="button" aria-label="Премести надясно" disabled={i === n - 1 || busy} onClick={() => move(i, i + 1, 'Премести надясно')}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
               </button>
-              <button type="button" aria-label="Премахни" disabled={n <= min || busy} onClick={() => run(() => removeGalleryPhotoAction(p.id))}>{X}</button>
+              <button type="button" aria-label="Премахни" disabled={n <= min || busy} onClick={() => remove(i, p.id)}>{X}</button>
             </span>
           </span>
         ))}
         {n < max && (
           <FilePick accept="image/jpeg,image/png" className="gal-add" onFile={add} disabled={busy} label="Добави снимка">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
           </FilePick>
         )}
       </div>

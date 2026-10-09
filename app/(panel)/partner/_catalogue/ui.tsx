@@ -6,9 +6,9 @@ import { useFormStatus } from 'react-dom';
 import { toast } from '@/components/ui/client';
 
 /** The prototype's `span.toggle`, as a real switch. */
-export function Switch({ on, onChange, label, disabled }: { on: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
+export function Switch({ on, onChange, label, disabled, describedBy }: { on: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean; describedBy?: string }) {
   return (
-    <button type="button" role="switch" aria-checked={on} aria-label={label} disabled={disabled}
+    <button type="button" role="switch" aria-checked={on} aria-label={label} aria-describedby={describedBy} disabled={disabled}
       className={`toggle${on ? ' is-on' : ''}`} onClick={() => onChange(!on)} />
   );
 }
@@ -19,7 +19,7 @@ const STAR = 'M12 3l2.7 5.8 6.3.8-4.6 4.3 1.2 6.2L12 17.8 6.4 20.1l1.2-6.2L3 9.6
 export function Stars({ n, style }: { n: number; style?: React.CSSProperties }) {
   const k = Math.max(0, Math.min(5, Math.round(n)));
   return (
-    <span className="rev-stars" style={style} aria-label={`${k} от 5`}>
+    <span className="rev-stars" style={style} role="img" aria-label={`${k} от 5`}>
       {Array.from({ length: k }, (_, i) => (
         <svg key={i} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d={STAR} /></svg>
       ))}
@@ -27,12 +27,12 @@ export function Stars({ n, style }: { n: number; style?: React.CSSProperties }) 
   );
 }
 
-/** A table row that opens a page (the prototype's `.tbl tbody tr` routes). */
+/** A table row that opens a page (the prototype's `.tbl tbody tr` routes). The row is a mouse target;
+ *  the keyboard and screen readers use the link inside it (a focusable `tr` would be announced as a row, not a link). */
 export function ClickRow({ href, children }: { href: string; children: ReactNode }) {
   const router = useRouter();
   return (
-    <tr className="pc-row" tabIndex={0} onClick={() => router.push(href)}
-      onKeyDown={e => { if (e.key === 'Enter') router.push(href); }}>
+    <tr className="pc-row" onClick={e => { if (!(e.target as HTMLElement).closest('a, button')) router.push(href); }}>
       {children}
     </tr>
   );
@@ -61,13 +61,13 @@ export function CopyLink({ path, children, className }: { path: string; children
 }
 
 /** A button that opens the file chooser; `onFile` gets the chosen file. */
-export function FilePick({ accept, onFile, className, children, disabled, label }: {
-  accept: string; onFile: (f: File) => void; className: string; children: ReactNode; disabled?: boolean; label?: string;
+export function FilePick({ accept, onFile, className, children, disabled, label, describedBy }: {
+  accept: string; onFile: (f: File) => void; className: string; children: ReactNode; disabled?: boolean; label?: string; describedBy?: string;
 }) {
   const ref = useRef<HTMLInputElement>(null);
   return (
     <>
-      <button type="button" className={className} disabled={disabled} aria-label={label} onClick={() => ref.current?.click()}>{children}</button>
+      <button type="button" className={className} disabled={disabled} aria-label={label} aria-describedby={describedBy} onClick={() => ref.current?.click()}>{children}</button>
       <input ref={ref} type="file" accept={accept} hidden onChange={e => {
         const f = e.target.files?.[0];
         e.target.value = '';

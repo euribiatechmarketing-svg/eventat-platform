@@ -149,7 +149,7 @@ export default async function RequestPage({ params }: { params: Promise<{ nomer:
               <div className="dcard-head"><h2 className="dcard-title">Снимки за вдъхновение</h2></div>
               <p className="panel-text" style={{ marginBottom: 12 }}>{attachmentsText(x.client.name, x.attachments.length)}</p>
               <div className="rw-shots rw-shots--att">
-                {x.attachments.map(src => <a key={src} className="rw-shot" href={src} target="_blank" rel="noreferrer" style={{ backgroundImage: `url('${src}')` }} aria-label="Снимки за вдъхновение" />)}
+                {x.attachments.map((src, i) => <a key={src} className="rw-shot" href={src} target="_blank" rel="noreferrer" style={{ backgroundImage: `url('${src}')` }} aria-label={`Снимки за вдъхновение · ${i + 1} от ${x.attachments.length}`} />)}
               </div>
             </section>
           )}
@@ -183,7 +183,7 @@ export default async function RequestPage({ params }: { params: Promise<{ nomer:
                 <div className="countdown-label">Клиентът трябва да плати до</div>
                 <div className="countdown-time">{hhmm(at, bk.paymentDueAt)}</div>
                 <div className="countdown-note">часа и минути · {dateTime(bk.paymentDueAt)}<br />Датата е блокирана в календара ви дотогава.</div>
-                <div className="countdown-bar"><i style={{ width: `${total > 0 ? Math.round((left / total) * 100) : 0}%` }} /></div>
+                <div className="countdown-bar" aria-hidden="true"><i style={{ width: `${total > 0 ? Math.round((left / total) * 100) : 0}%` }} /></div>
               </div>
               <div className="panel">
                 <h3 className="panel-title">Датата е запазена</h3>

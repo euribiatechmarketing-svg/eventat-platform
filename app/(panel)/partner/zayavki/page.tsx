@@ -41,8 +41,9 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="po">
+      <h1 className="a11y-only">Заявки</h1>
       <div className="toolbar">
-        <nav className="tab-bar">
+        <nav className="tab-bar" aria-label="Заявки">
           {REQUEST_TABS.map(t => {
             const n = t.key === 'novi' ? v.counts.new : t.key === 'plashtane' ? v.counts.pay : t.key === 'potvardeni' ? v.counts.confirmed : 0;
             return (
@@ -58,7 +59,7 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
             <input type="hidden" name="back" value={href(tab, filter)} />
             <input type="hidden" name="tab" value={tab} />
             <input type="hidden" name="filtar" value={filter} />
-            <Submit className="filter-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v12M7 10l5 5 5-5M4 21h16" /></svg>Експорт</Submit>
+            <Submit className="filter-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 21h16" /></svg>Експорт</Submit>
           </form>
         </div>
       </div>
@@ -69,7 +70,7 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
         return (
           <section key={g.key} className={`group ${g.cls}`.trim()}>
             <header className="group-head">
-              <span className="group-title">{g.title}</span>
+              <span className="group-title" role="heading" aria-level={2}>{g.title}</span>
               <span className="group-count">{rows.length}</span>
               {g.hint && <span className="group-hint">{g.hint}</span>}
             </header>

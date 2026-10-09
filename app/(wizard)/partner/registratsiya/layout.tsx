@@ -3,6 +3,8 @@
 import { redirect } from 'next/navigation';
 import { date } from '@/lib/format';
 import '@/styles/m-partner-onboarding.css';
+import '@/styles/m-a11y-partner.css';
+import { FocusKeeper } from '@/components/ui/a11y';
 import { wizardContext } from './guard';
 import { WizardChrome } from './_ui/WizardChrome';
 
@@ -16,6 +18,7 @@ export default async function RegistrationLayout({ children }: { children: React
       elapsedMs={saved ? chrome.serverNow.getTime() - saved.getTime() : null}
       savedLongLabel={saved ? `Запазено на ${date(saved)}` : ''}>
       {children}
+      <FocusKeeper />
     </WizardChrome>
   );
 }

@@ -292,7 +292,7 @@ export async function earningsPage(actor: AnyActor, a: { page: number }, q: Quer
   return {
     month: { label: `${monthName(m)} ${y}`, monthName: monthName(m), cents: e.month.cents, deltaPct: e.month.deltaPct, prevMonthName: monthName(prevM) },
     bars: e.month.bars.map((b, i, arr) => ({
-      label: SHORT_MONTHS[Number(b.month.slice(5, 7)) - 1], pct: max > 0 ? Math.max(4, Math.round((b.cents / max) * 100)) : 4, isNow: i === arr.length - 1,
+      label: SHORT_MONTHS[Number(b.month.slice(5, 7)) - 1], cents: b.cents, pct: max > 0 ? Math.max(4, Math.round((b.cents / max) * 100)) : 4, isNow: i === arr.length - 1,
     })),
     toBePaidCents: e.toBePaidCents, paidYear: e.paidYear,
     lines: rows.map(r => ({

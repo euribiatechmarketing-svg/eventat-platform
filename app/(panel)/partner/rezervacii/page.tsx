@@ -44,7 +44,7 @@ export default async function BookingsPage({ searchParams }: { searchParams: Pro
       </div>
 
       <div className="toolbar">
-        <nav className="tab-bar">
+        <nav className="tab-bar" aria-label="Резервации">
           {BOOKING_TABS.map(t => (
             <Link key={t.key} className={`tab-bar-item${t.key === tab ? ' is-active' : ''}`} href={href(t.key, period)} scroll={false} aria-current={t.key === tab ? 'page' : undefined}>
               {t.label}{count[t.key] > 0 ? <> <span className="tab-count">{count[t.key]}</span></> : null}
@@ -61,7 +61,7 @@ export default async function BookingsPage({ searchParams }: { searchParams: Pro
         {v.months.length === 0 && <div className="ui-empty">Няма записи в този изглед.</div>}
         {v.months.map((m, i) => (
           <div key={m.month}>
-            <div className="month-div" style={i === 0 ? { marginTop: 0 } : undefined}><b>{m.title}</b><span>{m.summary}</span></div>
+            <div className="month-div" style={i === 0 ? { marginTop: 0 } : undefined}><b role="heading" aria-level={2}>{m.title}</b><span>{m.summary}</span></div>
             <BookingTable rows={m.rows} />
           </div>
         ))}
