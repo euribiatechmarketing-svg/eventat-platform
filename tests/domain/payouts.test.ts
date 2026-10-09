@@ -190,6 +190,34 @@ describe('holds (SPEC §8.3, Y4)', () => {
     await expectLedgerHealthy();
   });
 
+  it('a decision while ‹Пусни партидата› holds the batch row does not wait for it (no lock cycle); the release groups the line', async () => {
+    setTestNow(t('2026-08-04'));
+    const { actor: admin } = await createAdmin('admin');
+    const p = await payablePartner();
+    const bk = await paidBooking({ partner: p, eventDate: '2026-08-13' });
+    const d = await openByClient(bk.client.actor, { bookingId: bk.booking.id, reason: 'not_as_described', description: 'x' });
+    setTestNow(sofiaInstant('2026-08-14', 0, 0));
+    expect((await release(bk.booking.id)).held).toBe(true);
+    const { batchId } = await prepareBatch('2026-08-15');
+    expect(await itemFor(batchId, p.partner.id)).toMatchObject({ status: 'held', holdReason: 'dispute' });
+
+    setTestNow(t('2026-08-14', 15));
+    let decided = false;
+    await db.transaction(async lock => {
+      // Another transaction holds the prepared batch (a release under way); the decision must still commit.
+      await lock.select().from(payoutBatch).where(eq(payoutBatch.id, batchId)).for('update');
+      await decide(admin, { disputeId: d.id, kind: 'no_refund', motive: 'x' });
+      decided = true;
+    });
+    expect(decided).toBe(true);
+    expect((await linesOf(bk.booking.id))[0]).toMatchObject({ status: 'ready', amountCents: 130_500 });
+    setTestNow(t('2026-08-15', 9));
+    expect(await releaseBatch(admin, { batchId })).toMatchObject({ status: 'released' });
+    await runJobs();
+    expect(await itemFor(batchId, p.partner.id)).toMatchObject({ status: 'paid', amountCents: 130_500 });
+    await expectLedgerHealthy();
+  });
+
   it('a prepared batch follows a dispute decided before its release: the held line joins at the decided amount', async () => {
     setTestNow(t('2026-05-04'));
     const { actor: admin } = await createAdmin('admin');

@@ -20,7 +20,7 @@ import { ForbiddenError, SYSTEM, assertCan, type Actor, type AnyActor } from './
 import { audit } from './audit';
 import { getSetting } from './settings';
 import { cancelBookingCore, quoteFor } from './cancellation';
-import { syncBookingHold } from './payouts';
+import { reprojectBookingLine, syncBookingHold } from './payouts';
 import { createRefunds, refundableCharges } from './refunds';
 import {
   AftercareError, DISPUTE_REASON_LABEL, bpOf, cancelPending, ctxText, loadBookingCtx, low, mailClient, mailPartner, mailTeam, paidCents,
@@ -513,6 +513,8 @@ export async function decide(actor: Actor, input: DecideInput, tx?: Tx): Promise
         const r = input.refundCents ?? opt?.refundCents ?? (input.refundPercent !== undefined ? percentOf(paid, input.refundPercent) : undefined);
         if (r === undefined || !Number.isSafeInteger(r) || r <= 0 || r > paid) throw new AftercareError('bad_refund_amount');
         await createRefunds(tx, { bookingId: b.id, amountCents: r, reason: 'dispute_decision', actor, disputeId: d.id });
+        // Before the event the line still projects the full price: it now carries what the partner keeps.
+        await reprojectBookingLine(tx, b.id);
         refundCents = r;
         title ??= `Върни разликата — ${moneyShort(r)}`;
         break;

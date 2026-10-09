@@ -223,6 +223,33 @@ describe('X8 decisions', () => {
     await expectLedgerHealthy();
   });
 
+  it('partial refund before the event: the line projects what the partner keeps, and K13 releases exactly that', async () => {
+    const { actor: admin } = await createAdmin('admin');
+    const { client, booking: b } = await paidBooking({ eventDate: '2025-09-20' });
+    const d = await openByClient(client.actor, { bookingId: b.id, reason: 'not_as_described', description: 'Менюто е друго.' });
+    await decide(admin, { disputeId: d.id, kind: 'partial_refund', refundCents: 45_000, motive: 'x' });
+    // ‹Получавате› on the partner's booking page and ‹За изплащане› read this line until the event.
+    expect(await lineOf(b.id)).toMatchObject({ status: 'awaiting_event', readyAt: null, baseCents: 100_000, commissionCents: 10_000, amountCents: 90_000 });
+    await runJobs(); // the refund settles
+    expect(await lineOf(b.id)).toMatchObject({ status: 'awaiting_event', amountCents: 90_000 });
+    setTestNow(sofiaInstant('2025-09-21', 0, 1));
+    expect(await db.transaction(tx => releaseBookingFunds({ bookingId: b.id }, tx))).toMatchObject({ releasedCents: 100_000, commissionCents: 10_000 });
+    expect(await lineOf(b.id)).toMatchObject({ status: 'ready', baseCents: 100_000, commissionCents: 10_000, amountCents: 90_000 });
+    await expectLedgerHealthy();
+  });
+
+  it('partial refund of everything paid before the event: no payout is left to project', async () => {
+    const { actor: admin } = await createAdmin('admin');
+    const { client, booking: b } = await paidBooking({ eventDate: '2025-09-20' });
+    const d = await openByClient(client.actor, { bookingId: b.id, reason: 'no_show', description: 'Отказаха.' });
+    await decide(admin, { disputeId: d.id, kind: 'partial_refund', refundCents: 145_000, motive: 'x' });
+    expect(await lineOf(b.id)).toMatchObject({ status: 'cancelled', amountCents: 0 });
+    await runJobs();
+    setTestNow(sofiaInstant('2025-09-21', 0, 1));
+    expect(await db.transaction(tx => releaseBookingFunds({ bookingId: b.id }, tx))).toMatchObject({ releasedCents: 0 });
+    await expectLedgerHealthy();
+  });
+
   it('cancel with full refund (K15) from a composed option', async () => {
     const { actor: admin } = await createAdmin('admin');
     const { client, partner, booking: b } = await paidBooking();

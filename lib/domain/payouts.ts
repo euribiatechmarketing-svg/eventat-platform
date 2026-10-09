@@ -275,6 +275,25 @@ export async function adjustLinesForCancellation(tx: Tx, b: BookingRow, retained
   }
 }
 
+/**
+ * A dispute's partial refund decided before the event (X8): the booking's unreleased line carries the
+ * projected ‹Получавате› of what the partner is now due (price − the refund, commission at the booking's
+ * snapshot), as K13 will release it — the partner's booking page and earnings, and the batch projections,
+ * read this line. Nothing is due any more → the line is cancelled. A released line is left to L2.
+ */
+export async function reprojectBookingLine(tx: Tx, bookingId: string): Promise<void> {
+  const [b] = await tx.select().from(booking).where(eq(booking.id, bookingId));
+  const main = await mainLine(tx, bookingId);
+  if (!b || !main || main.readyAt || main.status === 'cancelled') return;
+  const already = await released(tx, bookingId);
+  const base = Math.max(0, (await partnerDueBase(tx, b)) - already.base);
+  const commission = Math.min(base, Math.max(0, bpOf(already.base + base, b.commissionBp ?? 0) - already.commission));
+  await tx.update(payoutLine).set(base > 0
+    ? { baseCents: base, commissionCents: commission, amountCents: base - commission }
+    : { baseCents: 0, commissionCents: 0, amountCents: 0, status: 'cancelled', holdReason: null, payoutItemId: null })
+    .where(eq(payoutLine.id, main.id));
+}
+
 /** A dispute or chargeback holds the payout (K14, Y4): unsent lines → held; prepared items lose them. */
 export async function holdBookingLines(tx: Tx, bookingId: string): Promise<void> {
   const lines = await tx.select().from(payoutLine)
@@ -333,6 +352,10 @@ export async function syncBookingHold(tx: Tx, bookingId: string): Promise<boolea
  * changes which lines are payable and for how much. Its items and totals are drawn from the lines again,
  * as ‹Пусни партидата› does (Y4: cleared lines join with the decided amount), so the payments page and the
  * release dialog show what will be paid. Only the first prepared batch the booking's lines belong to.
+ * Restating touches every line of the batch, after the caller has already changed this booking's lines: two
+ * such transactions (a decision while ‹Пусни партидата› or another restatement runs, e.g. from an overlapping tick) would each wait
+ * for the other's line rows while one holds the batch row — a deadlock. So a batch row someone else holds is
+ * skipped: that holder is restating or releasing it (Y5 groups the lines again), and the next change restates it.
  */
 export async function resyncPreparedBatch(tx: Tx, bookingId: string): Promise<void> {
   const lines = await tx.select({ batchDate: payoutLine.batchDate, itemId: payoutLine.payoutItemId }).from(payoutLine)
@@ -341,9 +364,12 @@ export async function resyncPreparedBatch(tx: Tx, bookingId: string): Promise<vo
   const itemIds = lines.map(l => l.itemId).filter((x): x is string => !!x);
   const inItems = itemIds.length ? await tx.select({ batchId: payoutItem.batchId }).from(payoutItem).where(inArray(payoutItem.id, itemIds)) : [];
   const from = lines.map(l => l.batchDate).sort()[0];
-  const [batch] = await tx.select().from(payoutBatch)
+  const [first] = await tx.select({ id: payoutBatch.id }).from(payoutBatch)
     .where(and(eq(payoutBatch.status, 'ready'), inItems.length ? or(gte(payoutBatch.batchDate, from), inArray(payoutBatch.id, inItems.map(i => i.batchId))) : gte(payoutBatch.batchDate, from)))
-    .orderBy(asc(payoutBatch.batchDate)).limit(1).for('update');
+    .orderBy(asc(payoutBatch.batchDate)).limit(1);
+  if (!first) return;
+  const [batch] = await tx.select().from(payoutBatch).where(and(eq(payoutBatch.id, first.id), eq(payoutBatch.status, 'ready')))
+    .for('update', { skipLocked: true });
   if (batch) await restateBatch(tx, batch);
 }
 

@@ -17,7 +17,13 @@ with real clicks and typing. Every step asserts what the person sees and the dat
   3. Студио Мелодия opens a case on 2026-1219-ЕА (‹Клиентът не отговаря›); 48 hours pass on the demo clock with no
      statement from Мария → ‹Чака решение› + team-dispute-deadline; the team obliges her to keep to the booking.
   4. Мария opens a third case (2026-1219-ТД) and withdraws it → the payout returns to its schedule.
-  5. Another client and another partner get 404 on these case pages, and cannot read the evidence.
+  5. The step that moves money, the way people really use it: Ивелина Тодорова opens a case on her 390 px phone with a
+     double tap (one case, one set of emails), presses ‹Назад› (the form address opens the case, never a form on her
+     other booking that night); the partner double-taps the position; the team has the case open in two tabs —
+     tab A double-clicks a partial refund (one decision, one refund), the stale tab B on a phone is refused, and
+     ‹Назад› in tab A shows the decided case. Before the event the partner's ‹Получавате› follows the decision.
+     ‹Пусни партидата› in part 2 is double-clicked too (one release).
+  6. Another client and another partner get 404 on these case pages, and cannot read the evidence.
 
 Screenshots of the key moments at 1440 and 390 px go to --shots (default .data/e2e/journey-dispute).
 Prints one line per step; exits non-zero on the first failure.
@@ -34,6 +40,9 @@ PW = 'eventat-demo'
 CLIENT, PARTNER, ADMIN = 'maria.dimitrova@gmail.com', 'studio.melodia@gmail.com', 'monika.kovacheva@eventat.bg'
 OTHER_CLIENT, OTHER_PARTNER, MED_PARTNER = 'stefka.ilieva@gmail.com', 'snap360@example.invalid', 'sladkarnitsa-med-i-mlyako@example.invalid'
 CASE1, CASE2, CASE3 = '2026-0614-ЕА', '2026-1219-ЕА', '2026-1219-ТД'
+# Part 5: Ивелина Тодорова's catering on 28 June 2026 (she also has Snap360 that night, 2026-0628-ФК).
+CASE4, IVELINA, VKUSNA = '2026-0628-КТ', 'i.todorova@abv.bg', 'vkusna-istoriya@example.invalid'
+PHONE = dict(viewport={'width': 390, 'height': 844}, device_scale_factor=2, is_mobile=True, has_touch=True, locale='bg-BG', timezone_id='Europe/Sofia')
 NBSP = ' '
 
 
@@ -173,6 +182,25 @@ def shot(page, name, focus=None):
     page.wait_for_timeout(150)
 
 
+def shot_phone(page, name, focus=None):
+    """A page used on the 390 px phone: no sideways scroll, and the screenshot as the person sees it."""
+    page.wait_for_load_state('networkidle')
+    no_page_scroll_x(page, 390)
+    if focus:
+        page.locator(focus).first.scroll_into_view_if_needed()
+        page.wait_for_timeout(150)
+    page.screenshot(path=str(SHOTS / f'{name}-390.png'), full_page=not focus)
+
+
+def settled_toast(page, text):
+    """The success toast shows and stays the only outcome: a second submit (double click) must not
+    follow it with a refusal."""
+    toast(page, text)
+    page.wait_for_timeout(1500)
+    t = page.locator('.ui-toast')
+    assert 'ui-toast--error' not in (t.get_attribute('class') or ''), t.inner_text()
+
+
 def set_clock(sofia_local):
     """Move the demo clock to a Sofia wall time (ALLOW_TIME_TRAVEL), as Админ → Настройки does in steps."""
     # $1 travels as text: the driver would turn a bare timestamp string into a JS Date in the machine's zone first.
@@ -224,23 +252,26 @@ def main():
         print('resetting', DB_URL.rsplit('/', 1)[-1], flush=True)
         reset_db()
     tmp = Path(tempfile.mkdtemp())
-    hall, program, setlist, receipt, answer = (png(tmp / n, c) for n, c in [
+    hall, program, setlist, receipt, answer, menu = (png(tmp / n, c) for n, c in [
         ('zala-pravila.png', (200, 180, 160)), ('programa.png', (40, 40, 90)), ('setlist.png', (90, 140, 90)),
-        ('dogovor.png', (150, 120, 60)), ('saobshtenie.png', (160, 60, 60))])
+        ('dogovor.png', (150, 120, 60)), ('saobshtenie.png', (160, 60, 60)), ('menyu.png', (60, 120, 160))])
 
     with sync_playwright() as p:
         b = p.chromium.launch(headless='--headed' not in args)
         opts = dict(viewport={'width': 1440, 'height': 900}, locale='bg-BG', timezone_id='Europe/Sofia')
         errors = []
 
-        def person(email):
-            ctx = b.new_context(**opts)
+        def person(email, phone=False):
+            ctx = b.new_context(**(PHONE if phone else opts))
             ctx.set_default_navigation_timeout(120_000)  # a dev server compiles a route on its first visit
             sign_in(ctx, base, email)
+            return ctx, tab(ctx, email)
+
+        def tab(ctx, email):
             pg = ctx.new_page()
             pg.on('pageerror', lambda e: errors.append(f'{email} {pg.url}: {e}'))
             pg.on('response', lambda r: errors.append(f'{email} {r.status} {r.url}') if r.status >= 500 else None)
-            return ctx, pg
+            return pg
 
         client, cp = person(CLIENT)
         partner, pp = person(PARTNER)
@@ -521,8 +552,11 @@ def main():
         dlg = ap.locator('dialog[open]')
         expect(dlg).to_contain_text('Партида юни · първа половина')
         to_send = cents_of(dlg.locator('.split.is-total b').inner_text())  # ‹За превод›
-        dlg.locator('button[type="submit"]').click()
-        toast(ap, 'Партидата е пусната')
+        # a double click on the money button releases once: one transfer per partner, no refusal after the toast
+        dlg.locator('button[type="submit"]').dblclick()
+        settled_toast(ap, 'Партидата е пусната')
+        assert scalar('''select count(*)::int from audit_log where action = 'payout.batch_released'
+                         and entity_id = (select id::text from payout_batch where batch_date = '2026-06-15')''') == 1
         tick(base)
         ap.reload()
         ap.click('button[aria-label="Известия"]')
@@ -660,7 +694,117 @@ def main():
         no_errors()
         step('client: a third case, then ‹Оттегли сигнала› → ‹Оттеглен›, the hold lifted (line back to awaiting_event), no timer left; the booking\'s ‹Сигнал до екипа› opens the withdrawn case, not an empty form; the partner and the team see ‹Оттеглен›')
 
-        # ══ 5. Nobody else reaches these cases ════════════════════════════════════════════════════════
+        # ══ 5. The step that moves money, as people really use it: a phone, a double click, the back button, two tabs ══
+        iv, ip = person(IVELINA, phone=True)
+        ip.goto(base + '/akaunt/rezervacii/' + quote(CASE4))
+        ip.click('a:has-text("Сигнал до екипа")')
+        ip.wait_for_url('**/akaunt/poddrazhka/nov?rezervaciya=**')
+        expect(ip.locator('.dp-pick.is-on')).to_contain_text(CASE4)
+        ip.click('.opt:has-text("Услугата не беше по описание")')
+        desc4 = 'Вкусна История ни изпрати меню без вегетарианските ястия, които договорихме за 12 от гостите. Прилагам менюто.'
+        ip.fill('#dp-description', desc4)
+        with ip.expect_file_chooser(timeout=5_000) as fc:
+            ip.click('.rw-drop-t')
+        fc.value.set_files([menu])
+        expect(ip.locator('.ms-drop .ms-shot')).to_have_count(1, timeout=15_000)
+        shot_phone(ip, '13-client-phone-form')
+        ip.locator('button:has-text("Изпрати сигнала")').dblclick()
+        ip.wait_for_url(re.compile(r'/akaunt/rezervacii$'))
+        settled_toast(ip, 'Сигналът е изпратен — екипът отговаря до 24 часа')
+        d4 = one('''select d.id, d.status, d.holds_payout, b.payout_hold, (select count(*)::int from dispute x where x.booking_id = b.id) cases,
+                    (select count(*)::int from dispute_message m where m.dispute_id = d.id) statements,
+                    (select count(*)::int from dispute_attachment a where a.dispute_id = d.id) files
+                    from dispute d join booking b on b.id = d.booking_id where d.number = $1''', CASE4)
+        assert (d4['status'], d4['holds_payout'], d4['payout_hold'], d4['cases'], d4['statements'], d4['files']) == ('collecting', True, True, 1, 1, 1), d4
+        assert len(emails('client-dispute-opened', CASE4, IVELINA)) == 1 and len(emails('vendor-ticket-client-opened', CASE4)) == 1
+        team = [m['to_email'] for m in emails('team-dispute-new', CASE4)]
+        assert team and len(team) == len(set(team)), team
+        # ‹Назад› returns to the form's address: it opens the case now (one per booking), never a form that
+        # quietly preselects her other booking that night (Snap360, 2026-0628-ФК)
+        ip.go_back()
+        ip.wait_for_url(f'**/akaunt/poddrazhka/{quote(CASE4)}')
+        expect(ip.locator('.h-right .badge')).to_have_text('Събираме данни')
+        expect(ip.locator('.dp-pick')).to_have_count(0)
+        ip.goto(base + '/akaunt/poddrazhka/nov?rezervaciya=' + quote(CASE4))
+        ip.wait_for_url(f'**/akaunt/poddrazhka/{quote(CASE4)}')
+        shot_phone(ip, '14-client-phone-case')
+        no_errors()
+        step('phone (390 px): Ивелина opens a case with a photo by double-tapping ‹Изпрати сигнала› → one case, one set of emails, the success toast only; ‹Назад› and the old form link open the case, not a form on her other booking')
+
+        vk, vp = person(VKUSNA, phone=True)
+        vp.goto(base + '/partner/poddrazhka/' + quote(CASE4))
+        expect(vp.locator('.cs-party').first.locator('.cs-att-i')).to_have_count(1)
+        vp.fill('textarea[name=body]', 'Вегетарианските ястия са в менюто за деня — изпратихме старата версия по грешка. Прилагаме новото меню.')
+        vp.locator('button:has-text("Изпрати позицията")').dblclick()
+        settled_toast(vp, 'Съобщението е изпратено')
+        expect(vp.locator('.page-head-right .badge')).to_have_text('Чака решение')
+        assert scalar("select count(*)::int from dispute_message where dispute_id = $1 and party = 'partner'", d4['id']) == 1
+        replies = [m['to_email'] for m in emails('team-dispute-reply', CASE4)]
+        assert replies and len(replies) == len(set(replies)), replies
+        shot_phone(vp, '15-partner-phone-position')
+        no_errors()
+        step('phone: Вкусна История double-taps ‹Изпрати позицията› → one statement, ‹Чака решение›, team-dispute-reply once per team member')
+
+        tb = tab(admin, ADMIN)
+        tb.set_viewport_size({'width': 390, 'height': 844})
+        ap.goto(base + '/admin/sporove/' + quote(CASE4))
+        tb.goto(base + '/admin/sporove/' + quote(CASE4))
+        expect(tb.locator('.res-opt')).to_have_count(5)
+        no_page_scroll_x(tb, 390)
+        # Tab A: a partial refund, applied with a double click
+        ap.click('.res-opt:has-text("Частично възстановяване")')
+        ap.fill('input[name="refund"]', '280')
+        expect(ap.locator('.am-decide .split.is-fee b')).to_have_text(f'1{NBSP}000,00{NBSP}€')
+        motive4 = 'Вкусна История пусна старо меню по грешка; новото има вегетарианските ястия. Връщаме 280 € за неудобството.'
+        ap.fill('textarea[name="motive"]', motive4)
+        ap.locator('button:has-text("Приложи решението")').dblclick()
+        ap.wait_for_url(re.compile(r'/admin/sporove$'))
+        settled_toast(ap, 'Решението е изпратено до двете страни')
+        d = one('select status, decision_kind, refund_cents, partner_keeps_cents from dispute where id = $1', d4['id'])
+        assert d == {'status': 'resolved', 'decision_kind': 'partial_refund', 'refund_cents': 28000, 'partner_keeps_cents': 100000}, d
+        refunds4 = sql("select r.amount_cents from refund r join booking b on b.id = r.booking_id where b.number = $1", CASE4)
+        assert refunds4 == [{'amount_cents': 28000}], refunds4
+        assert len(emails('client-dispute-decision', CASE4, IVELINA)) == 1 and len(emails('vendor-ticket-decision', CASE4)) == 1
+        assert scalar("select count(*)::int from audit_log where action = 'dispute.decided' and entity_id = $1", d4['id']) == 1
+        # Tab B (the phone, opened before the decision): another option on the stale page is refused, nothing moves
+        tb.click('.res-opt:has-text("Анулирай с пълно възстановяване")')
+        tb.fill('textarea[name="motive"]', 'Анулираме с пълно възстановяване.')
+        tb.click('button:has-text("Приложи решението")')
+        toast(tb, 'Действието вече не е възможно')
+        expect(tb.locator('.ui-toast')).to_have_class(re.compile(r'ui-toast--error'))
+        expect(tb.locator('.page-head-right .badge').last).to_have_text('Решен')
+        expect(tb.locator('.am-decide')).to_have_count(0)
+        assert one('select decision_kind from dispute where id = $1', d4['id'])['decision_kind'] == 'partial_refund'
+        assert one('select status from booking where number = $1', CASE4)['status'] == 'confirmed'
+        assert len(sql("select 1 from refund r join booking b on b.id = r.booking_id where b.number = $1", CASE4)) == 1
+        shot_phone(tb, '16-admin-phone-stale-tab')
+        # Tab A: ‹Назад› after deciding shows the decided case, not a form to decide again
+        ap.go_back()
+        ap.wait_for_url(f'**/admin/sporove/{quote(CASE4)}')
+        expect(ap.locator('.page-head-right .badge').last).to_have_text('Решен')
+        expect(ap.locator('.am-decide')).to_have_count(0)
+        expect(ap.locator('.cs-done-n')).to_have_text(f'Частично възстановяване — 280{NBSP}€')
+        tb.close()
+        no_errors()
+        step('admin, two tabs: tab A double-clicks ‹Приложи решението› (partial refund 280 €) → one decision, one refund, one email each; the stale tab B on a phone is refused (‹Действието вече не е възможно›), nothing cancelled; ‹Назад› shows ‹Решен›, no second decision form')
+
+        tick(base)
+        assert one("select r.status from refund r join booking b on b.id = r.booking_id where b.number = $1", CASE4)['status'] == 'succeeded'
+        bk4 = one('''select b.status, b.payout_hold, l.status line, l.amount_cents from booking b
+                     join payout_line l on l.booking_id = b.id and l.charge_id is null where b.number = $1''', CASE4)
+        assert bk4 == {'status': 'confirmed', 'payout_hold': False, 'line': 'awaiting_event', 'amount_cents': 90000}, bk4
+        assert balance('client_funds', CASE4) == 100000, balance('client_funds', CASE4)
+        ip.goto(base + '/akaunt/poddrazhka/' + quote(CASE4))
+        expect(ip.locator('.h-right .badge')).to_have_text('Решен')
+        expect(ip.locator('.cs-done-n')).to_have_text(f'Частично възстановяване — 280{NBSP}€')
+        expect(ip.locator('.cs-motive-t')).to_have_text(motive4)
+        shot_phone(ip, '17-client-phone-decision')
+        vp.goto(base + '/partner/rezervacii/' + quote(CASE4))
+        expect(vp.locator('.vbk-money .split.is-total b')).to_have_text(f'900,00{NBSP}€')
+        no_errors()
+        step('the refund of 280 € succeeds once; the booking stands, the hold is lifted and 1 000 € stays held until the event (900 € to the partner); both phones show the decision')
+
+        # ══ 6. Nobody else reaches these cases ════════════════════════════════════════════════════════
         oc, op = person(OTHER_CLIENT)
         ox, oxp = person(OTHER_PARTNER)
         for n in (CASE1, CASE2, CASE3):

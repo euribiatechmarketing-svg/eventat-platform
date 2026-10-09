@@ -305,6 +305,19 @@ export async function partnerDisputeChoices(actor: Actor, preselect?: string) {
   }));
 }
 
+/**
+ * `/…/poddrazhka/nov?rezervaciya=[nomer]` for a booking of the actor's that already has its case (one per
+ * booking, `dispute_booking_key`): the case number, so the page opens the case instead of a form that
+ * cannot list the booking (it would preselect another booking). Null otherwise.
+ */
+export async function existingCaseNumber(actor: Actor, bookingNumber: string): Promise<string | null> {
+  const own = actor.role === 'client' ? eq(booking.clientId, actor.userId)
+    : actor.role === 'partner' ? eq(booking.partnerId, actor.partnerId ?? '') : sql`false`;
+  const [row] = await db.select({ number: dispute.number }).from(dispute).innerJoin(booking, eq(booking.id, dispute.bookingId))
+    .where(and(eq(booking.number, bookingNumber), own)).limit(1);
+  return row?.number ?? null;
+}
+
 /** The party's cases (‹Моите сигнали›): open first, then newest. */
 export async function partyCases(actor: Actor) {
   const today = await now();
