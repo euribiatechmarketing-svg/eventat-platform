@@ -3,6 +3,7 @@
 // everywhere else the search goes to /admin/tarsene (booking number → booking; else partners, clients, bookings).
 import { usePathname, useSearchParams } from 'next/navigation';
 import { Icon } from '@/components/ui/Icon';
+import '@/styles/m-admin-search.css';
 
 const OWN: { prefix: string; exact?: boolean; placeholder: string; action: string }[] = [
   { prefix: '/admin/partnyori', placeholder: 'Търси по име, категория или град', action: '/admin/partnyori' },

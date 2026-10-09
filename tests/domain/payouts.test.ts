@@ -140,6 +140,18 @@ describe('T17 → Y5 → Y6 → Y7', () => {
   });
 });
 
+describe('batch history', () => {
+  it('leaves out a payout day with nothing to pay or hold (T17 prepares it, nobody is in it)', async () => {
+    setTestNow(t('2020-01-14', 9));
+    const { prepared } = await prepareBatch('2020-01-15');
+    expect(prepared).toBe(true);
+    const empty = await batchOn('2020-01-15');
+    expect(empty.status).toBe('ready');
+    expect(await itemsOf(empty.id)).toHaveLength(0);
+    expect((await listBatches({ limit: 1000 })).map(x => x.batchDate)).not.toContain('2020-01-15');
+  });
+});
+
 describe('holds (SPEC §8.3, Y4)', () => {
   it('holds partners without a confirmed account, paused or disabled at the provider, and disputed bookings', async () => {
     setTestNow(t('2025-09-28'));

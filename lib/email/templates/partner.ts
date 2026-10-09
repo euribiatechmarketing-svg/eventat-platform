@@ -15,6 +15,7 @@
 //   partner.new-review       → vendor/settings.html › Известия › „Ново ревю“ (Известие при получена оценка.)
 //                              vendor-new-review
 import type { EmailTemplate } from '../types';
+import { agree, subjectForm } from '../grammar';
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const low = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
@@ -454,7 +455,7 @@ type BookingConfirmedVars = {
 export const vendorBookingConfirmed: EmailTemplate<BookingConfirmedVars> = {
   key: 'vendor-booking-confirmed', audience: 'partner', optional: false,
   render: v => ({
-    subject: `Получено плащане: ${v.eventTypeDefinite} на ${v.eventDate} е потвърдена`,
+    subject: `Получено плащане: ${subjectForm(v.eventTypeDefinite)} на ${v.eventDate} е ${agree(v.eventTypeDefinite, 'потвърден', 'потвърдена', 'потвърдено')}`,
     preheader: `${v.clientName} плати Пакет „${v.packageName}“ — получавате ${v.partnerAmount}.`,
     trigger: 'Плащане получено — потвърдена резервация',
     heading: 'Резервацията е потвърдена',
@@ -488,10 +489,10 @@ type EventReminderVars = {
 export const vendorEventReminder: EmailTemplate<EventReminderVars> = {
   key: 'vendor-event-reminder', audience: 'partner', optional: false,
   render: v => ({
-    subject: `След ${pl(v.daysLeft, 'ден', 'дни')}: ${v.eventTypeDefinite} на ${v.hosts}, ${v.eventDate}`,
+    subject: `След ${pl(v.daysLeft, 'ден', 'дни')}: ${subjectForm(v.eventTypeDefinite)} на ${v.hosts}, ${v.eventDate}`,
     preheader: `${v.location} · начало ${v.timeRange.split('–')[0].trim()} · ${v.guests} гости.`,
     trigger: 'Напомняне преди събитието',
-    heading: `${cap(v.eventTypeDefinite)} на ${v.hosts} е след седмица`,
+    heading: `${cap(subjectForm(v.eventTypeDefinite))} на ${v.hosts} е след седмица`,
     paragraphs: [
       `На ${v.eventDate} сте на ${v.eventTypeDefinite} на ${v.hosts} ${inAt(v.venue)}. Ако още не сте уточнили програмата и плейлиста с клиента, направете го сега през съобщенията.`,
       `След събитието получавате ${v.partnerAmount} с партидата на ${v.payoutDate}.`,

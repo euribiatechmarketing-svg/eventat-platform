@@ -8,6 +8,7 @@ import { db } from '@/db';
 import * as schema from '@/db/schema';
 import { sendEmail } from '@/lib/email/send';
 import { afterPasswordChanged, deviceFromUserAgent } from '@/lib/domain/clients';
+import { now } from '@/lib/clock';
 
 /** Who an auth email goes to. Partners' emails also name the business (partner.business_name once it exists). */
 async function recipient(email: string): Promise<{ role: 'client' | 'partner' | 'admin'; id: string | null; name: string; partnerName: string }> {
@@ -76,6 +77,16 @@ export const auth = betterAuth({
   emailVerification: { autoSignInAfterVerification: true, sendOnSignUp: false },
   socialProviders: social,
   databaseHooks: {
+    user: {
+      create: {
+        // ‹Клиент от 2025›, ‹Регистрирани› and the admin's sign-up counts read the platform clock
+        // (lib/clock: equal to real time in production, the demo day with ALLOW_TIME_TRAVEL).
+        async before(u) {
+          const at = await now();
+          return { data: { ...u, createdAt: at, updatedAt: at } };
+        },
+      },
+    },
     session: {
       create: {
         // SPEC §1.3: a blocked (or deleted) user cannot sign in by any method. Each session gets a

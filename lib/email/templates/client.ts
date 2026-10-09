@@ -18,6 +18,7 @@
 //   client.date-watch       → client/saved.html › „Чакам да се освободи“ (следене на дата); no row in settings.html
 //                             client-date-freed
 import type { EmailTemplate } from '../types';
+import { subjectForm } from '../grammar';
 
 type Rows = [string, string][];
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -521,7 +522,7 @@ export const clientEventReminder: EmailTemplate<EventReminderVars> = {
     trigger: 'Напомняне преди събитието',
     heading: `${remain(v.daysLeft, 'ден', 'дни')} до събитието ви`,
     paragraphs: [
-      `${cap(v.eventTypeDefinite)} ви е на ${v.eventDate} ${inAt(v.location)}. Ето кои изпълнители са резервирани и в колко часа започват.`,
+      `${cap(subjectForm(v.eventTypeDefinite))} ви е на ${v.eventDate} ${inAt(v.location)}. Ето кои изпълнители са резервирани и в колко часа започват.`,
       'Изпълнителите обикновено се свързват с вас до седмица преди събитието, за да уточните програмата. Ако някой още не ви е писал, пишете му от резервацията.',
     ],
     details: [
@@ -679,7 +680,7 @@ type ReviewInviteVars = {
 export const clientReviewInvite: EmailTemplate<ReviewInviteVars> = {
   key: 'client-review-invite', audience: 'client', optional: true, preference: 'client.review-invite',
   render: v => ({
-    subject: `Как мина ${v.eventTypeDefinite} ви? Оценете ${v.partnerName}`,
+    subject: `Как мина ${subjectForm(v.eventTypeDefinite)} ви? Оценете ${v.partnerName}`,
     preheader: 'Ревюто ви помага на следващите клиенти да избират.',
     trigger: 'Покана за ревю',
     heading: `Оценете ${v.partnerName}`,

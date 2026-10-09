@@ -9,7 +9,11 @@ export type BellItem = { id: string; title: string; body: string | null; href: s
 /** The bell: unread dot, a panel with the latest notices, marks them read when opened. */
 export function Bell({ items }: { items: BellItem[] }) {
   const [open, setOpen] = useState(false);
-  const [unread, setUnread] = useState(items.some(i => i.unread));
+  // The header stays mounted across client-side navigation while `items` is refreshed from the
+  // server: the dot follows the unread items, and opening the bell clears it until a new one arrives.
+  const unreadKey = items.filter(i => i.unread).map(i => i.id).join(',');
+  const [seenKey, setSeenKey] = useState('');
+  const unread = unreadKey !== '' && unreadKey !== seenKey;
   const [, start] = useTransition();
   const ref = useRef<HTMLSpanElement>(null);
   useEffect(() => {
@@ -24,7 +28,7 @@ export function Bell({ items }: { items: BellItem[] }) {
   return (
     <span ref={ref} className="ui-anchor">
       <button className="icon-btn" aria-label="Известия" aria-expanded={open}
-        onClick={() => { setOpen(o => !o); if (unread) { setUnread(false); start(() => markNotificationsRead()); } }}>
+        onClick={() => { setOpen(o => !o); if (unread) { setSeenKey(unreadKey); start(() => markNotificationsRead()); } }}>
         <Icon name="bell" />
         {unread && <span className="dot" />}
       </button>

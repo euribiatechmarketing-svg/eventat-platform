@@ -1061,7 +1061,13 @@ export async function batchDetail(batchId: string, q: Queryable = db) {
   };
 }
 
-/** Batch history (newest first). */
+/**
+ * Batch history (newest first): prepared batches that pay or hold someone. A payout day with
+ * nothing due (T17 still prepares it) is not a batch anyone was paid in, so it is not listed —
+ * it would read ‹Готово› with 0 изпълнители for ever, never to be released.
+ */
 export async function listBatches(opts: { limit?: number } = {}, q: Queryable = db): Promise<BatchRow[]> {
-  return q.select().from(payoutBatch).where(ne(payoutBatch.status, 'scheduled')).orderBy(desc(payoutBatch.batchDate)).limit(opts.limit ?? 24);
+  return q.select().from(payoutBatch)
+    .where(and(ne(payoutBatch.status, 'scheduled'), sql`exists (select 1 from payout_item i where i.batch_id = ${payoutBatch.id})`))
+    .orderBy(desc(payoutBatch.batchDate)).limit(opts.limit ?? 24);
 }

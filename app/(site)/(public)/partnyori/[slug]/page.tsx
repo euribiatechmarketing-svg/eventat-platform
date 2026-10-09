@@ -13,6 +13,7 @@ import { CrumbChevron, Stars } from '../../_components/icons';
 import { Num, toSearch } from '../../_components/text';
 import { viewerFor } from '../../_components/viewer';
 import { Widget } from './Widget';
+import { BookingQueryProvider, ChooseLink } from './Choose';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,12 +46,11 @@ export default async function PartnerPage({ params, searchParams }: Props) {
   const avail = initialDate && !p.preview ? await widgetAvailability(p.id, initialDate, clientId) : null;
   const canRequest = p.acceptingRequests && !p.preview && viewer.kind !== 'other';
   const mode = !canRequest ? 'none' : viewer.kind === 'guest' ? 'guest' : 'client';
-  const choose = (serviceId: string) => {
-    const q = new URLSearchParams({ paket: serviceId });
-    if (w?.eventId) q.set('sabitie-id', w.eventId);
-    const href = `/zayavka/${encodeURIComponent(p.slug)}?${q.toString()}`;
-    return viewer.kind === 'guest' ? viewer.register(href) : href;
-  };
+  // What ‹Избери› carries before the booking box takes over: the date and guests on screen, the client's event.
+  const chooseQuery = new URLSearchParams();
+  if (w?.eventId) chooseQuery.set('sabitie-id', w.eventId);
+  if (initialDate) chooseQuery.set('data', initialDate);
+  if (w?.guests) chooseQuery.set('gosti', String(w.guests));
   const location = p.location.replace(' · до ', ' · работи до ');
   // ‹Тип събитие› offers the types this partner serves (its specialisations), else every public type.
   const served = new Set(v.eventTypes.map(t => t.href.replace('/sabitiya/', '')));
@@ -78,6 +78,7 @@ export default async function PartnerPage({ params, searchParams }: Props) {
             </div>
           )}
 
+          <BookingQueryProvider initial={chooseQuery.toString()}>
           <div className="pv-grid">
             <div>
               <div className="pv-head">
@@ -121,7 +122,7 @@ export default async function PartnerPage({ params, searchParams }: Props) {
                         <b>{s.price ? s.price.text : 'По запитване'}</b>
                         <span>{s.price ? (s.price.unitLabel === 'на гост' ? 'на гост' : 'фиксирана цена') : `отговор до ${v.responseHours} ч`}</span>
                       </div>
-                      {canRequest && s.acceptingRequests && <Link className="btn btn--outline btn--sm" href={choose(s.id)}>Избери</Link>}
+                      {canRequest && s.acceptingRequests && <ChooseLink slug={p.slug} serviceId={s.id} guest={viewer.kind === 'guest'} />}
                     </div>
                   ))}
                 </div>
@@ -170,6 +171,7 @@ export default async function PartnerPage({ params, searchParams }: Props) {
                 today={choices.today} mode={mode} signIn={viewer.signIn} responseHours={v.responseHours} policyLine={v.policyLine} />
             </aside>
           </div>
+          </BookingQueryProvider>
         </div>
       </main>
     </>

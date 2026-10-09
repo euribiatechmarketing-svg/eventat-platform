@@ -2,11 +2,12 @@
 // The booking box on the public profile (client/vendor.html `aside .book`): date, event type,
 // guests and package, defaulting to the client's chosen or next event (SPEC §13.10). Changing the
 // date re-checks availability; a busy date swaps in ‹Заета дата› with ‹Уведоми ме, ако се освободи›.
-import { useRef, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { date as fmtDate, weekdayName } from '@/lib/format';
 import { NotifyButton } from '../../_components/client';
 import { checkDateAction } from './actions';
+import { useBookingQuery } from './Choose';
 
 /** The client's own live request or booking with this partner on the chosen date. */
 type Own = { label: string; href: string } | null;
@@ -56,6 +57,10 @@ export function Widget(w: WidgetProps) {
   if (d) q.set('data', d);
   if (guests && /^\d{1,5}$/.test(guests)) q.set('gosti', guests);
   const requestHref = `/zayavka/${encodeURIComponent(w.slug)}?${q.toString()}`;
+  // The packages' ‹Избери› follow the box: same date, guests and event, their own package.
+  const shared = useBookingQuery();
+  const chooseQuery = (() => { const x = new URLSearchParams(q); x.delete('paket'); return x.toString(); })();
+  useEffect(() => { shared?.setQuery(chooseQuery); }, [shared, chooseQuery]);
   const ctaHref = w.mode === 'guest' ? `/registratsiya?next=${encodeURIComponent(requestHref)}` : requestHref;
   const openPicker = () => { const i = dateInput.current; if (!i) return; try { i.showPicker(); } catch { i.focus(); } };
 
