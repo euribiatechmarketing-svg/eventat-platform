@@ -5,7 +5,7 @@ import 'server-only';
 // Public files (approved listing photos) get a public URL; private files
 // (evidence, documents) are read through /api/files/[...key] with an access check.
 import { mkdir, writeFile, readFile, unlink } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { AwsClient } from 'aws4fetch';
 
@@ -17,6 +17,11 @@ export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 const driver = () => (process.env.STORAGE_DRIVER === 's3' ? 's3' : 'local');
 const LOCAL_ROOT = join(process.cwd(), 'public', 'uploads');
+/** A key's file under LOCAL_ROOT; null for a key that would leave the folder (`..`, an absolute path). */
+function localPath(key: string): string | null {
+  const path = resolve(LOCAL_ROOT, key);
+  return path.startsWith(LOCAL_ROOT + sep) ? path : null;
+}
 
 let aws: AwsClient | null = null;
 function s3(): AwsClient {
@@ -56,7 +61,9 @@ export function fileUrl(key: string): string {
 
 export async function getFile(key: string): Promise<{ body: Buffer; contentType: string } | null> {
   if (driver() === 'local') {
-    try { return { body: await readFile(join(LOCAL_ROOT, key)), contentType: guessType(key) }; } catch { return null; }
+    const path = localPath(key);
+    if (!path) return null;
+    try { return { body: await readFile(path), contentType: guessType(key) }; } catch { return null; }
   }
   const r = await s3().fetch(objectUrl(key));
   if (!r.ok) return null;
@@ -64,7 +71,7 @@ export async function getFile(key: string): Promise<{ body: Buffer; contentType:
 }
 
 export async function deleteFile(key: string): Promise<void> {
-  if (driver() === 'local') { await unlink(join(LOCAL_ROOT, key)).catch(() => {}); return; }
+  if (driver() === 'local') { const path = localPath(key); if (path) await unlink(path).catch(() => {}); return; }
   await s3().fetch(objectUrl(key), { method: 'DELETE' });
 }
 

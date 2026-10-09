@@ -16,8 +16,16 @@ partner), with real clicks and typing:
   3. a client sends a request, the partner approves it, the client pays: the intro commission (5%) shows on
      the admin booking record and never on a partner screen, which shows ‹Получавате›;
   4. the partner changes a published price: the public page keeps the old one until the team approves it;
-  5. a second partner is returned with a note, fixes step 2, resubmits and is approved;
-  6. every bell item the journey left opens a live page.
+  5. a second partner is returned with a note, fixes step 2, resubmits and is approved (the team double-clicks
+     ‹Одобри› while a second tab on the application is still open);
+  6. the riskiest step once more, as people really do it: the client on a 390 px phone on a slow network sends
+     a second request with a double click, the partner double-clicks ‹Одобри заявката› on the phone while a laptop
+     tab is still open, the client opens the email's ‹Плати› link and double-taps ‹Плати› before the page is
+     interactive, has the card declined once, pays with a double click, presses back, and comes back to a payment
+     tab opened before paying — one booking, one charge, one ledger;
+  7. every bell item the journey left opens a live page.
+
+React errors in the console (a hydration mismatch, #418) fail the step they happen in.
 
 Each step prints one line; the script stops with a non-zero exit at the first failure. Every step checks what
 the person sees and the database effect. Screenshots of the key moments (1440 and 390 px) go to --shots
@@ -137,8 +145,13 @@ class Person:
 
     def watch(self, page):
         page.on('pageerror', lambda e: ERRORS.append(f'{self.name} {page.url}: {e}'))
-        page.on('console', lambda m: CONSOLE.append(f'{self.name} {page.url}: {m.text[:300]}') if m.type == 'error' else None)
+        page.on('console', lambda m: self.console(page, m) if m.type == 'error' else None)
         page.on('response', lambda r: ERRORS.append(f'{self.name} HTTP {r.status} {r.url}') if r.status >= 500 else None)
+
+    def console(self, page, m):
+        CONSOLE.append(f'{self.name} {page.url}: {m.text[:300]}')
+        # a hydration mismatch (#418 and its kin) throws the server HTML away: never acceptable
+        if re.search(r'Minified React error|[Hh]ydrat', m.text): ERRORS.append(f'{self.name} {page.url}: {m.text[:300]}')
 
     def sign_in(self, ctx=None):
         ctx = ctx or self.ctx
@@ -234,12 +247,43 @@ def no_commission(page, where):
     assert '5%' not in text and '10%' not in text, f'{where}: a partner screen shows a commission rate'
 
 
+def slow_network(page):
+    """A phone on a mobile network: the HTML arrives in pieces, so the page hydrates while it is still
+    loading (the #418 race) and a person can press a button before the page is interactive."""
+    cdp = page.context.new_cdp_session(page)
+    cdp.send('Network.enable')
+    cdp.send('Network.emulateNetworkConditions', {'offline': False, 'latency': 150, 'downloadThroughput': 200_000, 'uploadThroughput': 90_000})
+
+
+def fits_phone(page, where):
+    """No sideways scroll, and every button inside the screen on one line."""
+    sw = page.evaluate('document.documentElement.scrollWidth')
+    assert sw <= page.viewport_size['width'], f'{where}: scrolls sideways at {page.viewport_size["width"]} px ({sw})'
+    bad = page.evaluate('''() => [...document.querySelectorAll('main .btn')].filter(b => b.offsetParent && b.innerText.trim()).map(b => {
+        const r = b.getBoundingClientRect(), tops = [];
+        const w = document.createTreeWalker(b, NodeFilter.SHOW_TEXT);
+        for (let n; (n = w.nextNode());) {
+          if (!n.textContent.trim()) continue;
+          const rg = document.createRange(); rg.selectNodeContents(n);
+          for (const q of rg.getClientRects()) if (q.width > 0) tops.push(q.top);
+        }
+        tops.sort((a, b) => a - b);
+        const lines = tops.filter((t, i) => i === 0 || t - tops[i - 1] > 6).length;
+        return { text: b.innerText.trim(), left: Math.round(r.left), right: Math.round(r.right), lines };
+      }).filter(x => x.left < 0 || x.right > innerWidth || x.lines > 1)''')
+    assert not bad, f'{where}: buttons off the screen or on two lines: {bad}'
+
+
+def charges_of(number):
+    return sql('select c.status, c.amount_cents from charge c join booking b on b.id = c.booking_id where b.number = $1 order by c.created_at', number)
+
+
 # ── the journey ──────────────────────────────────────────────────────────
 
 S = {}
 A = {'business': 'Кадър Видео', 'contact': 'Петър Колев', 'phone': '0888 123 456', 'password': 'Kadar-Video-2025!',
      'category': 'Видеозаснемане', 'cat_slug': 'videozasnemane', 'eik': valid_eik('20512345'), 'social': '@kadar.video',
-     'blocked': '2025-10-18', 'event': '2025-10-25'}
+     'blocked': '2025-10-18', 'event': '2025-10-25', 'event2': '2025-11-08'}
 B = {'business': 'Фото Светлина', 'contact': 'Ралица Николова', 'phone': '0887 654 321', 'password': 'Foto-Svetlina-2025!',
      'category': 'Фотография', 'cat_slug': 'fotografiya', 'eik': valid_eik('20498765'), 'social': '@foto.svetlina'}
 STEPS = []
@@ -898,7 +942,7 @@ def s5b():
     shoot(S['pb'], 'returned-step6')
 
 
-@step('J4.5c partner fixes step 2 (two more photos), resubmits; the team approves')
+@step('J4.5c partner fixes step 2 (two more photos), resubmits; the team double-clicks ‹Одобри› with a second tab open')
 def s5c():
     p = S['pb'].page
     p.locator('.wiz-step:nth-child(2) .m-step-btn').click()
@@ -915,14 +959,22 @@ def s5c():
     row = submit_application(S['pb'], B)
     assert one('select count(*)::int n from partner_photo where partner_id = $1', row['id'])['n'] == 6
     assert len(mails('vendor-application-received', S['pb'].email)) == 2
+    # the team: the application open in two tabs; ‹Одобри› double-clicked in one, then pressed in the other
     a = S['admin'].page
+    a2 = S['admin'].ctx.new_page(); S['admin'].watch(a2)
     go(a, f"/admin/partnyori/{S['b_id']}")
-    a.locator('aside button:has-text("Одобри")').click()
+    go(a2, f"/admin/partnyori/{S['b_id']}")
+    a.locator('aside button:has-text("Одобри")').dblclick()
     toast(a, 'Профилът е одобрен')
+    wait_path(a, r'/admin/partnyori$')
     assert one('select status from partner where id = $1', S['b_id'])['status'] == 'approved'
+    a2.locator('aside button:has-text("Одобри")').click()
+    expect(a2.locator('aside .form-error')).to_have_text('Заявката вече е обработена')
+    a2.close()
     decisions = [d['decision'] for d in sql('select decision from partner_decision where partner_id = $1 order by decided_at', S['b_id'])]
     assert decisions == ['returned', 'approved'], decisions
     assert until(lambda: last_mail('vendor-application-approved', S['pb'].email), 'vendor-application-approved')
+    assert len(mails('vendor-application-approved', S['pb'].email)) == 1
     assert bell(S['pb'].email, 'vendor-application-approved'), 'no bell item for the approval'
     expect(p.locator('.pending-eyebrow')).to_have_text('Профилът ви е одобрен', timeout=30_000)
     p.get_by_role('link', name='Към таблото').click()
@@ -938,8 +990,146 @@ def s5c():
     expect(card.locator('.feat-free')).to_have_text('1 партньор' if n == 1 else f'{n} партньори')
 
 
-@step('J4.6 every bell item the journey left (partners, client) opens a live page, not a 404')
-def s6():
+# 6 ── the riskiest step as people really do it ──────────────────────────
+
+@step('J4.6a client on a 390 px phone (slow network) sends a second request; a double click on ‹Изпрати заявката› sends one')
+def s6a():
+    c = S['client'].phone_page().context.new_page()
+    S['client'].watch(c)
+    slow_network(c)
+    S['c7'] = c
+    d = A['event2']
+    go(c, f"/partnyori/{S['a_slug']}?data={d}")
+    fits_phone(c, 'profile')
+    c.click('.book a:has-text("Изпрати запитване")')
+    wait_path(c, rf"/zayavka/{S['a_slug']}")
+    c.wait_for_load_state('networkidle')
+    fits_phone(c, 'request form')
+    c.select_option('select[name=eventTypeId]', label='Сватба')
+    c.fill('input[name=eventDate]', d)
+    c.fill('input[name=startTime]', '16:00')
+    c.fill('input[name=guests]', '90')
+    c.fill('input[name=venueName]', 'Зала „Изток“')
+    c.fill('input[name=locality]', 'София')
+    c.click('label.opt:has-text("Закрита зала")')
+    c.click('label.opt:has-text("Пакет „Сватбен ден“")')
+    c.locator('button:has-text("Изпрати заявката")').dblclick()
+    wait_path(c, r'/akaunt/zayavki/\d{4}-\d{4}-')
+    expect(c.locator('.sh-t')).to_have_text('Запитването е изпратено')
+    S['n2'] = path_of(c).rsplit('/', 1)[1]
+    c.wait_for_timeout(1500)  # a second submission would land now
+    rows = sql('select r.number from request r join "user" u on u.id = r.client_id where lower(u.email) = lower($1) and r.event_date = $2', CLIENT, d)
+    assert [r['number'] for r in rows] == [S['n2']], rows
+    expect(c.locator('.ui-toast.is-on')).to_have_count(0)
+    assert until(lambda: sql("select 1 from email_outbox where template_key = 'vendor-new-request' and vars->>'requestId' = $1", S['n2']), 'vendor-new-request')
+
+
+@step('J4.6b partner double-clicks ‹Одобри заявката› on the phone while a laptop tab is open; the stale tab changes nothing')
+def s6b():
+    n = quote(S['n2'])
+    lap = S['pa'].page
+    go(lap, f'/partner/zayavki/{n}')  # the laptop tab, left open
+    ph = S['pa'].phone_page()
+    go(ph, f'/partner/zayavki/{n}')
+    fits_phone(ph, 'partner request page')
+    no_commission(ph, 'partner request page (phone)')
+    ph.locator('button:has-text("Одобри заявката")').dblclick()
+    expect(ph.locator('.page-head .badge')).to_have_text('Одобрена · чака плащане', timeout=15_000)
+    ph.wait_for_timeout(1500)
+    expect(ph.locator('.ui-toast.is-on')).to_have_count(0)  # no refusal for the second click
+    bk = sql('select status, commission_bp from booking where number = $1', S['n2'])
+    assert bk == [{'status': 'awaiting_payment', 'commission_bp': None}], bk
+    # the laptop tab still offers ‹Одобри заявката›: pressing it tells the partner and shows the approved request
+    lap.locator('button:has-text("Одобри заявката")').click()
+    toast(lap, 'Действието вече не е възможно')
+    expect(lap.locator('.page-head .badge')).to_have_text('Одобрена · чака плащане')
+    assert sql('select count(*)::int n from booking where number = $1', S['n2'])[0]['n'] == 1
+    assert until(lambda: sql("select 1 from email_outbox o join booking b on o.dedupe_key = 'booking:' || b.id || ':approved' where b.number = $1", S['n2']),
+                 'client-request-approved')
+
+
+@step('J4.6c client on the phone: double-taps ‹Плати› before the page is interactive, the card is declined once, pays with a double click → one booking at 5%')
+def s6c():
+    c = S['c7']
+    n = quote(S['n2'])
+    stale = S['client'].phone.new_page(); S['client'].watch(stale)
+    go(stale, f'/plashtane/{n}')  # a payment tab opened now and left behind
+    fits_phone(stale, 'payment page')
+    S['c7_stale'] = stale
+    go(c, f'/akaunt/zayavki/{n}')
+    fits_phone(c, 'client request page')
+    expect(c.locator('a.btn:has-text("Плати 1 200 €")')).to_have_attribute('href', f'/plashtane/{n}')
+    # the approval email's ‹Плати› link, opened on the phone: ‹Плати 1 200 €› tapped twice as soon as it shows,
+    # before the page is interactive — it must still start one checkout, not reload the page
+    href = one("select substring(o.html from 'href=\"([^\"]*/plashtane/[^\"]*)\"') h from email_outbox o join booking b on o.dedupe_key = 'booking:' || b.id || ':approved' where b.number = $1", S['n2'])['h']
+    c.goto(BASE + re.sub(r'^https?://[^/]+', '', href), wait_until='commit')
+    c.locator('button:has-text("Плати 1 200 €")').dblclick()
+    wait_path(c, r'/plashtane/test/[0-9a-f-]{36}$')
+    c.wait_for_load_state('networkidle')
+    fits_phone(c, 'test checkout')
+    assert charges_of(S['n2']) == [{'status': 'pending', 'amount_cents': 120000}], charges_of(S['n2'])
+    # the card is declined: back on the payment page with the failure, the date still held
+    c.click('button:has-text("Откажи плащането")')
+    wait_path(c, r'/plashtane/' + re.escape(n) + '$')
+    expect(c.locator('.form-alert')).to_have_text('Плащането не е преминало. Опитайте отново.')
+    assert one('select status from booking where number = $1', S['n2'])['status'] == 'awaiting_payment'
+    c.locator('button:has-text("Плати 1 200 €")').click()
+    wait_path(c, r'/plashtane/test/[0-9a-f-]{36}$')
+    S['c7_checkout'] = path_of(c)
+    c.wait_for_load_state('networkidle')
+    # a second tab on the same checkout, as when the bank's page is opened twice
+    co2 = S['client'].phone.new_page(); S['client'].watch(co2)
+    go(co2, S['c7_checkout'])
+    c.locator('button:has-text("Плати")').first.dblclick()
+    wait_path(c, r'/potvardena$')
+    expect(c.locator('.done-t')).to_have_text('Резервацията е потвърдена')
+    fits_phone(c, 'confirmed page')
+    co2.locator('button:has-text("Плати")').first.click()
+    wait_path(co2, r'/potvardena$')
+    co2.close()
+    c.wait_for_timeout(1500)
+    assert charges_of(S['n2']) == [{'status': 'failed', 'amount_cents': 120000}, {'status': 'succeeded', 'amount_cents': 120000}], charges_of(S['n2'])
+    b = one('select * from booking where number = $1', S['n2'])
+    assert b['status'] == 'confirmed' and b['commission_bp'] == 500, b  # the second of the three intro bookings
+    pl = sql('select base_cents, commission_cents, amount_cents from payout_line where booking_id = $1', b['id'])
+    assert pl == [{'base_cents': 120000, 'commission_cents': 6000, 'amount_cents': 114000}], pl
+    led = one('select coalesce(sum(debit_cents), 0)::int d, coalesce(sum(credit_cents), 0)::int c, count(*)::int n from ledger_entry where booking_id = $1', b['id'])
+    first = one('select count(*)::int n from ledger_entry where booking_id = $1', S['booking_id'])['n']
+    assert led['d'] == led['c'] > 0 and led['n'] == first, (led, first)  # posted once, like the first booking
+    for key, to in (('client-booking-confirmed', CLIENT), ('vendor-booking-confirmed', S['pa'].email)):
+        sent = sql("select 1 from email_outbox where template_key = $1 and lower(to_email) = lower($2) and dedupe_key like $3", key, to, f"booking:{b['id']}:%")
+        assert len(sent) == 1, (key, len(sent))
+    assert len([x for x in bell(S['pa'].email, 'vendor-booking-confirmed')]) == 2
+
+
+@step('J4.6d back after paying never shows a payable page; the payment tab opened before paying takes no money')
+def s6d():
+    c = S['c7']
+    n = quote(S['n2'])
+    for _ in range(2):
+        c.go_back()
+        wait_path(c, r'/akaunt/rezervacii/' + re.escape(n) + '$')
+        expect(c.locator('h1')).to_contain_text(f"Резервация № {S['n2']}")
+        expect(c.locator('main button:has-text("Плати"), main a:has-text("Плати")')).to_have_count(0)
+    stale = S['c7_stale']
+    stale.locator('button:has-text("Плати 1 200 €")').click()
+    expect(stale.locator('.form-alert')).to_have_text('Състоянието се промени. Презаредете страницата.')
+    stale.reload()
+    wait_path(stale, r'/akaunt/rezervacii/' + re.escape(n) + '$')
+    stale.close()
+    assert [x['status'] for x in charges_of(S['n2'])] == ['failed', 'succeeded'], charges_of(S['n2'])
+    # the paid booking for the partner: the client's phone, ‹Получавате›, never the commission
+    p = S['pa'].phone_page()
+    go(p, f'/partner/rezervacii/{n}')
+    fits_phone(p, 'partner booking page')
+    no_commission(p, 'partner booking page (phone)')
+    expect(p.locator('.split.is-total', has_text='Получавате')).to_contain_text('1 140,00 €')
+    expect(p.locator('#main')).to_contain_text('+359 88 412 7730')
+    c.close()
+
+
+@step('J4.7 every bell item the journey left (partners, client) opens a live page, not a 404')
+def s7():
     for key, who in (('pa', S['pa']), ('pb', S['pb']), ('client', S['client'])):
         rows = sql('select n.kind, n.title, n.href from notification n join "user" u on u.id = n.user_id where lower(u.email) = lower($1) order by n.created_at', who.email)
         if key != 'client': assert len(rows) >= 3, (key, rows)
