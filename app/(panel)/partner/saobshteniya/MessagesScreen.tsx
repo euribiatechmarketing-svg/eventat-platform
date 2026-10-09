@@ -27,7 +27,7 @@ export async function PartnerMessagesScreen({ id, q, unreadOnly }: { id?: string
   if (id) {
     try { await markRead(actor, { conversationId: id }); } catch { notFound(); }
   }
-  const list = await conversationList(actor, { q, unreadOnly });
+  const list = await conversationList(actor, { q, unreadOnly, keepId: id });
   const activeId = id ?? list.items[0]?.id ?? null;
   const view = activeId ? await conversationView(actor, activeId).catch(() => null) : null;
   if (id && !view) notFound();
@@ -39,7 +39,11 @@ export async function PartnerMessagesScreen({ id, q, unreadOnly }: { id?: string
     const s = p.toString();
     return s ? `?${s}` : '';
   };
-  const here = id ? `/partner/saobshteniya/${id}` : '/partner/saobshteniya';
+  // ‹Само непрочетени› on: the unread conversations (the newest one opens beside them on wide screens);
+  // off: back to every conversation, the open one staying open.
+  const toggleHref = unreadOnly
+    ? `${id ? `/partner/saobshteniya/${id}` : '/partner/saobshteniya'}${params({ unread: false })}`
+    : `/partner/saobshteniya${params({ unread: true })}`;
 
   return (
     <>
@@ -49,7 +53,7 @@ export async function PartnerMessagesScreen({ id, q, unreadOnly }: { id?: string
           <p className="page-sub">{plural(list.totals.conversations, 'разговор', 'разговора')} · {plural(list.totals.unreadMessages, 'непрочетено съобщение', 'непрочетени съобщения')}</p>
         </div>
         <div className="page-head-right">
-          <Link className={`btn ${unreadOnly ? 'btn--primary' : 'btn--outline'} btn--sm`} href={`${here}${params({ unread: !unreadOnly })}`}
+          <Link className={`btn ${unreadOnly ? 'btn--primary' : 'btn--outline'} btn--sm`} href={toggleHref}
             aria-pressed={unreadOnly} scroll={false}>Само непрочетени</Link>
         </div>
       </div>

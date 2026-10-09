@@ -20,7 +20,9 @@ import { getDispute } from './disputes';
 import { mediaUrl } from './catalogue-kit';
 import { DISPUTE_REASON_LABEL } from './aftercare-shared';
 
-const NBSP = ' ';
+const NBSP = '\u00A0';
+/** ‹ · › that stays at the end of a line when the text wraps (never starts one). */
+const SEP = `${NBSP}· `;
 const MON_SHORT = ['яну', 'фев', 'мар', 'апр', 'май', 'юни', 'юли', 'авг', 'сеп', 'окт', 'ное', 'дек'];
 /** Bookings that reveal contacts and count as ‹Потвърдена резервация› (SPEC §10). */
 const REVEALING = ['confirmed', 'cancellation_requested', 'completed'];
@@ -40,6 +42,12 @@ export function listTime(at: Date, today: Date): string {
   const p = sofiaParts(at);
   const s = `${p.d}${NBSP}${MON_SHORT[p.m - 1]}`;
   return p.y === sofiaParts(today).y ? s : `${s} ${p.y}`;
+}
+
+/** An event date in a list row or a pick, as client/messages.html and client/dispute.html write it: ‹19 дек 2026›. */
+export function eventDateShort(d: string): string {
+  const [y, m, day] = d.split('-').map(Number);
+  return `${day}${NBSP}${MON_SHORT[m - 1]} ${y}`;
 }
 
 /** Day separator in a thread: ‹Днес›, ‹Вчера›, ‹Петък, 29 август›. */
@@ -105,13 +113,16 @@ export type ConversationItem = Awaited<ReturnType<typeof conversationList>>['ite
  * ‹Търсене…› (`q`) and ‹Само непрочетени› (`unreadOnly`); the totals (‹N разговора · N непрочетени
  * съобщения›) always count every conversation.
  */
-export async function conversationList(actor: Actor, a: { q?: string; unreadOnly?: boolean } = {}) {
+export async function conversationList(actor: Actor, a: { q?: string; unreadOnly?: boolean; keepId?: string } = {}) {
   const today = await now();
-  const [all, shown] = await Promise.all([
+  const [all, matching] = await Promise.all([
     listConversations(actor, {}),
-    a.q || a.unreadOnly ? listConversations(actor, { q: a.q, unreadOnly: a.unreadOnly }) : null,
+    a.q ? listConversations(actor, { q: a.q }) : null,
   ]);
-  const list = shown ?? all;
+  const base = matching ?? all;
+  // ‹Само непрочетени›: the conversation open beside the list stays in it after it has been read
+  // (vendor/messages.html hides only what was read when the filter was switched on).
+  const list = a.unreadOnly ? { ...base, items: base.items.filter(i => i.unread > 0 || i.conversation.id === a.keepId) } : base;
   const [avatars, files] = await Promise.all([
     avatarUrls(list.items.map(i => i.conversation.partnerId)),
     lastFileNames(list.items.filter(i => i.lastMessage && !i.lastMessage.body).map(i => i.conversation.id)),
@@ -123,7 +134,7 @@ export async function conversationList(actor: Actor, a: { q?: string; unreadOnly
       otherName: i.otherName,
       otherInitials: initials(i.otherName),
       avatarUrl: avatars.get(i.conversation.partnerId) ?? null,
-      event: [i.eventTitle, i.eventDate ? fmtDate(i.eventDate) : null].filter(Boolean).join(' · '),
+      event: [i.eventTitle, i.eventDate ? eventDateShort(i.eventDate) : null].filter(Boolean).join(SEP),
       unread: i.unread,
       // A message that is only a file previews as the file's name.
       preview: i.lastMessage?.body || files.get(i.conversation.id) || '',
@@ -186,7 +197,7 @@ export async function conversationView(actor: Actor, conversationId: string) {
   const venue = about ? venueOf(about) : ev ? venueOf(ev) : '';
   // ‹Пакет „Цял ден“ · 14 юни 2026 · Вила Екатерина, с. Панчарево› (client) / ‹Пакет „Цял ден“ · 14 юни 2026› (partner)
   const what = about?.serviceTitle ?? ev?.title ?? '';
-  const summary = [what, eventDate ? fmtDate(eventDate) : null].filter(Boolean).join(' · ');
+  const summary = [what, eventDate ? eventDateShort(eventDate) : null].filter(Boolean).join(SEP);
   const otherName = side === 'client' ? p.name : cl.name;
 
   const days: { label: string; messages: (typeof t.messages[number] & { time: string })[] }[] = [];
@@ -203,7 +214,7 @@ export async function conversationView(actor: Actor, conversationId: string) {
     otherInitials: initials(otherName),
     partnerAvatarUrl: mediaUrl(p.key),
     summary,
-    detail: side === 'client' && venue ? `${summary} · ${venue}` : summary,
+    detail: side === 'client' && venue ? `${summary}${SEP}${venue}` : summary,
     contextLink,
     badge,
     draft: t.draft ?? '',
@@ -270,7 +281,7 @@ async function disputableBookings(owner: { clientId?: string; partnerId?: string
   return rows;
 }
 
-/** /akaunt/poddrazhka(/nov): the booking cards (‹Студио Мелодия · DJ и озвучаване› / ‹Сватба, 14 юни 2026 · Вила Екатерина · № 2026-0614-ЕА›). */
+/** /akaunt/poddrazhka(/nov): the booking cards (‹Студио Мелодия · DJ и озвучаване› / ‹Сватба, 14 юни 2026 · Вила Екатерина›, then ‹№ 2026-0614-ЕА› kept on one line by the page). */
 export async function clientDisputeChoices(actor: Actor) {
   const rows = await disputableBookings({ clientId: actor.userId });
   const avatars = await avatarUrls(rows.map(r => r.partnerId));
@@ -278,7 +289,7 @@ export async function clientDisputeChoices(actor: Actor) {
     id: r.id,
     number: r.number,
     title: [r.partnerName, r.categoryName].filter(Boolean).join(' · '),
-    sub: [`${r.eventTitle ?? r.eventTypeName}, ${fmtDate(r.eventDate)}`, r.venueName ?? r.locality, `№${NBSP}${r.number}`].filter(Boolean).join(' · '),
+    sub: [`${r.eventTitle ?? r.eventTypeName}, ${eventDateShort(r.eventDate)}`, r.venueName ?? r.locality].filter(Boolean).join(SEP),
     imageUrl: avatars.get(r.partnerId) ?? null,
   }));
 }
@@ -290,7 +301,7 @@ export async function partnerDisputeChoices(actor: Actor, preselect?: string) {
     id: r.id,
     number: r.number,
     title: `${r.eventTypeName} · ${r.hosts ?? r.clientName}`,
-    sub: [fmtDate(r.eventDate), venueOf(r), r.serviceTitle, money(r.amountCents)].filter(Boolean).join(' · '),
+    sub: [fmtDate(r.eventDate), venueOf(r), r.serviceTitle, money(r.amountCents)].filter(Boolean).join(SEP),
   }));
 }
 
@@ -319,7 +330,7 @@ export async function partyCases(actor: Actor) {
       open,
       done: r.status === 'resolved',
       title: `${r.title} · ${actor.role === 'client' ? r.partnerName : r.hosts ?? r.clientName}`,
-      sub: `${actor.role === 'client' ? r.eventTitle ?? r.eventTypeName : r.eventTypeName}, ${fmtDate(r.eventDate)} · ${when}`,
+      sub: `${actor.role === 'client' ? r.eventTitle ?? r.eventTypeName : r.eventTypeName}, ${fmtDate(r.eventDate)}${SEP}${when}`,
       badge: DISPUTE_STATUS_BADGE[r.status],
       amount: moneyShort(r.amountCents),
     };

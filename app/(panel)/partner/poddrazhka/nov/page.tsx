@@ -29,7 +29,7 @@ export default async function PartnerNewCasePage({ searchParams }: { searchParam
           <p className="page-sub">Опишете какво се случва по дадена резервация и екипът на EventAT поема случая.</p>
         </div>
       </div>
-      <PartnerDisputeForm choices={choices} reasons={PARTNER_REASON_OPTIONS} preselect={preselect}
+      <PartnerDisputeForm choices={choices} reasons={PARTNER_REASON_OPTIONS} defaultReason="client_unresponsive" preselect={preselect}
         action={openDisputeAction} upload={uploadEvidenceAction} maxPhotos={s.maxPhotos} maxMb={s.maxMb}
         aside={
           <aside>

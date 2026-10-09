@@ -32,13 +32,27 @@ export function OpenWhenShown({ href }: { href: string }) {
   return <span ref={ref} hidden />;
 }
 
-/** The scrolling message area; follows the newest message. */
+/**
+ * The scrolling message area; follows the newest message. While it is scrolled to the bottom it stays
+ * there when it gets shorter (a file chip or a taller reply box under it), so the newest message never
+ * slides out of view.
+ */
 export function ThreadBody({ className, lastId, children }: { className: string; lastId: string | null; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
+  const atBottom = useRef(true);
   useEffect(() => {
     const el = ref.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el) { el.scrollTop = el.scrollHeight; atBottom.current = true; }
   }, [lastId]);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const onScroll = () => { atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24; };
+    const ro = new ResizeObserver(() => { if (atBottom.current) el.scrollTop = el.scrollHeight; });
+    el.addEventListener('scroll', onScroll, { passive: true });
+    ro.observe(el);
+    return () => { el.removeEventListener('scroll', onScroll); ro.disconnect(); };
+  }, []);
   return <div className={className} ref={ref}>{children}</div>;
 }
 

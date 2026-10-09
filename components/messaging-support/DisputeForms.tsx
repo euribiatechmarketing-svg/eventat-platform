@@ -6,6 +6,8 @@ import { useActionState, useState } from 'react';
 import Link from 'next/link';
 import { Evidence } from './Evidence';
 
+const NBSP = '\u00A0';
+
 type Upload = { ok: true; id: string; name: string; mime: string } | { ok: false; error: string };
 type FormState = { error?: string };
 type FormAction = (prev: FormState, fd: FormData) => Promise<FormState>;
@@ -14,14 +16,15 @@ export type ClientChoice = { id: string; number: string; title: string; sub: str
 export type PartnerChoice = { id: string; number: string; title: string; sub: string };
 
 /** client/dispute.html .form-card */
-export function ClientDisputeForm({ choices, reasons, preselect, action, upload, maxPhotos, maxMb }: {
-  choices: ClientChoice[]; reasons: { value: string; label: string }[]; preselect: string | null;
+export function ClientDisputeForm({ choices, reasons, defaultReason, preselect, action, upload, maxPhotos, maxMb }: {
+  choices: ClientChoice[]; reasons: { value: string; label: string }[]; defaultReason: string; preselect: string | null;
   action: FormAction; upload: (fd: FormData) => Promise<Upload>; maxPhotos: number; maxMb: number;
 }) {
   const [state, formAction, pending] = useActionState(action, {});
-  const initial = choices.find(c => c.number === preselect)?.id ?? (choices.length === 1 ? choices[0].id : '');
-  const [booking, setBooking] = useState(initial);
-  const [reason, setReason] = useState('');
+  // client/dispute.html opens with a booking and ‹Друго› already picked: the booking from
+  // ?rezervaciya= (or the first one) and the reason the prototype shows on.
+  const [booking, setBooking] = useState(choices.find(c => c.number === preselect)?.id ?? choices[0]?.id ?? '');
+  const [reason, setReason] = useState(defaultReason);
   // Controlled, so a refused submission (React resets uncontrolled fields) keeps the text.
   const [text, setText] = useState('');
   return (
@@ -36,7 +39,7 @@ export function ClientDisputeForm({ choices, reasons, preselect, action, upload,
               <span className="dp-pick-img" style={c.imageUrl ? { backgroundImage: `url('${c.imageUrl}')` } : undefined} />
               <span className="dp-pick-b">
                 <span className="dp-pick-n">{c.title}</span>
-                <span className="dp-pick-s">{c.sub}</span>
+                <span className="dp-pick-s">{c.sub}{NBSP}· <span className="ms-nw">№{NBSP}{c.number}</span></span>
               </span>
             </label>
           ))}
@@ -74,14 +77,14 @@ export function ClientDisputeForm({ choices, reasons, preselect, action, upload,
 }
 
 /** vendor/dispute.html: the main column of .dash-grid (the aside is passed in). */
-export function PartnerDisputeForm({ choices, reasons, preselect, action, upload, maxPhotos, maxMb, aside }: {
-  choices: PartnerChoice[]; reasons: { value: string; label: string; desc: string }[]; preselect: string | null;
+export function PartnerDisputeForm({ choices, reasons, defaultReason, preselect, action, upload, maxPhotos, maxMb, aside }: {
+  choices: PartnerChoice[]; reasons: { value: string; label: string; desc: string }[]; defaultReason: string; preselect: string | null;
   action: FormAction; upload: (fd: FormData) => Promise<Upload>; maxPhotos: number; maxMb: number; aside: React.ReactNode;
 }) {
   const [state, formAction, pending] = useActionState(action, {});
-  const initial = choices.find(c => c.number === preselect)?.id ?? (choices.length === 1 ? choices[0].id : '');
-  const [booking, setBooking] = useState(initial);
-  const [reason, setReason] = useState('');
+  // vendor/dispute.html opens with a booking and ‹Клиентът не отговаря› already picked.
+  const [booking, setBooking] = useState(choices.find(c => c.number === preselect)?.id ?? choices[0]?.id ?? '');
+  const [reason, setReason] = useState(defaultReason);
   const [text, setText] = useState('');
   return (
     <form className="dash-grid ms-dispute" action={formAction}>

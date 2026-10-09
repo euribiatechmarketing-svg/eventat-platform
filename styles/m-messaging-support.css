@@ -232,6 +232,8 @@
 .msg-body > :first-child { margin-top: auto; }
 .msg-b, .vmsg-b { white-space: pre-line; overflow-wrap: anywhere; }
 .vmsg-conv { color: inherit; text-decoration: none; }
+/* the context line is a link only when there is a request or booking to open */
+span.vmsg-ctx:hover { color: var(--neutral-600); }
 /* the prototype's previews end in ‹…› after two lines */
 .vmsg-conv-x { overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
 .vmsg-conv-p > .vmsg-conv-x { min-width: 0; }
@@ -298,7 +300,22 @@ textarea.fld-i:focus { outline: none; border-color: var(--primary-500); box-shad
 
 /* evidence: chosen files with a remove button */
 .ms-drop { cursor: pointer; }
-.ms-drop:hover { border-color: var(--primary-300); }
+.ms-drop:hover, .ms-drop.is-over { border-color: var(--primary-300); }
+.ms-drop.is-over { background: var(--primary-50); }
+/* the remove button on a chosen file; client.css draws it on the site, the panel does not load client.css */
+.ms-shot .rw-shot-x {
+  position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; padding: 0;
+  border-radius: 50%; background: var(--primary-600); border: 2px solid #fff;
+  display: grid; place-items: center; color: #fff;
+}
+.ms-shot .rw-shot-x svg { width: 9px; height: 9px; color: #fff; }
+/* a finger-sized hit area around the small round buttons */
+.ms-shot .rw-shot-x::after, .ms-chip button::after { content: ''; position: absolute; inset: -8px; }
+.ms-chip button { position: relative; }
+/* a document the case only names (no file behind it): text, not a chip */
+.cs-att .cs-doc.cs-doc--name { height: auto; min-height: 0; padding: 0; border: 0; background: none; }
+/* a booking number never breaks at its hyphens */
+.ms-nw { white-space: nowrap; }
 .ms-drop .rw-shots { flex-wrap: wrap; }
 .ms-shot { position: relative; }
 .ms-shot--doc { display: grid; place-items: center; background: var(--primary-50); color: var(--primary-600); }
@@ -332,6 +349,8 @@ a.cs-att-i:hover, a.cs-doc:hover { border-color: var(--primary-300); }
 .ms-case .cs-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .ms-case .cs-main > .dcard, .ms-case .cs-main > .form-card { margin: 0; }
 .ms-case .cs-vs { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+/* one side only (the other never answered a closed case): the card takes the row */
+.cs-vs.cs-vs--one { grid-template-columns: minmax(0, 1fr); }
 .ms-case .cs-party { background: #fff; border: 1px solid var(--app-line); border-radius: 16px; padding: 20px 22px; display: flex; flex-direction: column; }
 .ms-case .cs-party-h { display: flex; align-items: center; gap: 12px; }
 .ms-case .cs-av { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0; font-size: 12.5px; font-weight: var(--fw-bold); background: var(--primary-50); color: var(--primary-700); }
@@ -386,7 +405,8 @@ a.cs-att-i:hover, a.cs-doc:hover { border-color: var(--primary-300); }
   .vmsg-pane > .ms-back { margin: 14px 16px 0; }
   .msg-ctx { padding: 10px 16px; height: auto; min-height: 66px; gap: 12px; }
   .msg-ctx-main { flex: 1; }
-  .msg-ctx-d { overflow: hidden; text-overflow: ellipsis; }
+  /* the whole line about the booking shows: it wraps rather than ending in ‹…› */
+  .msg-ctx-d { white-space: normal; text-wrap: pretty; }
   .msg-body { padding: 16px; }
   .msg-line { max-width: 88%; }
   .msg-comp { padding: 0 12px; gap: 8px; height: 68px; }
@@ -422,6 +442,8 @@ a.cs-att-i:hover, a.cs-doc:hover { border-color: var(--primary-300); }
   .ms-att--img { width: 150px; }
 
   .ms-hold .form-card { padding: 20px 18px; }
+  /* the label stays on one line; its hint goes under it */
+  .ms-hold .field-label-hint { display: block; margin: 3px 0 0; }
   .dp-pick { align-items: flex-start; padding: 12px; }
   .dp-case, .ms-cases .case { grid-template-columns: 4px minmax(0, 1fr); }
   .dp-case-end, .ms-cases .case-end { grid-column: 2; justify-content: space-between; }

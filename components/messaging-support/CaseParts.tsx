@@ -15,6 +15,7 @@ export function Num({ text }: { text: string }) {
 }
 
 type File = CaseView['parties'][number]['statements'][number]['files'][number];
+/** Evidence that opens is a bordered chip; a document only named in the case (no file behind it) is plain text, so nothing looks clickable that is not. */
 function Files({ files }: { files: File[] }) {
   if (!files.length) return null;
   return (
@@ -22,19 +23,22 @@ function Files({ files }: { files: File[] }) {
       {files.map(f => f.isImage
         ? (f.href
           ? <a key={f.id} className="cs-att-i" href={f.href} target="_blank" rel="noopener" title={f.name} style={{ backgroundImage: `url('${f.href}')` }} aria-label={f.name} />
-          : <span key={f.id} className="cs-doc">{DOC}{f.name}</span>)
+          : <span key={f.id} className="cs-doc cs-doc--name">{DOC}{f.name}</span>)
         : (f.href
           ? <a key={f.id} className="cs-doc" href={f.href} target="_blank" rel="noopener">{DOC}{f.name}</a>
-          : <span key={f.id} className="cs-doc">{DOC}{f.name}</span>))}
+          : <span key={f.id} className="cs-doc cs-doc--name">{DOC}{f.name}</span>))}
     </div>
   );
 }
 
 /** Both sides in their own words, client on the left. */
 export function Parties({ view }: { view: CaseView }) {
+  // Once the case is closed, a side that never answered has nothing to show: no empty card.
+  const shown = view.parties.filter(p => p.statements.length || p.waiting);
+  if (!shown.length) return null;
   return (
-    <div className="cs-vs">
-      {view.parties.map(p => (
+    <div className={`cs-vs${shown.length === 1 ? ' cs-vs--one' : ''}`}>
+      {shown.map(p => (
         <div key={p.party} className={`cs-party${p.party === 'partner' ? ' is-vendor' : ''}`}>
           <div className="cs-party-h">
             <span className="cs-av">{p.initials}</span>

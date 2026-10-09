@@ -30,7 +30,7 @@ export async function ClientSupportScreen({ preselect, path }: { preselect: stri
 
           <div className="pv-grid">
             <div>
-              <ClientDisputeForm choices={choices} reasons={CLIENT_REASON_OPTIONS} preselect={preselect}
+              <ClientDisputeForm choices={choices} reasons={CLIENT_REASON_OPTIONS} defaultReason="other" preselect={preselect}
                 action={openDisputeAction} upload={uploadEvidenceAction} maxPhotos={s.maxPhotos} maxMb={s.maxMb} />
 
               <section className="dcard" style={{ marginTop: 16 }}>

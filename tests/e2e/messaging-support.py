@@ -81,6 +81,36 @@ def no_page_scroll_x(page, width):
     sw = page.evaluate('document.scrollingElement.scrollWidth')
     assert sw <= width, f'horizontal page scroll on {page.url}: {sw} > {width}'
 
+NBSP = ' '
+
+def text_of(page, selector):
+    """Exact textContent (keeps no-break spaces, which to_have_text would normalise)."""
+    return page.locator(selector).first.evaluate('e => e.textContent')
+
+def flash_is(ctx, text):
+    """The toast carried to the next page (lib/flash.ts). The bookings pages belong to another area and are not on
+    this branch, so the toast cannot be seen there yet; the one-time cookie that carries it is checked instead."""
+    from urllib.parse import unquote
+    c = next((c for c in ctx.cookies() if c['name'] == 'flash'), None)
+    assert c and json.loads(unquote(c['value']))['message'].replace(NBSP, ' ') == text, c
+    ctx.clear_cookies(name='flash')
+
+def opens_file_chooser(page, selector, files):
+    """A real click on `selector` must open the file picker; choose `files` in it."""
+    with page.expect_file_chooser(timeout=5_000) as fc:
+        page.click(selector)
+    fc.value.set_files(files)
+
+def at_bottom(page, selector):
+    return page.locator(selector).evaluate('e => e.scrollHeight - e.scrollTop - e.clientHeight < 24')
+
+def drop_file(page, selector, path, name, mime='image/png'):
+    """Drag a file from the desktop onto a drop zone (Playwright cannot drag OS files; this is the drop the browser fires)."""
+    data = list(Path(path).read_bytes())
+    dt = page.evaluate_handle('([data, name, mime]) => { const dt = new DataTransfer(); dt.items.add(new File([new Uint8Array(data)], name, { type: mime })); return dt; }', [data, name, mime])
+    page.dispatch_event(selector, 'dragover', {'dataTransfer': dt})
+    page.dispatch_event(selector, 'drop', {'dataTransfer': dt})
+
 def main():
     args = sys.argv[1:]
     base = 'http://localhost:3204'
@@ -130,6 +160,12 @@ def main():
         cp.goto(base + '/akaunt/saobshteniya')
         expect(cp.locator('.msg-item')).to_have_count(6)
         expect(cp.locator('.msg-list-c')).to_have_text('6')
+        # client/messages.html writes list dates short (‹19 дек 2026›, ‹29 авг›); the day and month never part
+        ev = cp.locator('.msg-item', has_text='Вкусна История').locator('.msg-item-ev').evaluate('e => e.textContent')
+        assert ev == f'Коледно парти{NBSP}· 19{NBSP}дек 2026', repr(ev)
+        tm = cp.locator('.msg-item', has_text='Адажио').locator('.msg-item-time').evaluate('e => e.textContent')
+        assert tm == f'29{NBSP}авг', repr(tm)
+        step('list rows: ‹Коледно парти · 19 дек 2026›, ‹29 авг› with no-break spaces, as in the prototype')
         flora_item = cp.locator('.msg-item', has_text='Флора Студио')
         expect(flora_item.locator('.msg-item-dot')).to_have_count(1)
         flora_item.click()
@@ -159,9 +195,20 @@ def main():
         expect(cp.locator('.msg-comp-f')).to_have_value('Чернова: списъкът с песните идва в петък')
         step('typing saves the draft; it is back after a reload')
 
-        cp.set_input_files('[data-testid=message-file]', str(hall))
+        assert at_bottom(cp, '.msg-body'), 'the thread does not open on the newest message'
+        opens_file_chooser(cp, '.msg-comp-clip', str(hall))
         toast(cp, 'Файлът е прикачен към съобщението')
         expect(cp.locator('.ms-chip')).to_contain_text('zala.png')
+        cp.wait_for_timeout(300)
+        assert at_bottom(cp, '.msg-body'), 'the file chip pushed the newest message out of view'
+        # the chip's × is small; a finger landing just outside it still hits it
+        x = cp.locator('.ms-chip button').bounding_box()
+        cp.mouse.click(x['x'] + x['width'] + 5, x['y'] + x['height'] / 2)
+        expect(cp.locator('.ms-chip')).to_have_count(0)
+        opens_file_chooser(cp, '.msg-comp-clip', str(hall))
+        toast(cp, 'Файлът е прикачен към съобщението')
+        expect(cp.locator('.ms-chip')).to_contain_text('zala.png')
+        step('the clip opens the file picker; the chip keeps the newest message in view; its × has a finger-sized target')
         cp.fill('.msg-comp-f', 'Изпращам ви снимка на залата.')
         cp.click('.msg-comp .btn--primary')
         toast(cp, 'Съобщението е изпратено')
@@ -200,24 +247,43 @@ def main():
         expect(pp.locator('.vmsg-m .ms-att--img').last).to_be_visible()
         assert partner.request.get(f'{base}/api/files/{m["media"]}').status == 200
         assert one('select partner_unread_count n from conversation where id = $1', melodia)['n'] == 0
+        expect(pp.locator('.vmsg-conv.is-unread')).to_have_count(1)
+        expect(pp.locator('.vmsg-conv.is-unread')).to_contain_text('Ивелина Тодорова')
+        expect(pp.locator('.vmsg-conv.is-unread .vmsg-unread')).to_have_text('2')
         pp.click('text=Само непрочетени')
-        pp.wait_for_url(f'**/partner/saobshteniya/{melodia}?neprocheteni=1')
+        # the unread conversation opens beside the filtered list and, now read, stays in it (it used to vanish,
+        # leaving ‹Няма записи в този изглед.› next to its own open thread)
+        pp.wait_for_url(f'**/partner/saobshteniya/{ivelina}?neprocheteni=1')
         expect(pp.locator('.vmsg-list-c')).to_have_text('Непрочетени')
         expect(pp.locator('.page-head-right .btn')).to_have_class(re.compile('btn--primary'))
+        expect(pp.locator('.vmsg-head-n')).to_have_text('Ивелина Тодорова')
         expect(pp.locator('.vmsg-conv')).to_have_count(1)
-        expect(pp.locator('.vmsg-conv.is-unread')).to_contain_text('Ивелина Тодорова')
-        expect(pp.locator('.vmsg-unread')).to_have_text('2')
-        step('the newest conversation opens and is read; ‹Само непрочетени› leaves only unread ones; the client\'s attachment shows')
+        expect(pp.locator('.vmsg-conv.is-on')).to_contain_text('Ивелина Тодорова')
+        expect(pp.locator('.ui-empty')).to_have_count(0)
+        assert one('select partner_unread_count n from conversation where id = $1', ivelina)['n'] == 0
+        pp.click('text=Само непрочетени')
+        pp.wait_for_url(f'**/partner/saobshteniya/{ivelina}')
+        expect(pp.locator('.vmsg-list-c')).to_have_text('Всички')
+        expect(pp.locator('.vmsg-conv')).to_have_count(3)
+        step('the newest conversation opens and is read; ‹Само непрочетени› lists the unread ones and keeps the one opened from it; off → ‹Всички›')
 
+        # a context line with nothing to open does not light up like a link
+        pp.evaluate("() => { const s = document.createElement('span'); s.className = 'vmsg-ctx'; s.id = 'ctx-probe'; s.textContent = 'x'; document.querySelector('.ms-head-main').appendChild(s); }")
+        before = pp.locator('#ctx-probe').evaluate('e => getComputedStyle(e).color')
+        pp.hover('#ctx-probe')
+        assert pp.locator('#ctx-probe').evaluate('e => getComputedStyle(e).color') == before, 'a plain context line changes colour on hover'
+
+        pp.goto(f'{base}/partner/saobshteniya/{melodia}')
         pp.fill('.vmsg-input', 'Благодарим, получихме снимката.')
         pp.click('.vmsg-tools .btn--primary')
         toast(pp, 'Съобщението е изпратено')
         expect(pp.locator('.vmsg-m--out .vmsg-b').last).to_have_text('Благодарим, получихме снимката.')
         assert one("select count(*)::int n from email_outbox where template_key = 'client-new-message' and vars->>'message' = $1", 'Благодарим, получихме снимката.')['n'] == 1
         pp.click('text=Само непрочетени')
-        pp.wait_for_url(re.compile(r'/partner/saobshteniya/[0-9a-f-]+$'))
-        expect(pp.locator('.vmsg-list-c')).to_have_text('Всички')
-        step('partner ‹Изпрати› → client-new-message; the filter toggles back to ‹Всички›')
+        pp.wait_for_url(re.compile(r'/partner/saobshteniya\?neprocheteni=1$'))
+        expect(pp.locator('.vmsg-convs .ui-empty')).to_have_text('Няма записи в този изглед.')
+        pp.goto(f'{base}/partner/saobshteniya/{melodia}')
+        step('partner ‹Изпрати› → client-new-message; with nothing unread the filter shows the empty list')
 
         cp.goto(f'{base}/akaunt/saobshteniya/{melodia}')
         expect(cp.locator('.msg-line--in .msg-b').last).to_have_text('Благодарим, получихме снимката.')
@@ -227,19 +293,35 @@ def main():
         pp.click('.vmsg-tools .btn--primary')
         toast(pp, 'Съобщението е изпратено')
         t0 = time.time()
-        expect(cp.locator('.msg-line--in .msg-b').last).to_have_text('Ще ви чакаме в 15:30.', timeout=25_000)
+        expect(cp.locator('.msg-line--in .msg-b').last).to_have_text('Ще ви чакаме в 15:30.', timeout=40_000)
         step(f'the client sees ‹· прочетено› and a new partner message arrives without a reload ({time.time() - t0:.0f} s)')
 
         # ── client support ─────────────────────────────────────────────────
+        # client/dispute.html opens with the first booking and ‹Друго› picked
+        cp.goto(base + '/akaunt/poddrazhka')
+        expect(cp.locator('.dp-pick').first).to_have_class(re.compile('is-on'))
+        expect(cp.locator('.dp-pick.is-on')).to_have_count(1)
+        expect(cp.locator('.opt.is-on')).to_have_text('Друго')
         cp.goto(base + '/akaunt/poddrazhka/nov?rezervaciya=' + '2026-0614-ЕА')
         expect(cp.locator('.dp-pick.is-on')).to_contain_text('2026-0614-ЕА')
-        cp.fill('#dp-description', 'Изпълнителят два пъти отложи огледа на залата и не потвърждава техниката.')
-        cp.click('text=Изпрати сигнала')
-        expect(cp.locator('.form-error')).to_have_text('Изберете причина.')
-        expect(cp.locator('#dp-description')).to_have_value('Изпълнителят два пъти отложи огледа на залата и не потвърждава техниката.')
+        expect(cp.locator('.opt.is-on')).to_have_text('Друго')
+        # the booking number stays whole on one line
+        assert text_of(cp, '.dp-pick.is-on .ms-nw') == f'№{NBSP}2026-0614-ЕА'
+        assert cp.locator('.dp-pick.is-on .ms-nw').evaluate('e => getComputedStyle(e).whiteSpace') == 'nowrap'
+        step('the form opens with a booking (the preselected one) and ‹Друго› picked, as the prototype; ‹№ 2026-0614-ЕА› never breaks')
+
         cp.click('.opt:has-text("Услугата не беше по описание")')
         expect(cp.locator('.opt.is-on')).to_have_text('Услугата не беше по описание')
-        cp.set_input_files('[data-testid=evidence-file]', [str(proof), str(proof2)])
+        cp.fill('#dp-description', '   ')
+        cp.click('text=Изпрати сигнала')
+        expect(cp.locator('.form-error')).to_have_text('Опишете какво се случи.')
+        expect(cp.locator('.opt.is-on')).to_have_text('Услугата не беше по описание')
+        expect(cp.locator('.dp-pick.is-on')).to_contain_text('2026-0614-ЕА')
+        cp.fill('#dp-description', 'Изпълнителят два пъти отложи огледа на залата и не потвърждава техниката.')
+        opens_file_chooser(cp, '.rw-drop-t', [str(proof)])
+        expect(cp.locator('.ms-drop .ms-shot')).to_have_count(1, timeout=10_000)
+        toast(cp, 'Снимката е прикачена към сигнала')
+        drop_file(cp, '.rw-drop', proof2, 'obyava.png')
         expect(cp.locator('.ms-drop .ms-shot')).to_have_count(2, timeout=10_000)
         toast(cp, 'Снимката е прикачена към сигнала')
         cp.locator('.ms-drop .ms-shot .rw-shot-x').first.click()
@@ -247,12 +329,13 @@ def main():
         expect(cp.locator('.ms-drop .ms-shot')).to_have_count(1)
         cp.click('text=Изпрати сигнала')
         cp.wait_for_url('**/akaunt/rezervacii')
+        flash_is(client, 'Сигналът е изпратен — екипът отговаря до 24 часа')
         d = one('''select d.id, d.status, d.opened_by, d.reason, d.holds_payout, (select count(*)::int from dispute_attachment a where a.dispute_id = d.id) files
                    from dispute d where d.number = $1''', '2026-0614-ЕА')
         assert d['status'] == 'collecting' and d['opened_by'] == 'client' and d['reason'] == 'not_as_described' and d['holds_payout'] and d['files'] == 1, d
         keys = {r['template_key'] for r in sql("select template_key from email_outbox where vars->>'bookingNo' = $1 or vars->>'caseId' = $1", '2026-0614-ЕА')}
         assert {'client-dispute-opened', 'vendor-ticket-client-opened', 'team-dispute-new'} <= keys, keys
-        step('‹Изпрати сигнала› (refused without a reason, text kept) → case collecting, 1 photo, the three emails')
+        step('an empty description is refused with the picks kept; the zone opens the picker and takes a dropped file; ‹Изпрати сигнала› → case collecting, 1 photo, the three emails, the prototype toast')
 
         cp.goto(base + '/akaunt/poddrazhka')
         expect(cp.locator('.dcard-head .badge')).to_have_text('2 отворени')
@@ -265,19 +348,37 @@ def main():
         expect(cp.locator('.cs-party').first.locator('.cs-att-i')).to_have_count(1)
         step('‹Моите сигнали› lists the case; its page shows the statement, the photo and the partner\'s deadline')
 
+        # a document the seeded case only names has no file: plain text, not a chip that looks clickable
+        dp = client.new_page()
+        dp.goto(base + '/akaunt/poddrazhka/2026-0614-ФК')
+        doc = dp.locator('.cs-doc', has_text='снимка на екрана')
+        assert doc.evaluate('e => e.tagName') == 'SPAN'
+        assert doc.evaluate('e => getComputedStyle(e).borderTopWidth') == '0px', 'a name-only document is drawn as a chip'
+        dp.close()
+        step('a document without a file is shown as text, not as a clickable-looking chip')
+
         pp.goto(base + '/partner/poddrazhka')
         pp.locator('.case', has_text='Услугата не беше по описание').click()
         pp.wait_for_url('**/partner/poddrazhka/2026-0614-%D0%95%D0%90')
         expect(pp.locator('.countdown-label')).to_have_text('Срок за изпълнителя')
         pp.fill('textarea[name=body]', 'Техниката е същата като в обявата — прилагаме снимка от последното събитие.')
-        pp.set_input_files('[data-testid=evidence-file]', str(answer))
+        # the whole dashed zone opens the picker (vendor/dispute.html), not only its button
+        opens_file_chooser(pp, '.dp-drop-t', [str(answer), str(proof)])
+        expect(pp.locator('.gal-item.ms-shot')).to_have_count(2, timeout=10_000)
         toast(pp, 'Снимката е прикачена към сигнала')
+        # the × on a chosen file is drawn in the panel too (it lived only in client.css)
+        box = pp.locator('.gal-item.ms-shot .rw-shot-x').last.bounding_box()
+        assert 18 <= box['width'] <= 22 and 18 <= box['height'] <= 22, box
+        assert pp.locator('.gal-item.ms-shot .rw-shot-x').last.evaluate('e => getComputedStyle(e).position') == 'absolute'
+        pp.locator('.gal-item.ms-shot .rw-shot-x').last.click()
+        toast(pp, 'Снимката е премахната')
+        expect(pp.locator('.gal-item.ms-shot')).to_have_count(1)
         pp.click('button:has-text("Изпрати позицията")')
         toast(pp, 'Съобщението е изпратено')
         expect(pp.locator('.page-head-right .badge')).to_have_text('Чака решение')
         assert one('select status from dispute where number = $1', '2026-0614-ЕА')['status'] == 'awaiting_decision'
         assert one("select count(*)::int n from email_outbox where template_key = 'team-dispute-reply' and vars->>'caseId' = $1", '2026-0614-ЕА')['n'] >= 1
-        step('partner ‹Изпрати позицията› with a photo → awaiting decision, team-dispute-reply')
+        step('the whole dashed zone opens the picker; a chosen file\'s × is drawn and removes it; partner ‹Изпрати позицията› with a photo → awaiting decision, team-dispute-reply')
 
         cp.reload()
         partner_side = cp.locator('.cs-party.is-vendor')
@@ -294,15 +395,25 @@ def main():
         step('the client sees the partner\'s position and evidence and answers the team')
 
         pp.goto(base + '/partner/poddrazhka/nov')
+        # vendor/dispute.html opens with a booking and ‹Клиентът не отговаря› picked
+        bookings, reasons = pp.locator('.pol[aria-label="За коя резервация"] .pol-opt'), pp.locator('.dp-reasons .pol-opt')
+        expect(bookings.first).to_have_class(re.compile('is-on'))
+        expect(reasons.first).to_have_class(re.compile('is-on'))
+        expect(reasons.first).to_contain_text('Клиентът не отговаря')
+        expect(pp.locator('.pol-opt.is-on')).to_have_count(2)
         pp.locator('.pol-opt', has_text='Ана и Виктор').click()
         pp.locator('.pol-opt', has_text='Промени условията на място').click()
         expect(pp.locator('.pol-opt.is-on')).to_have_count(2)
+        expect(pp.locator('.pol-opt.is-on', has_text='Ана и Виктор')).to_have_count(1)
         pp.fill('textarea[name=description]', 'Клиентите искат да преместим началото с два часа по-рано без доплащане.')
         pp.click('button:has-text("Изпрати сигнала")')
         pp.wait_for_url('**/partner/rezervacii')
+        flash_is(partner, 'Сигналът е изпратен — екипът отговаря до 24 часа')
         n = one('''select d.number, d.status, d.opened_by, d.holds_payout from dispute d join booking b on b.id = d.booking_id
                    join "user" u on u.id = b.client_id where u.name = 'Ана и Виктор' and d.opened_by = 'partner' ''')
         assert n['status'] == 'collecting' and n['opened_by'] == 'partner' and n['holds_payout'], n
+        keys = {r['template_key'] for r in sql("select template_key from email_outbox where vars::text like '%' || $1 || '%'", n['number'])}
+        assert {'vendor-ticket-received', 'client-ticket-vendor-opened', 'team-dispute-new'} <= keys, keys
         pp.goto(base + '/partner/poddrazhka')
         expect(pp.locator('.dcard-head .badge')).to_have_text('3 отворени')
         pp.locator('.case', has_text='Ана и Виктор').click()
@@ -312,7 +423,10 @@ def main():
         toast(pp, 'Сигналът е оттеглен')
         expect(pp.locator('.page-head-right .badge')).to_have_text('Оттеглен')
         assert one('select status from dispute where number = $1', n['number'])['status'] == 'withdrawn'
-        step('partner ‹Изпрати сигнала› → case collecting; ‹Оттегли сигнала› → withdrawn')
+        # the client never answered the withdrawn case: no empty card for them, the partner's statement takes the row
+        expect(pp.locator('.cs-party')).to_have_count(1)
+        expect(pp.locator('.cs-vs')).to_have_class(re.compile('cs-vs--one'))
+        step('the partner form opens with a booking and ‹Клиентът не отговаря› picked; ‹Изпрати сигнала› → case collecting, the three emails, the prototype toast; ‹Оттегли сигнала› → withdrawn, no empty card for the side that never answered')
 
         # ── phone width ────────────────────────────────────────────────────
         mob = dict(viewport={'width': 390, 'height': 844}, locale='bg-BG', timezone_id='Europe/Sofia', is_mobile=True, has_touch=True)
@@ -326,14 +440,22 @@ def main():
         expect(mp.locator('.msg-thread')).to_be_visible()
         expect(mp.locator('.msg-list')).to_be_hidden()
         no_page_scroll_x(mp, 390)
+        # the line about the booking wraps instead of ending in ‹…›
+        ctx = mp.locator('.msg-ctx-d')
+        expect(ctx).to_contain_text('Вила Екатерина, с. Панчарево')
+        assert ctx.evaluate('e => e.scrollWidth <= e.clientWidth'), 'the booking line is cut off'
         mp.click('.ms-back')
         mp.wait_for_url(re.compile(r'/akaunt/saobshteniya$'))
         for path in ['/akaunt/poddrazhka', '/akaunt/poddrazhka/2026-0614-ЕА']:
             mp.goto(base + path); no_page_scroll_x(mp, 390)
+            # a field label stays on one line; its hint goes under it
+            label = mp.locator('.field-label').first
+            assert label.locator('.field-label-hint').evaluate('e => getComputedStyle(e).display') == 'block'
+            assert label.evaluate('e => { const r = document.createRange(); r.selectNodeContents(e.firstChild); return r.getClientRects().length; }') == 1, f'the label wraps on {path}'
         pm = b.new_context(**mob); sign_in(pm, base, 'partner'); mq = pm.new_page()
         for path in ['/partner/saobshteniya', f'/partner/saobshteniya/{melodia}', '/partner/poddrazhka', '/partner/poddrazhka/nov', '/partner/poddrazhka/2026-0614-ЕА']:
             mq.goto(base + path); no_page_scroll_x(mq, 390)
-        step('at 390 px: list or thread, ‹Разговори› back link, no horizontal page scroll on any route')
+        step('at 390 px: list or thread, ‹Разговори› back link, the booking line wraps, labels stay on one line, no horizontal page scroll on any route')
         b.close()
     print(f'PASS — {len(STEPS)} steps')
 

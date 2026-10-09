@@ -2,7 +2,7 @@
 // ‹Добавете снимки към сигнала›: up to ⚙ uploads.max_photos files per statement, each uploaded at once
 // (media.upload(), kind dispute_evidence) and sent with the form as hidden `evidence` ids.
 // Client look: client/dispute.html .rw-drop with .rw-shots; partner look: vendor/dispute.html .dp-drop + .gal.dp-ev.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { toast } from '@/components/ui/client';
 
 type Upload = { ok: true; id: string; name: string; mime: string } | { ok: false; error: string };
@@ -48,6 +48,20 @@ export function Evidence({ variant, upload, max, maxMb }: {
     }
     setBusy(false);
   };
+  // Both zones are drop targets too: files dragged onto them upload like chosen ones.
+  const [over, setOver] = useState(false);
+  const drop = {
+    onDragOver: (e: DragEvent) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setOver(true); } },
+    onDragLeave: () => setOver(false),
+    onDrop: (e: DragEvent) => {
+      if (!e.dataTransfer.files.length) return;
+      e.preventDefault();
+      setOver(false);
+      if (busy) return;
+      if (shots.length >= max) { toast(`Може да прикачите до ${max} снимки`); return; }
+      void onFiles(e.dataTransfer.files);
+    },
+  };
   const remove = (id: string) => {
     setShots(s => s.filter(x => x.id !== id));
     toast('Снимката е премахната');
@@ -70,7 +84,7 @@ export function Evidence({ variant, upload, max, maxMb }: {
   if (variant === 'client') {
     return (
       <>
-        <div className="rw-drop ms-drop" role="button" tabIndex={0} aria-busy={busy} onClick={pick}
+        <div className={`rw-drop ms-drop${over ? ' is-over' : ''}`} role="button" tabIndex={0} aria-busy={busy} onClick={pick} {...drop}
           onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } }}>
           {PHOTO}
           <div>
@@ -85,13 +99,14 @@ export function Evidence({ variant, upload, max, maxMb }: {
   }
   return (
     <>
-      <div className="dp-drop">
+      {/* The whole dashed zone opens the file picker (vendor/dispute.html), as does its button for the keyboard. */}
+      <div className={`dp-drop ms-drop${over ? ' is-over' : ''}`} aria-busy={busy} onClick={pick} {...drop}>
         <span className="dp-drop-ic">{UP}</span>
         <div>
           <div className="dp-drop-t">Добавете снимки към сигнала</div>
           <div className="dp-drop-d">{hint}</div>
         </div>
-        <button type="button" className="btn btn--outline btn--sm" disabled={busy} onClick={pick}>Прикачи файл</button>
+        <button type="button" className="btn btn--outline btn--sm" disabled={busy} onClick={e => { e.stopPropagation(); pick(); }}>Прикачи файл</button>
       </div>
       {shots.length > 0 && (
         <div className="gal dp-ev">

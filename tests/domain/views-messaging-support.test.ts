@@ -3,10 +3,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { setTestNow } from '@/lib/clock';
 import { sofiaInstant } from '@/lib/format';
-import { getOrCreate, send } from '@/lib/domain/messaging';
+import { getOrCreate, markRead, send } from '@/lib/domain/messaging';
 import { openByClient, openByPartner, submitStatement, withdraw } from '@/lib/domain/disputes';
 import {
-  caseView, clientDisputeChoices, conversationList, conversationView, dayLabel, listTime, partnerDisputeChoices, partyCases,
+  caseView, clientDisputeChoices, conversationList, conversationView, dayLabel, eventDateShort, listTime, partnerDisputeChoices, partyCases,
 } from '@/lib/domain/views-messaging-support';
 import { eq } from 'drizzle-orm';
 import { db } from '@/db';
@@ -16,6 +16,8 @@ import { clearJobs, paidBooking } from '../helpers/aftercare';
 import { mediaRow } from '../helpers/catalogue';
 
 const NOW = sofiaInstant('2025-08-31', 12, 0);
+/** Day and month, number and word never part (lib/format.ts writes a no-break space). */
+const NB = '\u00A0';
 beforeEach(async () => { await clearJobs(); setTestNow(NOW); });
 afterEach(() => setTestNow(null));
 
@@ -23,11 +25,14 @@ describe('formats', () => {
   it('list times and day separators as the prototype writes them', () => {
     expect(listTime(sofiaInstant('2025-08-31', 11, 42), NOW)).toBe('11:42');
     expect(listTime(sofiaInstant('2025-08-30', 18, 40), NOW)).toBe('вчера');
-    expect(listTime(sofiaInstant('2025-08-29', 9, 0), NOW)).toBe('29 авг');
-    expect(listTime(sofiaInstant('2024-12-19', 9, 0), NOW)).toBe('19 дек 2024');
+    expect(listTime(sofiaInstant('2025-08-29', 9, 0), NOW)).toBe(`29${NB}авг`);
+    expect(listTime(sofiaInstant('2024-12-19', 9, 0), NOW)).toBe(`19${NB}дек 2024`);
     expect(dayLabel(sofiaInstant('2025-08-31', 9, 0), NOW)).toBe('Днес');
     expect(dayLabel(sofiaInstant('2025-08-30', 9, 0), NOW)).toBe('Вчера');
-    expect(dayLabel(sofiaInstant('2025-08-29', 18, 20), NOW)).toBe('Петък, 29 август');
+    expect(dayLabel(sofiaInstant('2025-08-29', 18, 20), NOW)).toBe(`Петък, 29${NB}август`);
+    // list rows and picks write the event date short, as client/messages.html and client/dispute.html do
+    expect(eventDateShort('2026-12-19')).toBe(`19${NB}дек 2026`);
+    expect(eventDateShort('2026-06-14')).toBe(`14${NB}юни 2026`);
   });
 });
 
@@ -43,6 +48,11 @@ describe('messages', () => {
     expect(theirs.days.at(-1)!.messages.at(-1)!.body).toBe('Обадете се на •••');
     expect((await conversationList(partner.actor)).totals).toEqual({ conversations: 1, unreadMessages: 1 });
     expect((await conversationList(partner.actor, { unreadOnly: true })).items).toHaveLength(1);
+    // ‹Само непрочетени›: once read it leaves the filtered list, unless it is the conversation open beside it
+    await markRead(partner.actor, { conversationId: c.id });
+    expect((await conversationList(partner.actor, { unreadOnly: true })).items).toHaveLength(0);
+    expect((await conversationList(partner.actor, { unreadOnly: true, keepId: c.id })).items.map(i => i.id)).toEqual([c.id]);
+    expect((await conversationList(partner.actor, { unreadOnly: true, keepId: c.id, q: 'няма такъв' })).items).toHaveLength(0);
     expect((await conversationList(partner.actor, { q: 'няма такъв' })).items).toHaveLength(0);
     const stranger = await createClient();
     await expect(conversationView(stranger.actor, c.id)).rejects.toThrow();
@@ -67,6 +77,8 @@ describe('support', () => {
     const old = await paidBooking({ client, partner, eventDate: '2025-07-01', status: 'completed' });
     const choices = await clientDisputeChoices(client.actor);
     expect(choices.map(c => c.number)).toEqual([booking.number]); // 2025-07-01 is more than 30 days ago (D70)
+    expect(choices[0].sub).not.toContain('№'); // the page adds ‹№ …› kept on one line
+    expect(choices[0].sub).not.toMatch(/ ·/); // ‹ · › sticks to the word before it
     const d = await openByClient(client.actor, { bookingId: booking.id, reason: 'no_show', description: 'Не дойдоха.' });
     expect(await clientDisputeChoices(client.actor)).toEqual([]);
     expect((await partnerDisputeChoices(partner.actor)).map(c => c.number)).not.toContain(booking.number);
@@ -79,9 +91,9 @@ describe('support', () => {
 
     const v = (await caseView(client.actor, booking.number))!;
     expect(v).toMatchObject({ side: 'client', status: 'collecting', canWithdraw: true, positionPending: false });
-    expect(v.deadline).toMatchObject({ label: 'Срок за изпълнителя', text: 'Срок до 2 септември, 12:00' });
+    expect(v.deadline).toMatchObject({ label: 'Срок за изпълнителя', text: `Срок до 2${NB}септември, 12:00` });
     expect(v.parties[0]).toMatchObject({ party: 'client', filer: 'Подаде сигнала' });
-    expect(v.parties[1].waiting).toContain('Поискахме позиция на 31 август в 12:00');
+    expect(v.parties[1].waiting).toContain(`Поискахме позиция на 31${NB}август в 12:00`);
     expect(v.money).toMatchObject({ label: 'платени и задържани от платформата' });
 
     const pv = (await caseView(partner.actor, booking.number))!;
