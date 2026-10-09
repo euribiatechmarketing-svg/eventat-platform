@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import '@/styles/m-admin-ops.css';
 import { AdminSearch } from '../_ops/AdminSearch';
-import { Suspense } from 'react';
 import { can } from '@/lib/domain/actor';
 import { adminClientList, type ClientRegistered, type ClientTab } from '@/lib/domain/views-admin-ops';
 import { moneyShort } from '@/lib/format';
@@ -57,7 +56,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
         </div>
       </div>
 
-      <Suspense><AdminSearch inPage /></Suspense>
+      <AdminSearch inPage />
       <div className="toolbar">
         <nav className="tab-bar">
           {TABS.map(t => (

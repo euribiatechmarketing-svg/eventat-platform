@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import '@/styles/m-admin-ops.css';
 import { AdminSearch } from '../_ops/AdminSearch';
-import { Suspense } from 'react';
 import { moderationCounts, moderationFilterNames, moderationItems, moderationWeek } from '@/lib/domain/views-admin-ops';
 import { now } from '@/lib/clock';
 import { Icon } from '@/components/ui/Icon';
@@ -58,7 +57,7 @@ export default async function ModerationPage({ searchParams }: { searchParams: P
         </div>
       </div>
 
-      <Suspense><AdminSearch inPage /></Suspense>
+      <AdminSearch inPage />
       {chips.length > 0 && (
         <div className="ui-chips ops-chips">
           {chips.map(c => <Link key={c.href} className="ui-chip ops-chip" href={c.href} scroll={false}>{c.label}<Icon name="close" /></Link>)}

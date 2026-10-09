@@ -540,10 +540,14 @@ def others(page: Page, role: str, home: str):
     if role == 'admin':
         go(page, '/partnyori/dj-zhivko?preview=1')
         expect(page.locator('h1.pv-name')).to_have_text('DJ Живко')
+        # a submitted profile previews its onboarding package and from-price as they go live (journey J4)
+        expect(page.locator('#main')).to_contain_text('DJ и озвучаване')
+        expect(page.locator('.book')).to_contain_text('от 520 €')
         rule = page.locator('.book > .book-rule')
         expect(rule).to_contain_text('Анулиране:')
-        assert rule.evaluate('e => getComputedStyle(e).borderTopWidth') == '0px'
-        ok('admin: preview of a submitted profile; the booking box has no stray divider above the policy')
+        # the divider separates the policy from the price above it (a first-line policy has none)
+        assert rule.evaluate('e => e.previousElementSibling !== null && getComputedStyle(e).borderTopWidth === "1px"')
+        ok('admin: preview of a submitted profile shows its package and from-price; the policy sits under a divider')
 
 
 def main():

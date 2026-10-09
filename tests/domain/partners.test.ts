@@ -9,8 +9,9 @@ import { addDays, sofiaInstant } from '@/lib/format';
 import {
   addPhoto, applyAccountUpdate, approvalQueue, approve, changeBusinessName, checksSummary, confirmDeletion, deactivate, invite, isValidEik,
   nameChangeWindow, onboardingSummary, panelCounts, reactivate, refreshResponsiveness, reject, removePhoto, reorderPhotos, requestDeletion, responsiveness,
-  returnApplication, saveDraft, saveStep, setCheck, setListing, slugify, submitApplication, updateProfile,
+  returnApplication, saveDraft, saveStep, setCheck, setListing, slugify, submitApplication, updateProfile, lowestPrice, profileServiceStatuses,
 } from '@/lib/domain/partners';
+import { partnerPage } from '@/lib/domain/search';
 import { expireDeletion } from '@/lib/domain/clients';
 import { createAdmin, createBookingRow, createClient, cityId, eventTypeId } from '../helpers/factories';
 import { NOW, bells, draftPartner, emails, expectLedgerClean, failure, fillOnboarding, jobsByPrefix, listedPartner, mediaRow, plain } from '../helpers/catalogue';
@@ -161,6 +162,37 @@ describe('P4 submit', () => {
     // Read-only while submitted.
     expect(await failure(saveDraft(actor, { step: 1, data: { businessName: 'Друго' } }))).toContain('wizard_read_only');
     expect(await failure(submitApplication(actor, { acceptTerms: true, confirmInfo: true }))).toContain('partner_status');
+  });
+});
+
+describe('‹Виж профила като клиент› before approval (journey J4)', () => {
+  it('the preview lists the onboarding packages and their from-price, exactly as the profile goes live', async () => {
+    const { partner, actor } = await draftPartner();
+    await fillOnboarding(actor);
+    await submitApplication(actor, { acceptTerms: true, confirmInfo: true });
+    const pre = await partnerPage({ slug: partner.slug, preview: true }, { actor });
+    expect(pre?.partner.preview).toBe(true);
+    expect(pre?.services.map(x => [x.name, x.price?.cents ?? null, x.recommended])).toEqual([['Пакет „Цял ден“', 145_000, true], ['Фирмени събития', null, false]]);
+    expect(plain(pre?.partner.fromPrice?.text)).toBe('от 1 450 €');
+    expect(await partnerPage({ slug: partner.slug })).toBeNull(); // still not public
+    await approve((await createAdmin()).actor, { partnerId: partner.id });
+    const live = await partnerPage({ slug: partner.slug });
+    expect(live?.partner.preview).toBe(false);
+    expect(live?.services.map(x => x.name)).toEqual(pre?.services.map(x => x.name));
+    expect(live?.partner.fromPrice).toEqual(pre?.partner.fromPrice);
+  });
+
+  it('lists ready services only before approval; the from-price prefers per-event packages shown in the profile', () => {
+    expect(profileServiceStatuses('submitted')).toEqual(['ready', 'active']);
+    expect(profileServiceStatuses('returned')).toEqual(['ready', 'active']);
+    expect(profileServiceStatuses('approved')).toEqual(['active']);
+    expect(profileServiceStatuses('deactivated')).toEqual(['active']);
+    const svc = (kind: 'package_fixed' | 'on_request', priceCents: number | null, priceUnit: 'per_event' | 'per_guest' = 'per_event', showInProfile = true) =>
+      ({ kind, priceCents, priceUnit, showInProfile });
+    expect(lowestPrice([svc('package_fixed', 120_000), svc('package_fixed', 80_000), svc('on_request', null)])).toEqual({ cents: 80_000, unit: 'per_event' });
+    expect(lowestPrice([svc('package_fixed', 4_500, 'per_guest'), svc('package_fixed', 90_000)])).toEqual({ cents: 90_000, unit: 'per_event' });
+    expect(lowestPrice([svc('package_fixed', 4_500, 'per_guest'), svc('package_fixed', 30_000, 'per_event', false)])).toEqual({ cents: 4_500, unit: 'per_guest' });
+    expect(lowestPrice([svc('on_request', null)])).toBeNull();
   });
 });
 

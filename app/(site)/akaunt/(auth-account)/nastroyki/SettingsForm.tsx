@@ -63,7 +63,7 @@ export function SettingsForm({ view }: { view: View }) {
 
   return (
     <>
-      <form id={FORM} onSubmit={save} noValidate>
+      <form id={FORM} method="post" onSubmit={save} noValidate>
         <input type="hidden" name="twoFactor" value={f.twoFactor ? '1' : '0'} />
         <input type="hidden" name="marketing" value={f.marketing ? '1' : '0'} />
         <input type="hidden" name="prefs" value={prefsJson} />
@@ -240,7 +240,7 @@ function InvoiceCard({ invoice }: { invoice: View['invoice'] }) {
         {!open && <button className="btn btn--outline btn--sm" type="button" onClick={() => { setOpen(true); toast('Можете да редактирате данните'); }}>Промени</button>}
       </div>
       {open && (
-        <form className="acc-inv" onSubmit={save} noValidate>
+        <form className="acc-inv" method="post" onSubmit={save} noValidate>
           <input type="hidden" name="recipientType" value={type} />
           <div className="opt-row" role="radiogroup" aria-label="Издавай фактура на">
             <button type="button" role="radio" aria-checked={type === 'individual'} className={`opt${type === 'individual' ? ' is-on' : ''}`} onClick={() => setType('individual')}>Частно лице</button>

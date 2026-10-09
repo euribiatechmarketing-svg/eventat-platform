@@ -349,6 +349,9 @@ export async function adminPartnerDetail(actor: AnyActor, partnerId: string, q: 
   const svcs = await q.select({ s: service, cover: media.storageKey }).from(service).leftJoin(media, eq(media.id, service.coverMediaId))
     .where(and(eq(service.partnerId, p.id), inArray(service.status, ['ready', 'active', 'pending_review'])))
     .orderBy(asc(service.sortOrder), asc(service.createdAt));
+  // Services with a revision waiting in /admin/moderatsiya (an onboarding package has none: it goes live with the profile).
+  const inReview = new Set(svcs.length ? (await q.select({ id: serviceRevision.serviceId }).from(serviceRevision)
+    .where(and(eq(serviceRevision.status, 'pending'), inArray(serviceRevision.serviceId, svcs.map(x => x.s.id))))).map(r => r.id) : []);
   const notes = await q.select({ n: adminNote, authorName: user.name }).from(adminNote).innerJoin(user, eq(user.id, adminNote.authorId))
     .where(and(eq(adminNote.subjectType, 'partner'), eq(adminNote.subjectId, p.id))).orderBy(desc(adminNote.createdAt));
   const [lastDecision] = await q.select({ d: partnerDecision, by: user.name }).from(partnerDecision).innerJoin(user, eq(user.id, partnerDecision.decidedBy))
@@ -364,6 +367,7 @@ export async function adminPartnerDetail(actor: AnyActor, partnerId: string, q: 
     services: svcs.map(x => ({
       id: x.s.id, name: x.s.name, kind: x.s.kind, status: x.s.status, description: x.s.description, durationLabel: x.s.durationLabel,
       price: x.s.kind === 'on_request' ? null : x.s.priceCents, priceUnit: x.s.priceUnit, cover: mediaUrl(x.cover),
+      inReview: inReview.has(x.s.id),
     })),
     notes: notes.map(x => ({ id: x.n.id, body: x.n.body, at: x.n.createdAt, authorName: x.authorName })),
     lastDecision: lastDecision ? { ...lastDecision.d, byName: lastDecision.by } : null,

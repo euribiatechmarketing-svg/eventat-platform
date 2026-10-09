@@ -6,7 +6,7 @@
 // everything else is evaluated in memory on that reduced set, which also gives the facet
 // counts (D43: each item counts the partners matching every other active group plus itself).
 // Busy dates come from one SQL query per date (availability.busySql).
-import { and, asc, desc, eq, gte, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, sql, type SQL } from 'drizzle-orm';
 import { db, type Queryable, type Tx } from '@/db';
 import {
   booking, category, categorySubtype, categoryTip, city, clientEvent, eventType, eventTypeService, partner, request, searchHistory, service,
@@ -17,7 +17,7 @@ import { date as fmtDate, dateShort, moneyShort, sofiaDate, type DateStr } from 
 import type { AnyActor } from './actor';
 import { busyPartnerIds, check, isDate } from './availability';
 import { assertClient, count as nCount, maskContacts, mediaUrl, withTx } from './catalogue-kit';
-import { POLICY_LABEL, requestLapsedSql, responsiveness } from './partners';
+import { POLICY_LABEL, lowestPrice, profileServiceStatuses, requestLapsedSql, responsiveness } from './partners';
 import { partnerReviews, ratingSummary } from './reviews';
 import { getSettings } from './settings';
 
@@ -908,8 +908,11 @@ export async function partnerPage(a: { slug: string; preview?: boolean; data?: D
   const photos = await q.execute<{ id: string; storage_key: string }>(sql`
     select m.id, m.storage_key from partner_photo ph join media m on m.id = ph.media_id where ph.partner_id = ${p.id} order by ph.position limit 5`);
   const media2 = async (id: string | null) => (id ? (await q.execute<{ storage_key: string }>(sql`select storage_key from media where id = ${id}`))[0]?.storage_key ?? null : null);
+  // A preview before approval lists the onboarding packages that go live with the profile.
   const svcs = await q.select().from(service)
-    .where(and(eq(service.partnerId, p.id), eq(service.status, 'active'), eq(service.showInProfile, true))).orderBy(asc(service.sortOrder), asc(service.createdAt));
+    .where(and(eq(service.partnerId, p.id), inArray(service.status, profileServiceStatuses(p.status)), eq(service.showInProfile, true)))
+    .orderBy(asc(service.sortOrder), asc(service.createdAt));
+  const from = lowestPrice(svcs);
   const inc = svcs.length ? await q.execute<{ service_id: string; text: string }>(sql`
     select service_id, text from service_inclusion where service_id in (${sql.join(svcs.map(x => sql`${x.id}`), sql`, `)}) order by position`) : [];
   const recommended = svcs.find(x => x.kind === 'package_fixed')?.id ?? null;
@@ -947,8 +950,7 @@ export async function partnerPage(a: { slug: string; preview?: boolean; data?: D
       avatarUrl: mediaUrl(await media2(p.avatarMediaId)), coverUrl: mediaUrl(await media2(p.coverMediaId)),
       policy: p.cancellationPolicy, policyLabel: p.cancellationPolicy ? POLICY_LABEL[p.cancellationPolicy] : null, depositPercent: p.depositPercent,
       reschedule: RESCHEDULE_LABEL[p.reschedulePolicy], acceptingRequests: accepting,
-      fromPrice: p.minPriceCents != null && p.minPriceUnit
-        ? { cents: p.minPriceCents, unit: p.minPriceUnit, text: `от ${moneyShort(p.minPriceCents)}`, unitLabel: p.minPriceUnit === 'per_guest' ? 'на гост' : 'за събитие' } : null,
+      fromPrice: from ? { cents: from.cents, unit: from.unit, text: `от ${moneyShort(from.cents)}`, unitLabel: from.unit === 'per_guest' ? 'на гост' : 'за събитие' } : null,
     },
     photos: photos.map(x => ({ id: x.id, url: mediaUrl(x.storage_key) })),
     services: svcs.map(x => ({

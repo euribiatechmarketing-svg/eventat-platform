@@ -9,6 +9,7 @@ import '@/styles/platform.css';
 import { fontVars } from '@/lib/fonts';
 import { Toaster, FlashToast, DrawerAutoClose } from '@/components/ui/client';
 import { readFlash } from '@/lib/flash';
+import { AfterParse } from '@/components/ui/AfterParse';
 
 export const metadata: Metadata = {
   title: { default: 'EventAT', template: '%s · EventAT' },
@@ -21,7 +22,7 @@ export default async function PanelRoot({ children }: { children: React.ReactNod
   return (
     <html lang="bg" className={fontVars}>
       <body>
-        <div id="frame">{children}</div>
+        <div id="frame"><AfterParse>{children}</AfterParse></div>
         <Toaster />
         <FlashToast message={flash?.message ?? null} kind={flash?.kind} />
         <DrawerAutoClose />

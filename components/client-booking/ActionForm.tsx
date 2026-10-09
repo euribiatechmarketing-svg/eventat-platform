@@ -27,7 +27,7 @@ export function ActionForm({ action, children, className, id }: {
   }
   return (
     <FormPending.Provider value={pending}>
-      <form onSubmit={onSubmit} className={className} id={id}>
+      <form method="post" onSubmit={onSubmit} className={className} id={id}>
         {state?.error && <div className="form-alert" role="alert">{state.error}</div>}
         {children}
       </form>

@@ -1,6 +1,6 @@
 import 'server-only';
 // File storage for photos, inspiration images, dispute evidence and documents.
-//   local — public/uploads (dev only; served by Next as static files)
+//   local — public/uploads (dev and e2e; served as static files, and by app/uploads/[...key] after a build)
 //   s3    — Cloudflare R2 or any S3-compatible bucket (production)
 // Public files (approved listing photos) get a public URL; private files
 // (evidence, documents) are read through /api/files/[...key] with an access check.

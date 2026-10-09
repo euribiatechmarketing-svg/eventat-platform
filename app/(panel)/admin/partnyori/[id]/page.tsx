@@ -122,16 +122,22 @@ export default async function PartnerApplicationPage({ params }: { params: Promi
               <h2 className="dcard-title" style={{ fontSize: 17 }}>Пакети и цени</h2>
               {fixed.length > 0 && <span className="badge">{n(fixed.length, 'пакет', 'пакета')}</span>}
             </div>
-            {d.services.length ? d.services.map(s => (
-              <Link key={s.id} className="vrev-pk" href={`/admin/moderatsiya?partnyor=${p.id}`}>
-                <span className="vrev-pk-t" style={s.cover ? { backgroundImage: `url('${s.cover}')` } : undefined}></span>
-                <span>
-                  <span className="vrev-pk-n">{s.name}</span>
-                  <span className="vrev-pk-d">{[s.durationLabel, s.description].filter(Boolean).join(' · ')}</span>
-                </span>
-                <span className="vrev-pk-p">{s.price == null ? 'По оферта' : `${moneyShort(s.price)}${s.priceUnit === 'per_guest' ? ' на гост' : ''}`}</span>
-              </Link>
-            )) : <div className="ui-empty">Няма записи в този изглед.</div>}
+            {d.services.length ? d.services.map(s => {
+              const inner = (
+                <>
+                  <span className="vrev-pk-t" style={s.cover ? { backgroundImage: `url('${s.cover}')` } : undefined}></span>
+                  <span>
+                    <span className="vrev-pk-n">{s.name}</span>
+                    <span className="vrev-pk-d">{[s.durationLabel, s.description].filter(Boolean).join(' · ')}</span>
+                  </span>
+                  <span className="vrev-pk-p">{s.price == null ? 'По оферта' : `${moneyShort(s.price)}${s.priceUnit === 'per_guest' ? ' на гост' : ''}`}</span>
+                </>
+              );
+              // A row opens its revision in the moderation queue; with nothing there to review it is a plain row (admin/vendor.html).
+              return s.inReview
+                ? <Link key={s.id} className="vrev-pk" href={`/admin/moderatsiya?partnyor=${p.id}`}>{inner}</Link>
+                : <div key={s.id} className="vrev-pk">{inner}</div>;
+            }) : <div className="ui-empty">Няма записи в този изглед.</div>}
           </section>
 
           <section className="dcard">

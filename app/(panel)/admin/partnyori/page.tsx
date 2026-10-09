@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import '@/styles/m-admin-ops.css';
 import { AdminSearch } from '../_ops/AdminSearch';
-import { Suspense } from 'react';
 import { can } from '@/lib/domain/actor';
 import { CHECK_LIST_LABEL, adminPartnerDetail, adminPartnerList, type PartnerTab } from '@/lib/domain/views-admin-ops';
 import { now } from '@/lib/clock';
@@ -92,7 +91,7 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
         </div>
       </div>
 
-      <Suspense><AdminSearch inPage /></Suspense>
+      <AdminSearch inPage />
       <div className="toolbar">
         <nav className="tab-bar">
           {TABS.map(t => (
