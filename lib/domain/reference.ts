@@ -106,18 +106,19 @@ type TierSeed = { category: string; tier: ServiceTier; displayName?: string; des
 
 /**
  * /sabitiya/svatba tiers. A null description means "use the category's
- * short_description"; a null photo means "show the category icon".
+ * short_description"; a null photo means "show the category icon"
+ * (client/event-type.html: photos on the first two tiers, icons on the third).
  */
 export const SVATBA_TIERS: TierSeed[] = [
   { category: 'zali-i-lokatsii', tier: 'required', displayName: 'Зала и локация', photoUrl: 'photos/thumbs/hero-bg.jpg' },
-  { category: 'ketaring', tier: 'required' },
-  { category: 'dj-i-ozvuchavane', tier: 'required' },
-  { category: 'fotografiya', tier: 'required' },
-  { category: 'dekoratsiya', tier: 'common', description: 'Арка, цветя за масите и булчински букет в един стил.' },
-  { category: 'fotokabini', tier: 'common', displayName: 'Фотокабина' },
-  { category: 'torti-i-deserti', tier: 'common', displayName: 'Торта и десерти' },
-  { category: 'muzikanti', tier: 'common', description: 'Струнен дует или квартет за церемонията и коктейла, преди DJ-ят да поеме вечерта.' },
-  { category: 'videozasnemane', tier: 'common', description: 'Кратък филм от деня, с гласовете и музиката.' },
+  { category: 'ketaring', tier: 'required', photoUrl: 'photos/thumbs/catering.jpg' },
+  { category: 'dj-i-ozvuchavane', tier: 'required', photoUrl: 'photos/thumbs/dj-working.jpg' },
+  { category: 'fotografiya', tier: 'required', photoUrl: 'photos/thumbs/photographer.jpg' },
+  { category: 'dekoratsiya', tier: 'common', description: 'Арка, цветя за масите и булчински букет в един стил.', photoUrl: 'photos/thumbs/cat-decor.jpg' },
+  { category: 'fotokabini', tier: 'common', displayName: 'Фотокабина', photoUrl: 'photos/thumbs/cat-booth.jpg' },
+  { category: 'torti-i-deserti', tier: 'common', displayName: 'Торта и десерти', photoUrl: 'photos/thumbs/cake-celebration.jpg' },
+  { category: 'muzikanti', tier: 'common', description: 'Струнен дует или квартет за церемонията и коктейла, преди DJ-ят да поеме вечерта.', photoUrl: 'photos/thumbs/violinist.jpg' },
+  { category: 'videozasnemane', tier: 'common', description: 'Кратък филм от деня, с гласовете и музиката.', photoUrl: 'photos/thumbs/cat-photo.jpg' },
   { category: 'transport-za-gosti', tier: 'extra', displayName: 'Транспорт за гостите', description: 'Автобус от града до залата и обратно след края.' },
   { category: 'kolichka-za-sladoled', tier: 'extra', description: 'Сладолед на двора, докато гостите чакат вечерята.' },
   { category: 'studeni-foyerverki', tier: 'extra', description: 'Искри за първия танц и за рязането на тортата, без дим в залата.' },
