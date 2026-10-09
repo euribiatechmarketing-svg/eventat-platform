@@ -20,13 +20,14 @@ const REG: { key: ClientRegistered; label: string }[] = [
   { key: 'vsichki', label: 'Всички' }, { key: '30-dni', label: 'Последните 30 дни' }, { key: 'tazi-godina', label: 'Тази година' },
 ];
 
-export default async function ClientsPage({ searchParams }: { searchParams: Promise<{ tab?: string; grad?: string; registratsiya?: string; q?: string }> }) {
+export default async function ClientsPage({ searchParams }: { searchParams: Promise<{ tab?: string; grad?: string; registratsiya?: string; q?: string; stranitsa?: string }> }) {
   const { actor } = await requireTeam(undefined, '/admin/klienti');
   const sp = await searchParams;
   const tab: ClientTab = TABS.some(t => t.key === sp.tab) ? (sp.tab as ClientTab) : 'vsichki';
   const reg: ClientRegistered = REG.some(r => r.key === sp.registratsiya) ? (sp.registratsiya as ClientRegistered) : 'vsichki';
   const finance = can(actor, 'view_finance');
-  const data = await adminClientList(actor, { tab, city: sp.grad || null, registered: reg, q: sp.q || null });
+  const page = Math.min(Math.max(Number.parseInt(sp.stranitsa ?? '1', 10) || 1, 1), 1000);
+  const data = await adminClientList(actor, { tab, city: sp.grad || null, registered: reg, q: sp.q || null, page });
   const city = data.cities.find(c => c.slug === sp.grad) ?? null;
   const href = (p: Record<string, string | undefined>) => {
     const u = new URLSearchParams();
@@ -90,6 +91,9 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
               <span className="rec-end"><Badge tone={c.badge.tone}>{c.badge.label}</Badge><span className="btn btn--outline btn--sm">Профил</span></span>
             </Link>
           )) : <div className="ui-empty">Няма записи в този изглед.</div>}
+          {data.hasMore && (
+            <div className="ops-more"><Link className="btn btn--outline btn--sm" href={href({ stranitsa: String(page + 1) })} scroll={false}>Покажи още</Link></div>
+          )}
         </section>
 
         <aside>

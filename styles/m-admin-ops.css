@@ -369,3 +369,6 @@ a.cprof-ev:hover .cprof-ev-n { color: var(--primary-700); }
   .mod-act > .ops-inline, .mod-act > .ops-inline .btn, .mod-act > .btn { width: auto; }
 }
 
+
+/* ‹Покажи още› under a capped list (the codebase pattern of /partnyori/[slug] and /partner/revyuta). */
+.ops-more { display: flex; justify-content: center; margin-top: 16px; }

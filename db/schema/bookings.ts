@@ -74,6 +74,12 @@ export const booking = pgTable('booking', {
   index('booking_client_date_idx').on(t.clientId, t.eventDate),
   index('booking_status_due_idx').on(t.status, t.paymentDueAt),
   index('booking_batch_date_idx').on(t.batchDate).where(sql`status in ('confirmed', 'completed', 'cancelled')`),
+  // Admin register (/admin/rezervacii: one month by event date, the month list) and the held-funds total.
+  index('booking_event_date_idx').on(t.eventDate),
+  index('booking_status_event_date_idx').on(t.status, t.eventDate),
+  // Admin dashboard: ‹Последни резервации› and the period's GMV / top categories by payment time.
+  index('booking_approved_at_idx').on(t.approvedAt, t.createdAt), // ascending: read backwards for ‹order by … desc› (nulls first)
+  index('booking_paid_at_idx').on(t.paidAt).where(sql`paid_at is not null`),
   check('booking_amounts_check', sql`${t.amountCents} >= 0 and ${t.dueNowCents} >= 0 and ${t.balanceCents} >= 0 and ${t.bookingFeeCents} >= 0`),
 ]);
 

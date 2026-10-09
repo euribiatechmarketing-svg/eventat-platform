@@ -327,3 +327,6 @@
   .shell .topbar .topbar-title { font-size: 15px; }
   .po .vbk-money .kv { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ‹Покажи още› under a capped list (the codebase pattern of /partner/revyuta). */
+.po-more { display: flex; justify-content: center; margin-top: 16px; }

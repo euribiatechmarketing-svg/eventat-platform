@@ -19,15 +19,19 @@ const GROUPS: { key: Exclude<RequestGroup, 'other'>; title: string; cls: string;
   { key: 'declined', title: 'Отказани', cls: '', hint: null },
 ];
 
-function href(tab: RequestTab, filter: RequestFilter) {
+/** Rows per group and ‹Покажи още› step (`?stranitsa=2` = the first 100 of each group). */
+const ROWS_PER_PAGE = 50;
+
+function href(tab: RequestTab, filter: RequestFilter, page = 1) {
   const p = new URLSearchParams();
   if (tab !== 'vsichki') p.set('tab', tab);
   if (filter !== 'vsichki') p.set('filtar', filter);
+  if (page > 1) p.set('stranitsa', String(page));
   const s = p.toString();
   return `/partner/zayavki${s ? `?${s}` : ''}`;
 }
 
-export default async function RequestsPage({ searchParams }: { searchParams: Promise<{ tab?: string; filtar?: string }> }) {
+export default async function RequestsPage({ searchParams }: { searchParams: Promise<{ tab?: string; filtar?: string; stranitsa?: string }> }) {
   const sp = await searchParams;
   const u = await requireRole('partner', '/partner/zayavki');
   const tab = (REQUEST_TABS.find(t => t.key === sp.tab)?.key ?? 'vsichki') as RequestTab;
@@ -37,6 +41,8 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
   const shown = GROUPS.filter(g => current.groups.includes(g.key));
   const rowsOf = (k: Exclude<RequestGroup, 'other'>): RequestRowView[] => v.groups[k];
   const visible = tab === 'vsichki' ? shown.filter(g => rowsOf(g.key).length > 0) : shown;
+  const page = Math.min(Math.max(Number.parseInt(sp.stranitsa ?? '1', 10) || 1, 1), 100);
+  const cap = ROWS_PER_PAGE * page;
   const filterLabel = filter === 'vsichki' ? 'Филтри' : REQUEST_FILTERS.find(f => f.key === filter)!.label;
 
   return (
@@ -76,8 +82,11 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
             </header>
             <div className="req-panel"><div className="req-list">
               {rows.length === 0 && <div className="ui-empty">Няма записи в този изглед.</div>}
-              {rows.map(r => <RequestRow key={r.number} r={r} now={v.now} />)}
+              {rows.slice(0, cap).map(r => <RequestRow key={r.number} r={r} now={v.now} />)}
             </div></div>
+            {rows.length > cap && (
+              <div className="po-more"><Link className="btn btn--outline btn--sm" href={href(tab, filter, page + 1)} scroll={false}>Покажи още</Link></div>
+            )}
           </section>
         );
       })}

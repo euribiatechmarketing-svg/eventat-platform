@@ -318,3 +318,6 @@ a.cs-att-i:hover { border-color: var(--primary-300); }
   .am .em-end { grid-column: 1; grid-row: auto; order: 10; }
   .am .em-kind { min-width: 0; justify-content: flex-start; }
 }
+
+/* ‹Покажи още› under a capped register (the codebase pattern of /partnyori/[slug] and /partner/revyuta). */
+.am-more { display: flex; justify-content: center; margin-top: 16px; }
