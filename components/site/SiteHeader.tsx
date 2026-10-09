@@ -6,6 +6,7 @@ import { initials, shortName } from '@/lib/initials';
 import { Bell } from '@/components/ui/Bell';
 import { Burger, Menu, type MenuItem } from '@/components/ui/client';
 import { signOutAction } from '@/lib/actions/common';
+import { Lang } from './Lang';
 
 const LINKS: [string, string][] = [
   ['Категории', '/kategorii'],
@@ -14,22 +15,25 @@ const LINKS: [string, string][] = [
   ['Стани партньор', '/stani-partnyor'],
 ];
 
-export async function SiteHeader({ active }: { active?: string }) {
+/**
+ * `guestAs`: on /stani-partnyor the guest's ‹Вход› / ‹Регистрация› open the partner side (SCREENS §1).
+ * A partner or an admin on the public site gets ‹Към таблото› instead of the client's menu.
+ */
+export async function SiteHeader({ active, guestAs }: { active?: string; guestAs?: 'partner' }) {
   const u = await currentUser();
   const links = u?.role === 'client' ? [...LINKS, ['Моите заявки', '/akaunt/zayavki'] as [string, string]] : LINKS;
-  const items: MenuItem[] = !u ? [] : u.role === 'client'
-    ? [
-        { label: 'Моите събития', href: '/akaunt/sabitiya' },
-        { label: 'Съобщения', href: '/akaunt/saobshteniya' },
-        { label: 'Запазени', href: '/akaunt/zapazeni' },
-        { label: 'Поддръжка', href: '/akaunt/poddrazhka' },
-        { label: 'Моите заявки', href: '/akaunt/zayavki' },
-        { label: 'Моите резервации', href: '/akaunt/rezervacii' },
-        { label: 'Настройки', href: '/akaunt/nastroyki' },
-        null,
-        { label: 'Изход', onSelect: signOutAction },
-      ]
-    : [{ label: u.role === 'admin' ? 'Админ панел' : 'Партньорски панел', href: u.role === 'admin' ? '/admin' : '/partner' }, null, { label: 'Изход', onSelect: signOutAction }];
+  const items: MenuItem[] = [
+    { label: 'Моите събития', href: '/akaunt/sabitiya' },
+    { label: 'Съобщения', href: '/akaunt/saobshteniya' },
+    { label: 'Запазени търсения', href: '/akaunt/zapazeni' },
+    { label: 'Поддръжка', href: '/akaunt/poddrazhka' },
+    { label: 'Моите заявки', href: '/akaunt/zayavki' },
+    { label: 'Моите резервации', href: '/akaunt/rezervacii' },
+    { label: 'Настройки', href: '/akaunt/nastroyki' },
+    null,
+    { label: 'Изход', onSelect: signOutAction },
+  ];
+  const as = guestAs ? `?as=${guestAs}` : '';
   return (
     <header className="nav">
       <Burger target="nav" />
@@ -40,17 +44,22 @@ export async function SiteHeader({ active }: { active?: string }) {
         ))}
       </nav>
       <div className="nav-right">
-        {u ? (
+        <Lang />
+        {u?.role === 'client' ? (
           <>
             <Bell items={await bellItems(u.id)} />
             <Menu label="Профил" align="down" items={items}
               trigger={<span className="nav-user" style={{ cursor: 'pointer' }}><span className="avatar avatar--sm">{initials(u.name)}</span><span className="nav-user-name">{shortName(u.name)}</span></span>}>
             </Menu>
           </>
+        ) : u ? (
+          <span className="ui-guest">
+            <Link className="btn btn--outline" href={u.role === 'admin' ? '/admin' : '/partner'}>Към таблото</Link>
+          </span>
         ) : (
           <span className="ui-guest">
-            <Link className="btn btn--ghost" href="/vhod">Вход</Link>
-            <Link className="btn btn--primary" href="/registratsiya">Регистрация</Link>
+            <Link className="btn btn--outline" href={`/vhod${as}`}>Вход</Link>
+            <Link className="btn btn--primary" href={`/registratsiya${as}`}>Регистрация</Link>
           </span>
         )}
       </div>

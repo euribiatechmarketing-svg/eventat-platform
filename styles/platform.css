@@ -119,6 +119,15 @@ textarea { resize: vertical; }
   .page-head { flex-wrap: wrap; }
 }
 
+/* client top nav on a phone: the logo keeps its proportions; the guest buttons get compact */
+.nav-brand { flex-shrink: 0; }
+@media (max-width: 480px) {
+  .nav { gap: 8px; }
+  .nav-logo { height: 28px; }
+  .nav .ui-guest { gap: 6px; }
+  .nav .ui-guest .btn { height: 36px; padding: 0 10px; font-size: 13px; white-space: nowrap; }
+}
+
 @media (max-width: 640px) {
   .h-page { font-size: 27px; }
   .page-title { font-size: 24px; }

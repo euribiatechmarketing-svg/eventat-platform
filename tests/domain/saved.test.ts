@@ -47,6 +47,9 @@ describe('saved searches', () => {
     const saved = await saveSearch(actor, { params: P({ sabitie: 'svatba', grad: 'sofia', reyting: '4.5' }) });
     expect(saved).toMatchObject({ notify: true, title: 'Изпълнители за сватба · София', filtersSummary: 'Всички услуги · Без избрана дата · рейтинг 4,5 и нагоре' });
     expect(saved.params).toEqual({ sabitie: 'svatba', grad: 'sofia', reyting: '4.5' });
+    // the same search saved again (a second click) is the one already saved; another client's is their own
+    expect((await saveSearch(actor, { params: P({ grad: 'sofia', reyting: '4.5', sabitie: 'svatba' }) })).id).toBe(saved.id);
+    expect((await saveSearch(other, { params: P({ sabitie: 'svatba', grad: 'sofia', reyting: '4.5' }) })).id).not.toBe(saved.id);
     expect((await setNotify(actor, { id: saved.id, notify: false })).notify).toBe(false);
     expect(await failure(setNotify(other, { id: saved.id, notify: true }))).toContain('not_found');
     advanceTestNow(3600_000);
@@ -135,6 +138,17 @@ describe('date watches', () => {
     expect((await removeWatch(actor, { id: w.id })).status).toBe('removed');
     expect((await jobsByPrefix(`datewatch:${w.id}`))[0].status).toBe('cancelled');
     void user;
+  });
+
+  it('does not watch a date the client’s own booking holds, alone or from the zero state', async () => {
+    const pr = await listedPartner();
+    const { user, actor } = await createClient();
+    await createBookingRow({ client: user, partner: pr, eventDate: '2026-09-12', status: 'confirmed' });
+    expect(await failure(watchDate(actor, { partnerId: pr.partner.id, date: '2026-09-12' }))).toContain('own_booking');
+    const { actor: other } = await createClient();
+    expect((await watchDate(other, { partnerId: pr.partner.id, date: '2026-09-12' })).status).toBe('watching');
+    const own = await db.select().from(s.dateWatch).where(and(eq(s.dateWatch.clientId, user.id), eq(s.dateWatch.partnerId, pr.partner.id)));
+    expect(own).toHaveLength(0);
   });
 
   it('T21: a watch still watching after its date expires (idempotent)', async () => {

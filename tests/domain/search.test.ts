@@ -318,7 +318,7 @@ describe('§13.10 public pages', () => {
     const mine = await eventTypePage({ slug: 'svatba', clientEventId: b.clientEvent.id }, { clientId: user.id });
     expect(mine!.panels?.arranged).toEqual([expect.objectContaining({ partnerName: 'Студио Мелодия', badge: 'Потвърдена', categoryName: 'DJ и озвучаване' })]);
     const missing = Object.fromEntries(mine!.panels!.missing.map(m => [m.categorySlug, m.line]));
-    expect(missing.fotografiya).toBe('Ана Петрова Photography отказа · 0 партньори са свободни');
+    expect(missing.fotografiya).toBe('Ана Петрова Photography отказа · Няма партньори');
     expect(missing.ketaring).toBe('Няма изпратена заявка · 1 партньор е свободен');
     expect(missing['dj-i-ozvuchavane']).toBeUndefined();
     expect(await eventTypePage({ slug: 'drugo' })).toBeNull();

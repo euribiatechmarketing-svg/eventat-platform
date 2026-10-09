@@ -539,7 +539,9 @@ export async function search(params: SearchParams, ctx: SearchContext = {}, q: Q
     say.push(say.length ? ', събитие ' : 'събитие ');
     if (band?.band) say.push({ b: band.sentence }); else say.push('за ', { b: `${guestsLabel(p.gosti)} гости` });
   }
-  const sentence: Rich | null = say.length ? ['Търсите ', ...say, '.'] : null;
+  // The closing full stop is not doubled after ‹… 2026 г.› (the prototype's say() checks the same).
+  const last = say.length ? richText([say[say.length - 1]]) : '';
+  const sentence: Rich | null = say.length ? ['Търсите ', ...say, ...(last.endsWith('.') ? [] : ['.'])] : null;
 
   const contextLine = [cityNames.length ? cityNames.join(', ') : 'цялата страна', p.data ? fmtDate(p.data) : null, p.gosti ? `${guestsLabel(p.gosti)} гости` : null]
     .filter(Boolean).join(' · ');
@@ -868,7 +870,7 @@ export async function eventTypePage(a: { slug: string; grad?: string | null; dat
     const missing = cards.filter(cd => !activeCats.has(cd.categoryId)).map(cd => {
       const latest = reqs.find(x => x.categoryId === cd.categoryId);
       const head = latest && latest.r.status === 'declined' ? `${latest.partnerName} отказа` : 'Няма изпратена заявка';
-      return { categorySlug: cd.categorySlug, label: cd.label, line: `${head} · ${cd.count === 1 ? '1 партньор е свободен' : `${cd.count} партньори са свободни`}`, href: cd.href };
+      return { categorySlug: cd.categorySlug, label: cd.label, line: `${head} · ${cd.count === 0 ? cd.countLabel : cd.count === 1 ? '1 партньор е свободен' : `${cd.count} партньори са свободни`}`, href: cd.href };
     });
     panels = { event, arranged, missing };
   }
