@@ -99,7 +99,7 @@ def flash_is(ctx, text):
     # Now that the target page exists, its toast may already have shown and cleared the cookie.
     shown = [pg for pg in ctx.pages if pg.locator('.ui-toast.is-on').count() and
              pg.locator('.ui-toast.is-on').first.inner_text().replace(NBSP, ' ').strip() == text]
-    assert shown, f'neither the flash cookie nor the toast ‹{text}›
+    assert shown, f'neither the flash cookie nor the toast ‹{text}›'
 
 def opens_file_chooser(page, selector, files):
     """A real click on `selector` must open the file picker; choose `files` in it."""
