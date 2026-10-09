@@ -68,7 +68,7 @@ export function MonthGrid({ cells, back }: { cells: MiniDay[]; back: string }) {
           const cls = ['mday', c.out && 'is-out', c.today && 'is-today', s === 'blocked' && 'is-blocked',
             s === 'closed' && c.info?.reason === 'not_opened' && 'po-closed'].filter(Boolean).join(' ');
           const chip = c.info?.chip
-            ? <span className={`chip ${s === 'booked' ? 'chip--booked' : s === 'held' ? 'chip--hold' : 'chip--blocked'}`}>{c.info.chip}</span>
+            ? <span className={`chip ${s === 'booked' ? 'chip--booked' : s === 'held' ? 'chip--hold' : 'chip--blocked'}`} title={c.info.chip}>{c.info.chip}</span>
             : null;
           const inner = <><span className="mday-n">{c.n}</span>{chip}</>;
           const how = clickOf(c);

@@ -8,7 +8,7 @@ import { getBookingForPartner, phoneDisplay, timeRange } from '@/lib/domain/book
 import { BOOKING_BADGE, bookingPageExtras } from '@/lib/domain/views-partner-ops';
 import { date, dateTime, money, moneyShort } from '@/lib/format';
 import { Num } from '../../_ops/num';
-import { CancelBooking } from '../../_ops/ui';
+import { CancelBooking, TopbarTitleText } from '../../_ops/ui';
 import { requestCancellationAction } from './actions';
 
 export const dynamic = 'force-dynamic';
@@ -56,6 +56,7 @@ export default async function BookingPage({ params }: { params: Promise<{ nomer:
 
   return (
     <div className="po">
+      <TopbarTitleText text={`Резервация\u00a0·\u00a0№\u00a0${b.number}`} />
       <Link className="crumb" href="/partner/rezervacii">{I.back}Назад към резервациите</Link>
 
       <div className="page-head">

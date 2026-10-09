@@ -203,6 +203,21 @@ export function FlashAgain({ message, kind = 'ok', nonce }: { message: string | 
   return null;
 }
 
+/* ---------- topbar title of a record page (‹Заявка · № …›, ‹Резервация · № …›) ----------
+   The shared TopbarTitle picks titles by path prefix only, so a record number cannot be passed
+   to it. Until it takes per-record titles, this swaps the text of its node while the page is
+   shown and puts the rail label back when the page goes (only if nothing else changed it). */
+export function TopbarTitleText({ text }: { text: string }) {
+  useEffect(() => {
+    const node = document.querySelector('.shell .topbar .topbar-title')?.firstChild;
+    if (!node || node.nodeType !== Node.TEXT_NODE) return;
+    const before = node.nodeValue;
+    node.nodeValue = text;
+    return () => { if (node.nodeValue === text) node.nodeValue = before; };
+  }, [text]);
+  return null;
+}
+
 /* ---------- calendar ‹Днес›: back to the current month, toast ‹Показваме текущия месец› ---------- */
 export function TodayButton({ href }: { href: string }) {
   const router = useRouter();

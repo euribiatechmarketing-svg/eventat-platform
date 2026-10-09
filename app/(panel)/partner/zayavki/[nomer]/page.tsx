@@ -9,7 +9,7 @@ import { attachmentsText, hhmm, requestPageExtras, responseDueText, spaceTypeLab
 import { now } from '@/lib/clock';
 import { date, dateShort, dateTime, monthName, moneyShort, weekdayName } from '@/lib/format';
 import { Num } from '../../_ops/num';
-import { RequestActions, Submit } from '../../_ops/ui';
+import { RequestActions, Submit, TopbarTitleText } from '../../_ops/ui';
 import { approveAction, askAction, declineAction, remindAction, withdrawAction } from './actions';
 
 export const dynamic = 'force-dynamic';
@@ -98,6 +98,7 @@ export default async function RequestPage({ params }: { params: Promise<{ nomer:
 
   return (
     <div className="po">
+      <TopbarTitleText text={`Заявка · №\u00a0${r.number}`} />
       <Link className="crumb" href="/partner/zayavki">{I.back}Назад към заявките</Link>
       <div className="page-head">
         <div>

@@ -157,7 +157,14 @@ def main():
         toast(page, 'Справката се подготвя — ще я получите по имейл')
         assert one("select 1 as x from report_job where partner_id = $1 and kind = 'partner_requests'", pid)
         assert one("select 1 as x from email_outbox where template_key = 'vendor-report-ready' and to_email = $1", PARTNER), 'no report email'
-        step('‹Експорт› queues the report and the email')
+        rep = one("select id, params from report_job where partner_id = $1 and kind = 'partner_requests' order by created_at desc limit 1", pid)
+        assert rep['params'] == {'tab': 'otkazani', 'filtar': 'iztichasht'}, rep
+        csv = page.request.get(base + '/partner/eksport/' + rep['id'])
+        assert csv.ok and 'text/csv' in csv.headers['content-type'], csv.status
+        assert csv.text().splitlines()[0].lstrip('\ufeff').startswith('№;Клиент;Събитие'), csv.text()[:80]
+        g2 = b.new_context(); r404 = g2.request.get(base + '/partner/eksport/' + rep['id']); g2.close()
+        assert r404.status == 404, r404.status
+        step('‹Експорт› queues the report and the email; the file downloads for its partner only')
 
         # ── request page: ask, approve, remind, withdraw ────────────────
         page.goto(base + '/partner/zayavki')
@@ -165,6 +172,8 @@ def main():
         page.wait_for_url(re.compile(r'/partner/zayavki/2026-0628'))
         expect(page.locator('h1.page-title')).to_have_text('Заявка от Ивелина Тодорова')
         expect(page.locator('.page-head .badge')).to_have_text('Нова заявка')
+        expect(page.locator('.topbar-title')).to_have_text('Заявка · №\u00a02026-0628-ЛШ')
+        step('the topbar names the request, like the prototype')
         page.click('button:has-text("Поискай още информация")')
         page.fill('textarea[name="body"]', 'Колко часа продължава подготовката на техниката? Пишете ми на 0888 123 456.')
         page.click('button[type="submit"]:has-text("Изпрати")')
@@ -202,11 +211,13 @@ def main():
         r = one("select status, decline_reason, decline_text from request where number = '2026-0621-ПД'")
         assert r['status'] == 'declined' and r['decline_reason'] == 'other' and r['decline_text'].startswith('Нямаме'), r
         step('‹Откажи› + ‹Друга причина› declines the request')
+        expect(page.locator('.topbar-title')).to_have_text('Заявки')
         page.click('.tab-bar a:has-text("Отказани")')
         page.wait_for_url(re.compile(r'tab=otkazani'))
-        expect(page.locator('.req')).to_have_count(1)
-        expect(page.locator('.req')).to_contain_text('Технолинк ЕООД')
-        step('the declined request moves to ‹Отказани›')
+        expect(page.locator('.req')).to_have_count(2)
+        expect(page.locator('.req:has-text("Технолинк ЕООД") .badge')).to_have_text('Отказана')
+        expect(page.locator('.req:has-text("Ивелина Тодорова") .badge')).to_have_text('Оттеглено одобрение')
+        step('the declined request and the withdrawn approval list under ‹Отказани›; the topbar title is back')
 
         # ── bookings ledger ─────────────────────────────────────────────
         page.click('.side-item:has-text("Резервации")')
@@ -221,8 +232,10 @@ def main():
         expect(page.locator('.filter-btn')).to_contain_text('Тази година')
         page.click('button:has-text("Експорт")')
         toast(page, 'Справката се подготвя — ще я получите по имейл')
-        assert one("select 1 as x from report_job where partner_id = $1 and kind = 'partner_bookings'", pid)
-        step('ledger tabs, ‹Период› and ‹Експорт›')
+        rep = one("select id from report_job where partner_id = $1 and kind = 'partner_bookings' order by created_at desc limit 1", pid)
+        rows = page.request.get(base + '/partner/eksport/' + rep['id']).text().lstrip('\ufeff').splitlines()
+        assert rows[0].startswith('Дата;№;Събитие') and len(rows) == 4 and any('Стефка Илиева' in r for r in rows), rows
+        step('ledger tabs, ‹Период› and ‹Експорт› (the file has the three past bookings)')
 
         page.click('.tab-bar a:has-text("Предстоящи")')
         page.wait_for_url(re.compile(r'/partner/rezervacii\?period=godina$'))
@@ -237,6 +250,7 @@ def main():
 
         # ── booking page ────────────────────────────────────────────────
         expect(page.locator('h1.page-title')).to_have_text('Сватба · Ана и Виктор')
+        expect(page.locator('.topbar-title')).to_have_text('Резервация\u00a0·\u00a0№\u00a02026-0719-ГП')
         expect(page.locator('.kv-label:has-text("Телефон за деня на събитието")')).to_have_count(1)
         page.click('.panel-actions button:has-text("Анулиране")')
         page.click('.po-confirm button[type="submit"]:has-text("Анулиране")')
@@ -253,6 +267,10 @@ def main():
         # ── calendar ────────────────────────────────────────────────────
         page.click('.month-nav a[aria-label="Предишен месец"]')
         page.wait_for_url(re.compile(r'mesec=2026-06'))
+        cut = page.evaluate("""[...document.querySelectorAll('.mdays [value="2026-06-17"] .chip, .mdays a[href*="2026-0614"] .chip')]
+            .map(c => [c.textContent, c.scrollWidth > c.clientWidth + 1])""")
+        assert len(cut) == 2 and not any(x[1] for x in cut), ('calendar chips cut at 1440', cut)
+        step('1440 px: the calendar chips are readable (‹Сватба · 120 гости›, ‹Блокирана›)')
         page.click('.page-head button:has-text("Блокирай дата")')
         page.fill('.modal input[name="date"]', '2026-06-23')
         page.fill('.modal input[name="reason"]', 'Ремонт на техниката')
@@ -313,6 +331,13 @@ def main():
         step('booked day opens the booking; ‹Днес› returns to the current month')
 
         # ── topbar search ───────────────────────────────────────────────
+        page.goto(base + '/partner/tarsene')
+        expect(page.locator('.po .po-search--start input[name="q"]')).to_be_visible()
+        page.fill('.po .po-search--start input[name="q"]', 'Технолинк')
+        page.press('.po .po-search--start input[name="q"]', 'Enter')
+        page.wait_for_url(re.compile(r'/partner/tarsene\?q='))
+        expect(page.locator('.req')).to_contain_text('Технолинк ЕООД')
+        step('the search page without a query offers its own field')
         page.fill('.topbar input[name="q"]', 'Мария')
         page.press('.topbar input[name="q"]', 'Enter')
         page.wait_for_url(re.compile(r'/partner/tarsene\?q='))

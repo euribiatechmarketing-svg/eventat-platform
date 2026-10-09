@@ -6,8 +6,9 @@ import { reportJob } from '@/db/schema';
 import { setTestNow } from '@/lib/clock';
 import { sofiaInstant } from '@/lib/format';
 import { declineRequest } from '@/lib/domain/requests';
+import { withdrawApproval } from '@/lib/domain/bookings';
 import {
-  ago, attachmentsText, bookingsLedger, dashboardView, hhmm, parseDateQuery, partnerSearch, policyLine, rangeText, requestPartnerReport, requestsInbox,
+  ago, attachmentsText, bookingsLedger, dashboardView, hhmm, parseDateQuery, partnerReportCsv, partnerSearch, policyLine, rangeText, requestPartnerReport, requestsInbox,
 } from '@/lib/domain/views-partner-ops';
 import { createClient, createPartner } from '../helpers/factories';
 import { NOW, approvedBooking, emails, paidBooking, sendFor } from '../helpers/lifecycle';
@@ -100,6 +101,31 @@ describe('requests inbox, ledger, search', () => {
     expect((await partnerSearch(paid.partner.actor, { q: paid.number })).bookings).toHaveLength(1);
     const other = await createPartner();
     expect((await partnerSearch(other.actor, { q: paid.number })).bookings).toHaveLength(0);
+  });
+
+  it('a withdrawn approval closes the request under ‹Отказани›', async () => {
+    const pay = await approvedBooking({ request: { eventDate: '2026-07-25' } });
+    await withdrawApproval(pay.partner.actor, { number: pay.number });
+    const v = await requestsInbox(pay.partner.actor, { tab: 'otkazani', filter: 'vsichki' });
+    expect(v.groups.declined.map(r => r.number)).toEqual([pay.number]);
+    expect(v.groups.declined[0].badge).toMatchObject({ label: 'Оттеглено одобрение' });
+    expect(v.counts.pay).toBe(0);
+  });
+
+  it('the exported file holds the view it was asked from, for its own partner only', async () => {
+    const paid = await paidBooking();
+    const { reportId } = await requestPartnerReport(paid.partner.actor, { kind: 'partner_bookings', params: { tab: 'predstoyashti', period: null } });
+    const f = await partnerReportCsv(paid.partner.actor, reportId);
+    const lines = f!.csv.replace(/^\ufeff/, '').trim().split('\r\n');
+    expect(f!.filename).toBe('rezervacii-2025-08-31.csv');
+    expect(lines[0]).toBe('Дата;№;Събитие;Услуга;Гости;Сума;Получавате;Статус');
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toContain(paid.number);
+    expect(lines[1]).toContain(';1450,00;');
+    const other = await createPartner();
+    expect(await partnerReportCsv(other.actor, reportId)).toBeNull();
+    const { reportId: rq } = await requestPartnerReport(paid.partner.actor, { kind: 'partner_requests', params: { tab: 'vsichki', filtar: 'vsichki' } });
+    expect((await partnerReportCsv(paid.partner.actor, rq))!.csv).toContain('№;Клиент;Събитие;Услуга;Дата;Гости;Локация;Сума;Статус;Получена');
   });
 
   it('‹Експорт› records the report and emails the partner', async () => {

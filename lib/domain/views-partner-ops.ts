@@ -12,7 +12,7 @@ import {
 } from '@/db/schema';
 import { policyStrings } from './cancellation';
 import { now } from '@/lib/clock';
-import { addDays, date, daysBetween, money, monthName, sofiaDate, type DateStr } from '@/lib/format';
+import { addDays, date, dateNumeric, daysBetween, money, monthName, sofiaDate, type DateStr } from '@/lib/format';
 import { initials as initialsOfWords } from '@/lib/initials';
 import type { AnyActor } from './actor';
 import { audit } from './audit';
@@ -136,9 +136,13 @@ export type RequestRowView = {
 
 const BOOKED: BookingStatus[] = ['confirmed', 'cancellation_requested', 'completed'];
 
+/** Requests that closed without a booking (SPEC §4.5 ‹Приключени›: declined, expired, unpaid, approval withdrawn) list under ‹Отказани›. */
+const CLOSED_BOOKING: BookingStatus[] = ['payment_expired', 'approval_withdrawn'];
+
 function groupOf(r: { status: RequestStatus }, b: { status: BookingStatus } | null): RequestGroup {
   if (r.status === 'pending' || r.status === 'awaiting_confirmation') return 'new';
-  if (r.status === 'declined') return 'declined';
+  if (r.status === 'declined' || r.status === 'expired') return 'declined';
+  if (r.status === 'approved' && b && CLOSED_BOOKING.includes(b.status)) return 'declined';
   if (r.status === 'approved' && b?.status === 'awaiting_payment') return 'pay';
   if (r.status === 'approved' && b && BOOKED.includes(b.status)) return 'confirmed';
   return 'other';
@@ -148,9 +152,10 @@ function badgeOf(g: RequestGroup, r: { status: RequestStatus; kind: string }, b:
   if (g === 'new') return r.status === 'awaiting_confirmation' ? { label: 'Избрана оферта', cls: 'badge--primary' } : { label: 'Нова', cls: 'badge--primary' };
   if (g === 'pay') return { label: 'Чака плащане', cls: 'badge--warning' };
   if (g === 'confirmed') return b?.status === 'completed' ? { label: 'Приключила', cls: '' } : { label: 'Потвърдена', cls: 'badge--success' };
-  if (g === 'declined') return { label: 'Отказана', cls: 'badge--danger' };
   if (r.status === 'expired') return { label: 'Изтекла', cls: '' };
   if (b?.status === 'payment_expired') return { label: 'Неплатена заявка — датата е освободена', cls: '' };
+  if (b?.status === 'approval_withdrawn') return { label: 'Оттеглено одобрение', cls: '' };
+  if (g === 'declined') return { label: 'Отказана', cls: 'badge--danger' };
   if (b?.status === 'cancelled') return { label: 'Анулирана', cls: 'badge--danger' };
   return null;
 }
@@ -576,4 +581,52 @@ export async function requestPartnerReport(actor: AnyActor, a: { kind: 'partner_
     await audit(t, { actor, action: 'report.requested', entity: 'report_job', entityId: r.id, data: { kind: a.kind, ...(a.params ?? {}) } });
     return { reportId: r.id };
   });
+}
+
+/** CSV cells (`;`-separated, Excel in Bulgarian locale), amounts as ‹1450,00›. */
+const csvCell = (v: string | number | null | undefined) => {
+  const t = v == null ? '' : String(v);
+  return /[;"\r\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+};
+const csvMoney = (c: number | null) => (c == null ? '' : (c / 100).toFixed(2).replace('.', ','));
+const csvRow = (cells: (string | number | null | undefined)[]) => cells.map(csvCell).join(';');
+
+/**
+ * The file behind a partner ‹Експорт› (own ready reports only): the requests or
+ * bookings of the view it was asked from (tab, filter / period kept in `params`).
+ */
+export async function partnerReportCsv(actor: AnyActor, reportId: string, q: Queryable = db): Promise<{ filename: string; csv: string } | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(reportId)) return null;
+  const p = await partnerOf(actor, q);
+  const [r] = await q.select().from(reportJob)
+    .where(and(eq(reportJob.id, reportId), eq(reportJob.partnerId, p.id), inArray(reportJob.kind, ['partner_requests', 'partner_bookings'])));
+  if (!r || r.status !== 'ready') return null;
+  const params = (r.params ?? {}) as Record<string, string | null | undefined>;
+  const day = sofiaDate(r.createdAt);
+  let lines: string[];
+  if (r.kind === 'partner_requests') {
+    const tab = REQUEST_TABS.find(t => t.key === params.tab)?.key ?? 'vsichki';
+    const filter = REQUEST_FILTERS.find(f => f.key === params.filtar)?.key ?? 'vsichki';
+    const v = await requestsInbox(actor, { tab, filter }, q);
+    const rows = [...v.groups.new, ...v.groups.pay, ...v.groups.confirmed, ...v.groups.declined];
+    lines = [
+      csvRow(['№', 'Клиент', 'Събитие', 'Услуга', 'Дата', 'Гости', 'Локация', 'Сума', 'Статус', 'Получена']),
+      ...rows.map(x => csvRow([
+        x.number, x.clientName, x.eventType, x.serviceLabel, dateNumeric(x.eventDate), x.guests, x.place, csvMoney(x.amountCents),
+        x.badge?.label ?? '', dateNumeric(x.sentAt),
+      ])),
+    ];
+  } else {
+    const tab = BOOKING_TABS.find(t => t.key === params.tab)?.key ?? 'predstoyashti';
+    const period = BOOKING_PERIODS.find(x => x.key === params.period)?.key ?? null;
+    const v = await bookingsLedger(actor, { tab, period }, q);
+    lines = [
+      csvRow(['Дата', '№', 'Събитие', 'Услуга', 'Гости', 'Сума', 'Получавате', 'Статус']),
+      ...v.months.flatMap(m => m.rows).map(x => csvRow([
+        dateNumeric(x.eventDate), x.number, x.title, x.sub, x.guests, csvMoney(x.amountCents), csvMoney(x.partnerCents), BOOKING_BADGE[x.status].label,
+      ])),
+    ];
+  }
+  const name = r.kind === 'partner_requests' ? 'zayavki' : 'rezervacii';
+  return { filename: `${name}-${day}.csv`, csv: `\ufeff${lines.join('\r\n')}\r\n` };
 }
