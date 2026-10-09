@@ -38,9 +38,9 @@ export async function SiteHeader({ active, guestAs }: { active?: string; guestAs
     <header className="nav">
       <Burger target="nav" />
       <Link className="nav-brand" href="/"><img className="nav-logo" src="/assets/eventat-logo.png" alt="EventAT" /></Link>
-      <nav className="nav-links">
+      <nav className="nav-links" aria-label="Основна навигация">
         {links.map(([label, href]) => (
-          <Link key={href} className={`nav-link${active === href ? ' is-active' : ''}`} href={href}>{label}</Link>
+          <Link key={href} className={`nav-link${active === href ? ' is-active' : ''}`} href={href} aria-current={active === href ? 'page' : undefined}>{label}</Link>
         ))}
       </nav>
       <div className="nav-right">
@@ -49,7 +49,7 @@ export async function SiteHeader({ active, guestAs }: { active?: string; guestAs
           <>
             <Bell items={await bellItems(u.id)} />
             <Menu label="Профил" align="down" items={items}
-              trigger={<span className="nav-user" style={{ cursor: 'pointer' }}><span className="avatar avatar--sm">{initials(u.name)}</span><span className="nav-user-name">{shortName(u.name)}</span></span>}>
+              trigger={<span className="nav-user" style={{ cursor: 'pointer' }} aria-label={`Профил · ${shortName(u.name)}`}><span className="avatar avatar--sm">{initials(u.name)}</span><span className="nav-user-name">{shortName(u.name)}</span></span>}>
             </Menu>
           </>
         ) : u ? (

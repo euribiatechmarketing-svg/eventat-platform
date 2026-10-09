@@ -79,8 +79,8 @@ export default async function CancelPage({ params }: { params: Promise<{ nomer: 
             </div>
           </div>
 
-          <h2 className="cx-h" style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--app-line)' }}>Причина за анулирането</h2>
-          <div className="cx-picks" role="radiogroup">
+          <h2 className="cx-h" id="cx-reason" style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--app-line)' }}>Причина за анулирането</h2>
+          <div className="cx-picks" role="radiogroup" aria-labelledby="cx-reason">
             {REASONS.map(([value, label]) => (
               <label key={value} className="cx-pick">
                 <input type="radio" name="reason" value={value} required />

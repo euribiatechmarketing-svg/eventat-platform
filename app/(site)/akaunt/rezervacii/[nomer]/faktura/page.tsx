@@ -48,7 +48,7 @@ export default async function InvoicePage({ params, searchParams }: {
       {invs.length > 1 && (
         <nav className="tab-bar" style={{ marginBottom: 18 }}>
           {invs.map(i => (
-            <Link key={i.id} className={`tab-bar-item${i.id === inv.id ? ' is-active' : ''}`} href={`/akaunt/rezervacii/${n}/faktura?f=${i.number}`}>
+            <Link key={i.id} className={`tab-bar-item${i.id === inv.id ? ' is-active' : ''}`} href={`/akaunt/rezervacii/${n}/faktura?f=${i.number}`} aria-current={i.id === inv.id ? 'page' : undefined}>
               {invoiceKind(i)} № {i.number}
             </Link>
           ))}

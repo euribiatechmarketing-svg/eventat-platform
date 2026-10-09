@@ -33,11 +33,12 @@ export function OpenWhenShown({ href }: { href: string }) {
 }
 
 /**
- * The scrolling message area; follows the newest message. While it is scrolled to the bottom it stays
+ * The scrolling message area; follows the newest message. It is a Tab stop (a scrolling region must be
+ * reachable from the keyboard) and a log, so messages that arrive while it is open are read out. While it is scrolled to the bottom it stays
  * there when it gets shorter (a file chip or a taller reply box under it), so the newest message never
  * slides out of view.
  */
-export function ThreadBody({ className, lastId, children }: { className: string; lastId: string | null; children: ReactNode }) {
+export function ThreadBody({ className, lastId, labelledBy, children }: { className: string; lastId: string | null; labelledBy?: string; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
   useEffect(() => {
@@ -53,7 +54,7 @@ export function ThreadBody({ className, lastId, children }: { className: string;
     ro.observe(el);
     return () => { el.removeEventListener('scroll', onScroll); ro.disconnect(); };
   }, []);
-  return <div className={className} ref={ref}>{children}</div>;
+  return <div className={className} ref={ref} tabIndex={0} role="log" aria-labelledby={labelledBy}>{children}</div>;
 }
 
 /** ‹Търсене по изпълнител или събитие›: filters the list through ?q= (shareable), keeping other params. */
@@ -71,7 +72,7 @@ export function ListSearch({ className, placeholder }: { className: string; plac
   };
   return (
     <form className={className} role="search" onSubmit={e => { e.preventDefault(); clearTimeout(timer.current); apply(value); }}>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="M20 20l-4.2-4.2" /></svg>
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="M20 20l-4.2-4.2" /></svg>
       <input type="search" name="q" value={value} placeholder={placeholder} aria-label={placeholder} autoComplete="off"
         onChange={e => { const v = e.target.value; setValue(v); clearTimeout(timer.current); timer.current = setTimeout(() => apply(v), 300); }} />
     </form>

@@ -102,7 +102,7 @@ def guest(page: Page):
     ok('search: guest ‹Запази търсенето› → sign in, back to the search')
 
     go(page, '/tarsene?data=2026-06-14&druga-data=1')
-    card = page.locator('a.v-card:has-text("Ана Петрова Photography")')
+    card = page.locator('.v-card:has-text("Ана Петрова Photography")')
     expect(card.locator('.badge')).to_have_text('Зает на 14 юни')
     card.locator('button:has-text("Уведоми ме")').click()
     page.wait_for_url(re.compile(r'/vhod\?next='))
@@ -357,22 +357,22 @@ def client(page: Page):
     snap = partner_id('snap360')
     go(page, '/tarsene?data=2026-06-28&druga-data=1')
     url = page.url
-    page.locator('a.v-card:has-text("Snap360") button:has-text("Уведоми ме")').click()
+    page.locator('.v-card:has-text("Snap360") button:has-text("Уведоми ме")').click()
     toast(page, 'Ще ви известим, ако датата се освободи')
     assert page.url == url
     assert db(f"select count(*)::int n from date_watch where client_id = '{uid}' and partner_id = '{snap}' and date = '2026-06-28' and status = 'watching'")[0]['n'] == 1
     ok('busy card ‹Уведоми ме› → toast, watch saved, card not opened')
-    page.click('a.v-card:has-text("Snap360") .v-name')
+    page.click('.v-card:has-text("Snap360") .v-card-link')
     page.wait_for_url(re.compile(r'/partnyori/snap360\?data=2026-06-28$'))
     expect(page.locator('.book .book-f-v').first).to_have_text('28 юни 2026 · неделя')
     ok('card → /partnyori/snap360, the widget on the searched date')
 
     # 14 юни is held by Мария's own bookings (Snap360, Студио Мелодия): nothing to watch, her booking instead
     go(page, '/tarsene?data=2026-06-14&druga-data=1')
-    own_card = page.locator('a.v-card:has-text("Snap360")')
+    own_card = page.locator('.v-card:has-text("Snap360")')
     expect(own_card.locator('.badge')).to_have_text('Зает на 14 юни')
     expect(own_card.locator('button:has-text("Уведоми ме")')).to_have_count(0)
-    expect(page.locator('a.v-card:has-text("Ана Петрова Photography") button:has-text("Уведоми ме")')).to_have_count(1)
+    expect(page.locator('.v-card:has-text("Ана Петрова Photography") button:has-text("Уведоми ме")')).to_have_count(1)
     ok('own booking: the busy card of her own booked partner offers no ‹Уведоми ме›')
     go(page, '/partnyori/studio-melodiya')
     expect(page.locator('.book')).not_to_contain_text('Заета дата')

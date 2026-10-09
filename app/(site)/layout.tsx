@@ -7,6 +7,7 @@ import '@/styles/client.css';
 import '@/styles/public.css';
 import '@/styles/fonts.css';
 import '@/styles/platform.css';
+import '@/styles/m-a11y-site.css';
 import { fontVars } from '@/lib/fonts';
 import { Toaster, FlashToast, DrawerAutoClose } from '@/components/ui/client';
 import { readFlash } from '@/lib/flash';

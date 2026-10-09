@@ -21,6 +21,8 @@ const CLOCK = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeW
 const CROSS = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>;
 
 type Tl = { title: string; time?: string; state: 'done' | 'current' | 'next' | 'stop' };
+/** The state each timeline mark draws, in words for screen readers. */
+const TL_STATE: Record<Tl['state'], string> = { done: 'Готово', current: 'Текущ етап', next: 'Предстои', stop: 'Прекратено' };
 const low = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
 const weekdayOf = (d: string) => { const [y, m, day] = d.split('-').map(Number); return weekdayName(new Date(Date.UTC(y, m - 1, day)).getUTCDay()); };
 
@@ -180,7 +182,7 @@ export default async function RequestPage({ params }: { params: Promise<{ nomer:
               {tl.map((it, i) => (
                 <div key={i} className={`tl-item${it.state === 'done' ? ' is-done' : it.state === 'current' || it.state === 'stop' ? ' is-current' : ''}`}>
                   <span className="tl-dot">{it.state === 'current' ? CLOCK : it.state === 'stop' ? CROSS : CHECK}</span>
-                  <div><div className="tl-title">{it.title}</div>{it.time && <div className="tl-time">{it.time}</div>}</div>
+                  <div><div className="tl-title"><span className="sr-only">{TL_STATE[it.state]}: </span>{it.title}</div>{it.time && <div className="tl-time">{it.time}</div>}</div>
                 </div>
               ))}
             </div>

@@ -73,10 +73,10 @@ export function AccountToolbar({ active, counts, events, eventId, status, status
   return (
     <div className="toolbar">
       <nav className="tab-bar">
-        <Link className={`tab-bar-item${active === 'requests' ? ' is-active' : ''}`} href={keep('/akaunt/zayavki', { 'sabitie-id': eventId })}>
+        <Link className={`tab-bar-item${active === 'requests' ? ' is-active' : ''}`} href={keep('/akaunt/zayavki', { 'sabitie-id': eventId })} aria-current={active === 'requests' ? 'page' : undefined}>
           Заявки<span className="tab-count">{counts.requests}</span>
         </Link>
-        <Link className={`tab-bar-item${active === 'bookings' ? ' is-active' : ''}`} href={keep('/akaunt/rezervacii', { 'sabitie-id': eventId })}>
+        <Link className={`tab-bar-item${active === 'bookings' ? ' is-active' : ''}`} href={keep('/akaunt/rezervacii', { 'sabitie-id': eventId })} aria-current={active === 'bookings' ? 'page' : undefined}>
           Резервации<span className="tab-count">{counts.bookings}</span>
         </Link>
       </nav>

@@ -68,7 +68,7 @@ export default async function SearchPage({ searchParams }: { searchParams: SP })
             <div className="search-default">
               <div className="empty">
                 <span className="empty-icon"><SearchIcon style={{ width: 22, height: 22 }} /></span>
-                <h3 className="empty-title t-h3">Търсете, за да видите резултати</h3>
+                <h2 className="empty-title t-h3">Търсете, за да видите резултати</h2>
                 <p className="empty-text">Може да търсите по име на изпълнител, по услуга или по категория.</p>
               </div>
               <div style={{ maxWidth: 1040, margin: '0 auto' }}>

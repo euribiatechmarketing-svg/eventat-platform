@@ -719,7 +719,7 @@ def s2g():
     go(g, f"/tarsene?kategoriya={A['cat_slug']}&data={d}")
     expect(g.locator('a.v-card', has_text=A['business'])).to_have_count(0)
     go(g, f"/tarsene?kategoriya={A['cat_slug']}&data={d}&druga-data=1")
-    card = g.locator('a.v-card', has_text=A['business'])
+    card = g.locator('.v-card', has_text=A['business'])
     expect(card).to_have_count(1)
     expect(card.locator('.badge')).to_have_text('Зает на 18 октомври')
     go(g, f"/partnyori/{S['a_slug']}?data={d}")

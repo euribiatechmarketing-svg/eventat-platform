@@ -1,0 +1,35 @@
+/* Accessibility of the public site and the client account (WCAG 2.2 AA): keyboard focus shown in the
+   brand purple where the prototype's styles hide it, and the few structural helpers the fixes need.
+   Nothing here changes how a page looks until something has keyboard focus. */
+
+/* Buttons: the prototype's focus shadow is a 20 % tint (barely visible on white); a solid ring instead. */
+.btn:focus-visible { outline: 2px solid var(--primary-500); outline-offset: 2px; }
+
+/* Fields drawn without an outline of their own. */
+.searchbar .sb-cell:has(input:focus-visible),
+.book-f-row:has(:focus-visible),
+.book-f-row:has(.book-f-date:focus) { outline: 2px solid var(--primary-500); outline-offset: -2px; }
+.cb-drop:has(input:focus-visible) { outline: 2px solid var(--primary-500); outline-offset: 2px; }
+.m-acc .acc-file:focus-visible + label { outline: 2px solid var(--primary-500); outline-offset: 2px; }
+
+.searchbar .sb-cell:has(input:focus-visible), .searchbar .sb-cell:focus-visible { border-radius: 10px; }
+
+/* The suggestion picked with the arrow keys (focus stays in the field) looks like a hovered one. */
+.ui-suggest .ui-note.is-active { background: var(--primary-50); }
+
+/* A busy partner card with ‹Уведоми ме›: the card link is stretched over the box, the button sits above it. */
+.v-card--split { position: relative; }
+.v-card--split > .v-card-link { position: absolute; inset: 0; z-index: 1; border-radius: inherit; }
+.v-card--split > .v-card-link:focus-visible { outline: 2px solid var(--primary-500); outline-offset: -2px; }
+.v-card--split .v-busy .btn { position: relative; z-index: 2; }
+
+/* ‹Добавете снимки към сигнала›: the title is the zone's button, drawn as the title. */
+.ms-drop button.rw-drop-t { display: block; margin: 0; padding: 0; border: 0; background: none; font-family: inherit; line-height: inherit; letter-spacing: inherit; text-align: inherit; cursor: pointer; }
+
+/* The message thread is a Tab stop (it scrolls). */
+.msg-body:focus-visible { outline: 2px solid var(--primary-500); outline-offset: -2px; }
+
+/* A phone showing one thread hides the page head; its h1 ‹Съобщения› stays for screen readers. */
+@media (max-width: 960px) {
+  .wrap .ms-hold:has(.msg-shell.ms-open) .h-row { display: block; position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+}

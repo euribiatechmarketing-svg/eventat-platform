@@ -4,6 +4,8 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { toast } from '@/components/ui/client';
+import { radioKeys, radioTab } from '@/components/ui/dropdown';
+import { errorProps, useFocusInvalid } from '@/components/ui/forms';
 import { AuthSides, type AuthRole } from '../_ui/AuthSides';
 import { carry } from '../_ui/messages';
 import { useSubmit } from '../_ui/useSubmit';
@@ -22,6 +24,8 @@ export function SignInForm({ as, next, email, social }: { as: AuthRole; next: st
   useEffect(() => { const v = state?.values?.email ?? fstate?.values?.email; if (v !== undefined) setMail(v); }, [state, fstate]);
 
   const errs = { ...(fstate?.errors ?? {}), ...(state?.errors ?? {}) };
+  useFocusInvalid(formRef, state);
+  useFocusInvalid(formRef, fstate);
   // ‹Вход за администратори› (→ /admin → /vhod?next=/admin): the team's sign-in has no role cards,
   // no sign-up and no client lead line, so the click visibly lands on a different screen.
   const team = next === '/admin' || !!next?.startsWith('/admin/') || !!next?.startsWith('/admin?');
@@ -43,12 +47,12 @@ export function SignInForm({ as, next, email, social }: { as: AuthRole; next: st
             <Link className="auth-tab" href={toRegister}>Регистрация</Link>
           </div>
 
-          <div className="auth-role" role="radiogroup" aria-label="Профил">
-            <button type="button" role="radio" aria-checked={role === 'client'} className={`role${role === 'client' ? ' is-on' : ''}`} onClick={() => setRole('client')}>
+          <div className="auth-role" role="radiogroup" aria-label="Профил" onKeyDown={radioKeys}>
+            <button type="button" role="radio" aria-checked={role === 'client'} tabIndex={radioTab(role === 'client', 0, true)} className={`role${role === 'client' ? ' is-on' : ''}`} onClick={() => setRole('client')}>
               <span className="role-t">Клиент</span>
               <span className="role-d">Организирам събитие</span>
             </button>
-            <button type="button" role="radio" aria-checked={role === 'partner'} className={`role${role === 'partner' ? ' is-on' : ''}`} onClick={() => setRole('partner')}>
+            <button type="button" role="radio" aria-checked={role === 'partner'} tabIndex={radioTab(role === 'partner', 1, true)} className={`role${role === 'partner' ? ' is-on' : ''}`} onClick={() => setRole('partner')}>
               <span className="role-t">Изпълнител</span>
               <span className="role-d">Предлагам услуги за събития</span>
             </button>
@@ -59,13 +63,13 @@ export function SignInForm({ as, next, email, social }: { as: AuthRole; next: st
             <input type="hidden" name="next" value={next ?? ''} />
             <div className={`field${errs.email ? ' field--error' : ''}`} style={{ marginBottom: 14 }}>
               <label className="field-label" htmlFor="vhod-email">Имейл</label>
-              <input id="vhod-email" className="field-input" name="email" type="email" autoComplete="email" autoFocus={team} value={mail} onChange={e => setMail(e.target.value)} />
-              {errs.email && <span className="acc-err">{errs.email}</span>}
+              <input id="vhod-email" className="field-input" name="email" type="email" autoComplete="email" autoFocus={team} value={mail} onChange={e => setMail(e.target.value)} {...errorProps('vhod-email', errs.email)} />
+              {errs.email && <span className="acc-err" id="vhod-email-err">{errs.email}</span>}
             </div>
             <div className={`field${errs.password ? ' field--error' : ''}`}>
               <label className="field-label" htmlFor="vhod-password">Парола</label>
-              <input id="vhod-password" className="field-input" name="password" type="password" autoComplete="current-password" />
-              {errs.password && <span className="acc-err">{errs.password}</span>}
+              <input id="vhod-password" className="field-input" name="password" type="password" autoComplete="current-password" {...errorProps('vhod-password', errs.password)} />
+              {errs.password && <span className="acc-err" id="vhod-password-err">{errs.password}</span>}
             </div>
 
             <div className="acc-remember" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '16px 0 22px' }}>

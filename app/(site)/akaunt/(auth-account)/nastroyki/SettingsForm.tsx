@@ -2,8 +2,10 @@
 // client/settings.html. Profile fields, the two-step and marketing switches and the notification
 // switches are one form: ‹Запази промените› saves them, ‹Откажи› puts back what is stored.
 // Photo, password, sessions, deletion and invoice data are their own actions.
-import { useActionState, useEffect, useState } from 'react';
+import { useActionState, useEffect, useRef, useState } from 'react';
 import { toast } from '@/components/ui/client';
+import { radioKeys, radioTab } from '@/components/ui/dropdown';
+import { errorProps, useFocusInvalid } from '@/components/ui/forms';
 import type { settingsView } from '@/lib/domain/views-auth-account';
 import { useSubmit } from '../../../(auth)/_ui/useSubmit';
 import {
@@ -46,6 +48,8 @@ export function SettingsForm({ view }: { view: View }) {
   useEffect(() => { if (state?.error) toast(state.error, 'error'); }, [state]);
   useEffect(() => { if (photo?.error) toast(photo.error, 'error'); }, [photo]);
   const errs = state?.errors ?? {};
+  const grid = useRef<HTMLDivElement>(null);
+  useFocusInvalid(grid, state);
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF(x => ({ ...x, [k]: v }));
   const pref = (key: string, ch: 'email' | 'sms', v: boolean) => setF(x => ({ ...x, prefs: { ...x.prefs, [key]: { ...x.prefs[key], [ch]: v } } }));
   const prefsJson = JSON.stringify(Object.entries(f.prefs).flatMap(([key, p]) => [
@@ -56,8 +60,8 @@ export function SettingsForm({ view }: { view: View }) {
   const input = (k: 'name' | 'phone' | 'email', label: string, type = 'text', auto?: string) => (
     <div className={`field${errs[k] ? ' field--error' : ''}`}>
       <label className="field-label" htmlFor={`set-${k}`}>{label}</label>
-      <input id={`set-${k}`} form={FORM} name={k} className="field-input" type={type} autoComplete={auto} value={f[k]} onChange={e => set(k, e.target.value)} />
-      {errs[k] && <span className="acc-err">{errs[k]}</span>}
+      <input id={`set-${k}`} form={FORM} name={k} className="field-input" type={type} autoComplete={auto} value={f[k]} onChange={e => set(k, e.target.value)} {...errorProps(`set-${k}`, errs[k])} />
+      {errs[k] && <span className="acc-err" id={`set-${k}-err`}>{errs[k]}</span>}
     </div>
   );
 
@@ -80,7 +84,7 @@ export function SettingsForm({ view }: { view: View }) {
         </div>
       </div>
 
-      <div className="set-grid">
+      <div className="set-grid" ref={grid}>
         <div>
           <section className="dcard">
             <div className="dcard-head"><h2 className="dcard-title">Профил</h2></div>
@@ -92,8 +96,7 @@ export function SettingsForm({ view }: { view: View }) {
               </div>
               <form className="acc-prof-act" action={sendPhoto}>
                 <input id="set-photo" className="acc-file" type="file" name="photo" accept="image/jpeg,image/png" onChange={e => e.currentTarget.form?.requestSubmit()} />
-                <label htmlFor="set-photo" className="btn btn--outline btn--sm" role="button" tabIndex={0}
-                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); (document.getElementById('set-photo') as HTMLInputElement | null)?.click(); } }}>Смени снимката</label>
+                <label htmlFor="set-photo" className="btn btn--outline btn--sm">Смени снимката</label>
               </form>
             </div>
             <div className="form-grid">
@@ -107,7 +110,7 @@ export function SettingsForm({ view }: { view: View }) {
                     {!f.cityId && <option value="">—</option>}
                     {view.cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
-                  <svg className="select-chevron" viewBox="0 0 20 20"><path d="M5.5 8l4.5 4.5L14.5 8" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  <svg className="select-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="M5.5 8l4.5 4.5L14.5 8" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
                 </div>
               </div>
             </div>
@@ -219,14 +222,16 @@ function InvoiceCard({ invoice }: { invoice: View['invoice'] }) {
   useEffect(() => { if (state?.error) toast(state.error, 'error'); }, [state]);
   const errs = state?.errors ?? {};
   const v = state?.values ?? {};
+  const form = useRef<HTMLFormElement>(null);
+  useFocusInvalid(form, state);
   const summary = invoice.recipientType === 'company'
     ? ['Фирма', invoice.companyName, invoice.eik ? `ЕИК ${invoice.eik}` : null].filter(Boolean).join(' · ')
     : `Частно лице · ${invoice.name}`;
   const fld = (name: string, label: string, value: string | null) => (
     <div className={`field${errs[name] ? ' field--error' : ''}`}>
       <label className="field-label" htmlFor={`inv-${name}`}>{label}</label>
-      <input id={`inv-${name}`} className="field-input" name={name} defaultValue={v[name] ?? value ?? ''} />
-      {errs[name] && <span className="acc-err">{errs[name]}</span>}
+      <input id={`inv-${name}`} className="field-input" name={name} defaultValue={v[name] ?? value ?? ''} {...errorProps(`inv-${name}`, errs[name])} />
+      {errs[name] && <span className="acc-err" id={`inv-${name}-err`}>{errs[name]}</span>}
     </div>
   );
   return (
@@ -240,11 +245,11 @@ function InvoiceCard({ invoice }: { invoice: View['invoice'] }) {
         {!open && <button className="btn btn--outline btn--sm" type="button" onClick={() => { setOpen(true); toast('Можете да редактирате данните'); }}>Промени</button>}
       </div>
       {open && (
-        <form className="acc-inv" method="post" onSubmit={save} noValidate>
+        <form ref={form} className="acc-inv" method="post" onSubmit={save} noValidate>
           <input type="hidden" name="recipientType" value={type} />
-          <div className="opt-row" role="radiogroup" aria-label="Издавай фактура на">
-            <button type="button" role="radio" aria-checked={type === 'individual'} className={`opt${type === 'individual' ? ' is-on' : ''}`} onClick={() => setType('individual')}>Частно лице</button>
-            <button type="button" role="radio" aria-checked={type === 'company'} className={`opt${type === 'company' ? ' is-on' : ''}`} onClick={() => setType('company')}>Фирма</button>
+          <div className="opt-row" role="radiogroup" aria-label="Издавай фактура на" onKeyDown={radioKeys}>
+            <button type="button" role="radio" aria-checked={type === 'individual'} tabIndex={radioTab(type === 'individual', 0, true)} className={`opt${type === 'individual' ? ' is-on' : ''}`} onClick={() => setType('individual')}>Частно лице</button>
+            <button type="button" role="radio" aria-checked={type === 'company'} tabIndex={radioTab(type === 'company', 1, true)} className={`opt${type === 'company' ? ' is-on' : ''}`} onClick={() => setType('company')}>Фирма</button>
           </div>
           {fld('name', 'Име и фамилия', invoice.name)}
           {type === 'company' && (
@@ -261,7 +266,7 @@ function InvoiceCard({ invoice }: { invoice: View['invoice'] }) {
           </div>
         </form>
       )}
-      <div className="book-note" style={{ marginTop: 4 }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /><path d="M12 8h.01M11 12h1v4h1" /></svg><span>За фирмена фактура добавете ЕИК и МОЛ&nbsp;— фактурите се издават автоматично след всяко плащане.</span></div>
+      <div className="book-note" style={{ marginTop: 4 }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 8h.01M11 12h1v4h1" /></svg><span>За фирмена фактура добавете ЕИК и МОЛ&nbsp;— фактурите се издават автоматично след всяко плащане.</span></div>
     </section>
   );
 }

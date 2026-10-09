@@ -2,17 +2,17 @@
 // ‹Добавете снимки към сигнала›: up to ⚙ uploads.max_photos files per statement, each uploaded at once
 // (media.upload(), kind dispute_evidence) and sent with the form as hidden `evidence` ids.
 // Client look: client/dispute.html .rw-drop with .rw-shots; partner look: vendor/dispute.html .dp-drop + .gal.dp-ev.
-import { useEffect, useRef, useState, type DragEvent } from 'react';
+import { useEffect, useId, useRef, useState, type DragEvent } from 'react';
 import { toast } from '@/components/ui/client';
 
 type Upload = { ok: true; id: string; name: string; mime: string } | { ok: false; error: string };
 type Shot = { id: string; name: string; preview: string | null };
 
-const PHOTO = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="9" cy="10" r="2" /><path d="M21 16l-5-5-6 8" /></svg>;
-const UP = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 16V4" /><path d="M8 8l4-4 4 4" /><path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2" /></svg>;
-const PLUS = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 5v14M5 12h14" /></svg>;
-const X = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6"><path d="M6 6l12 12M18 6L6 18" /></svg>;
-const DOC = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></svg>;
+const PHOTO = <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="9" cy="10" r="2" /><path d="M21 16l-5-5-6 8" /></svg>;
+const UP = <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 16V4" /><path d="M8 8l4-4 4 4" /><path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2" /></svg>;
+const PLUS = <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 5v14M5 12h14" /></svg>;
+const X = <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6"><path d="M6 6l12 12M18 6L6 18" /></svg>;
+const DOC = <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></svg>;
 
 export function Evidence({ variant, upload, max, maxMb }: {
   variant: 'client' | 'partner'; upload: (fd: FormData) => Promise<Upload>; max: number; maxMb: number;
@@ -20,6 +20,7 @@ export function Evidence({ variant, upload, max, maxMb }: {
   const [shots, setShots] = useState<Shot[]>([]);
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  const hintId = useId();
   const live = useRef(shots);
   live.current = shots;
   useEffect(() => () => live.current.forEach(s => s.preview && URL.revokeObjectURL(s.preview)), []);
@@ -84,12 +85,13 @@ export function Evidence({ variant, upload, max, maxMb }: {
   if (variant === 'client') {
     return (
       <>
-        <div className={`rw-drop ms-drop${over ? ' is-over' : ''}`} role="button" tabIndex={0} aria-busy={busy} onClick={pick} {...drop}
-          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } }}>
+        {/* The whole dashed zone opens the file picker; its title is the button for the keyboard (the zone also
+            holds the photos' remove buttons, and a button cannot hold buttons). */}
+        <div className={`rw-drop ms-drop${over ? ' is-over' : ''}`} onClick={pick} {...drop}>
           {PHOTO}
           <div>
-            <div className="rw-drop-t">Добавете снимки към сигнала</div>
-            <div className="rw-drop-d">{hint}</div>
+            <button type="button" className="rw-drop-t" aria-describedby={hintId} aria-busy={busy}>Добавете снимки към сигнала</button>
+            <div className="rw-drop-d" id={hintId}>{hint}</div>
           </div>
           {shots.length > 0 && <span className="rw-shots">{shots.map(s => shot(s, 'rw-shot'))}</span>}
         </div>
