@@ -54,8 +54,8 @@ export function envProblems(env: Env): string[] {
     if (missing.length) out.push(`PAYMENT_PROVIDER=stripe without ${missing.join(', ')}`);
   }
 
-  // lib/storage: anything but STORAGE_DRIVER=s3 writes to the local disk, which Vercel throws away.
-  if (env.VERCEL && env.STORAGE_DRIVER !== 's3') out.push(`STORAGE_DRIVER=${env.STORAGE_DRIVER || 'local'} on Vercel (needs s3)`);
+  // lib/storage: anything but s3 (R2) or blob (Vercel Blob) writes to the local disk, which Vercel throws away.
+  if (env.VERCEL && !['s3', 'blob'].includes(env.STORAGE_DRIVER ?? '')) out.push(`STORAGE_DRIVER=${env.STORAGE_DRIVER || 'local'} on Vercel (needs s3 or blob)`);
   return out;
 }
 

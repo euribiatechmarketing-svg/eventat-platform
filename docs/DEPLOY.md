@@ -17,6 +17,11 @@ These belong to the operating company, not to Euribia. Each one needs a person t
 
 ## Steps
 
+0. **Timers.** The platform's deadlines and reminders run from `/api/cron/tick`. In the repo `vercel.json` runs it
+   once a day (all a Vercel Hobby team allows) and staging sets `TICK_ON_REQUEST=true`, so due jobs also run after
+   page views, at most once a minute. **Production must be on Vercel Pro**: change the schedule in `vercel.json` to
+   `"* * * * *"` and leave `TICK_ON_REQUEST` unset.
+
 1. **Database.** In Vercel → Storage → Create → Neon, region Frankfurt. Vercel adds `DATABASE_URL` to the project.
    Then run the migrations once from a laptop: `DATABASE_URL=<neon url> npm run db:migrate`
    (creates the extensions, applies `db/migrations/0000_init.sql`, then the triggers in `db/sql/`).

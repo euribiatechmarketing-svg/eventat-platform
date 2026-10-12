@@ -55,8 +55,9 @@ describe('env check', () => {
   });
 
   it('refuses local file storage on Vercel, not elsewhere', () => {
-    expect(refusal({ ...good, STORAGE_DRIVER: 'local' })).toEqual(['STORAGE_DRIVER=local on Vercel (needs s3)']);
-    expect(refusal({ ...good, STORAGE_DRIVER: undefined })).toEqual(['STORAGE_DRIVER=local on Vercel (needs s3)']);
+    expect(refusal({ ...good, STORAGE_DRIVER: 'local' })).toEqual(['STORAGE_DRIVER=local on Vercel (needs s3 or blob)']);
+    expect(refusal({ ...good, STORAGE_DRIVER: undefined })).toEqual(['STORAGE_DRIVER=local on Vercel (needs s3 or blob)']);
+    expect(boots({ ...good, STORAGE_DRIVER: 'blob' })).toBe(true);
     expect(boots({ ...good, VERCEL: undefined, VERCEL_ENV: undefined, STORAGE_DRIVER: 'local' })).toBe(true);
   });
 
@@ -74,8 +75,8 @@ describe('env check', () => {
     };
     expect(envMode(demo)).toBe('staging');
     const warn = vi.fn();
-    expect(assertSafeEnv(demo, warn).problems).toEqual(['STORAGE_DRIVER=local on Vercel (needs s3)']);
-    expect(JSON.parse(warn.mock.calls[0][0])).toMatchObject({ level: 'warn', problems: ['STORAGE_DRIVER=local on Vercel (needs s3)'] });
+    expect(assertSafeEnv(demo, warn).problems).toEqual(['STORAGE_DRIVER=local on Vercel (needs s3 or blob)']);
+    expect(JSON.parse(warn.mock.calls[0][0])).toMatchObject({ level: 'warn', problems: ['STORAGE_DRIVER=local on Vercel (needs s3 or blob)'] });
 
     const preview: Env = { ...good, VERCEL_ENV: 'preview', BETTER_AUTH_SECRET: EXAMPLE_AUTH_SECRET, ALLOW_TIME_TRAVEL: 'true' };
     expect(envMode(preview)).toBe('staging');

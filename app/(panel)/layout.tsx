@@ -9,6 +9,8 @@ import '@/styles/platform.css';
 import { fontVars } from '@/lib/fonts';
 import { Toaster, FlashToast, DrawerAutoClose } from '@/components/ui/client';
 import { readFlash } from '@/lib/flash';
+import { after } from 'next/server';
+import { maybeTick } from '@/lib/jobs/lazy-tick';
 import { AfterParse } from '@/components/ui/AfterParse';
 
 export const metadata: Metadata = {
@@ -18,6 +20,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = { width: 'device-width', initialScale: 1, themeColor: '#1f1633' };
 
 export default async function PanelRoot({ children }: { children: React.ReactNode }) {
+  after(maybeTick); // timers when the cron can't run every minute (TICK_ON_REQUEST)
   const flash = await readFlash();
   return (
     <html lang="bg" className={fontVars}>
