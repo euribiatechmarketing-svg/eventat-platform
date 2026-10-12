@@ -1037,7 +1037,7 @@ export const canReadOutbox = (actor: Actor | null | undefined) => can(actor, 'ma
  * as sent (codes and links included). Production never has ALLOW_TIME_TRAVEL (lib/env-check.ts refuses it).
  */
 export const outboxShowsCredentials = (env: Record<string, string | undefined> = process.env) =>
-  env.ALLOW_TIME_TRAVEL === 'true' && (env.EMAIL_TRANSPORT ?? 'outbox') === 'outbox';
+  env.ALLOW_TIME_TRAVEL === 'true' && ((env.EMAIL_TRANSPORT ?? 'outbox') === 'outbox' || !!env.EMAIL_ALLOWLIST?.trim());
 
 /** A stored message's subject, with any credential masked (rows queued before masking existed included). */
 function safeSubject(key: string, subject: string, vars: unknown): string {

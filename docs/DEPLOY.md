@@ -91,6 +91,10 @@ runs every suite under the same check.
 A staging deployment runs the seed and the shifted clock, on its own database (never the production one):
 1. Env vars on the staging environment: `ALLOW_TIME_TRAVEL=true`, `PAYMENT_PROVIDER=simulated`, `EMAIL_TRANSPORT=outbox`
    (demo data uses real-looking addresses — no mail may leave), plus the usual auth/cron secrets.
+   To test real delivery to your own address: `EMAIL_TRANSPORT=resend` + `RESEND_API_KEY` + `EMAIL_ALLOWLIST=you@example.com`
+   (comma-separated addresses or `@domain`s; everyone else's mail is only recorded). Without a verified domain, Resend
+   sends only from `onboarding@resend.dev` (`EMAIL_FROM="EventAT <onboarding@resend.dev>"`) and only to the address
+   the Resend account was opened with.
 2. Set `STAGING_SEED=true`. Every deploy runs `npm run vercel-build` (scripts/vercel-build.ts): it applies the
    migrations and, while the database has no users, loads the demo data — nobody needs the database password.
    To start the demo over, empty the database and redeploy (or, from a laptop:

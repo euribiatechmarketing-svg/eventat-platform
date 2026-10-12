@@ -17,13 +17,15 @@ if (!url) {
 } else {
   run('npx tsx scripts/migrate.ts', { DATABASE_URL: url });
   if (env.STAGING_SEED === 'true') {
-    if ((env.EMAIL_TRANSPORT ?? 'outbox') !== 'outbox') throw new Error('STAGING_SEED needs EMAIL_TRANSPORT=outbox');
+    if ((env.EMAIL_TRANSPORT ?? 'outbox') !== 'outbox' && !env.EMAIL_ALLOWLIST?.trim())
+      throw new Error('STAGING_SEED needs EMAIL_TRANSPORT=outbox, or EMAIL_ALLOWLIST so demo addresses get no mail');
     const sql = postgres(url, { max: 1, onnotice: () => {} });
     const [{ n }] = await sql<{ n: number }[]>`select count(*)::int as n from "user"`;
     await sql.end();
     if (n === 0) {
       console.log('vercel-build: empty staging database — loading the demo data');
-      run('npx tsx --conditions=react-server scripts/seed.ts', { DATABASE_URL: url, STAGING_DB_HOST: new URL(url).hostname });
+      // The seed itself sends nothing; it runs with the outbox transport whatever the deployment uses.
+      run('npx tsx --conditions=react-server scripts/seed.ts', { DATABASE_URL: url, STAGING_DB_HOST: new URL(url).hostname, EMAIL_TRANSPORT: 'outbox' });
     } else {
       console.log(`vercel-build: staging database already has ${n} users — keeping its data`);
     }

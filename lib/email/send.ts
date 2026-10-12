@@ -52,10 +52,23 @@ export async function sendEmail(args: SendArgs, tx?: Tx): Promise<string | null>
 }
 
 /** Try to deliver one queued email through the configured transport. */
+/**
+ * EMAIL_ALLOWLIST (staging): comma-separated addresses or @domains that may receive real email. Anyone else's
+ * message is only recorded, as with the outbox transport — the demo data's real-looking addresses never get mail.
+ * Unset (production): everyone may.
+ */
+export function allowedRecipient(to: string, list = process.env.EMAIL_ALLOWLIST): boolean {
+  if (!list || !list.trim()) return true;
+  const addr = to.trim().toLowerCase();
+  return list.split(',').map(x => x.trim().toLowerCase()).filter(Boolean)
+    .some(x => (x.startsWith('@') ? addr.endsWith(x) : addr === x));
+}
+
 export async function deliver(id: string): Promise<void> {
   const [m] = await db.select().from(emailOutbox).where(eq(emailOutbox.id, id)).limit(1);
   if (!m || m.status !== 'queued') return;
-  const transport = process.env.EMAIL_TRANSPORT ?? 'outbox';
+  const configured = process.env.EMAIL_TRANSPORT ?? 'outbox';
+  const transport = allowedRecipient(m.toEmail) ? configured : 'outbox';
   const from = process.env.EMAIL_FROM ?? 'EventAT <no-reply@eventat.bg>';
   const replyTo = process.env.EMAIL_REPLY_TO ?? 'help@eventat.bg';
   const tpl = TEMPLATES[m.templateKey];
