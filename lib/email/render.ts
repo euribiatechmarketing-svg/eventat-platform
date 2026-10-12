@@ -45,8 +45,8 @@ export function renderEmail(m: EmailContent, audience: Audience, optional: boole
     ? `Може да го изключите от <a href="${esc(abs(appUrl, SETTINGS[audience]))}" style="color:${C.link};text-decoration:none;">настройките за известия</a>.`
     : 'Това е служебно съобщение и не може да бъде изключено.'}<br>Въпроси: <a href="mailto:help@eventat.bg" style="color:${C.link};text-decoration:none;">help@eventat.bg</a> · EventAT`;
 
-  const html = `<!doctype html><html lang="bg"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${t(m.subject)}</title></head>
-<body style="margin:0;padding:0;background:${C.bg};">
+  const html = `<!doctype html><html lang="bg"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{font-feature-settings:"locl" 0}</style><title>${t(m.subject)}</title></head>
+<body style="margin:0;padding:0;background:${C.bg};font-feature-settings:'locl' 0;">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${t(m.preheader)}</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.bg};"><tr><td align="center" style="padding:28px 12px 40px;">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:${C.card};border:1px solid ${C.line};border-radius:16px;font-family:${font};">

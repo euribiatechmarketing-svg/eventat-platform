@@ -5,6 +5,8 @@ Usage: python3 tools/shoot.py OUTDIR /path [/path ...] [--base http://localhost:
        [--as client|partner|admin] [--full] [--mobile-only|--desktop-only]
 Signs in as a seeded demo user first when --as is given (see scripts/seed.ts).
 Prints console errors and failed requests for each page.
+--bypass adds Vercel's protection-bypass header for a protected staging site (secret from $VERCEL_BYPASS or
+~/.vercel-euribia/staging-bypass; never stored in the repo).
 """
 import os, sys
 from playwright.sync_api import sync_playwright
@@ -24,12 +26,17 @@ def main():
     if '--full' in args: args.remove('--full'); full = True
     if '--mobile-only' in args: args.remove('--mobile-only'); sizes = sizes[1:]
     if '--desktop-only' in args: args.remove('--desktop-only'); sizes = sizes[:1]
+    headers = {}
+    if '--bypass' in args:
+        args.remove('--bypass')
+        secret = os.environ.get('VERCEL_BYPASS') or open(os.path.expanduser('~/.vercel-euribia/staging-bypass')).read().strip()
+        headers = {'x-vercel-protection-bypass': secret, 'x-vercel-set-bypass-cookie': 'true'}
     out, paths = args[0], args[1:]
     os.makedirs(out, exist_ok=True)
     with sync_playwright() as p:
         b = p.chromium.launch()
         for name, w, h in sizes:
-            ctx = b.new_context(viewport={'width': w, 'height': h}, device_scale_factor=1, locale='bg-BG', timezone_id='Europe/Sofia')
+            ctx = b.new_context(viewport={'width': w, 'height': h}, device_scale_factor=1, locale='bg-BG', timezone_id='Europe/Sofia', extra_http_headers=headers)
             page = ctx.new_page()
             errs = []
             page.on('console', lambda m: errs.append(f'console.{m.type}: {m.text}') if m.type == 'error' else None)

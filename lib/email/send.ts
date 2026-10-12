@@ -4,6 +4,7 @@ import { db, type Tx } from '@/db';
 import { emailOutbox, notificationPreference } from '@/db/schema';
 import { hasSecrets, liveCopy, redactVars, storedCopy } from './secrets';
 import { TEMPLATES } from './templates';
+import { now } from '@/lib/clock';
 
 export type SendArgs = {
   key: string;
@@ -43,6 +44,7 @@ export async function sendEmail(args: SendArgs, tx?: Tx): Promise<string | null>
   const rows = await q.insert(emailOutbox).values({
     templateKey: tpl.key, toEmail: args.to, toUserId: args.toUserId ?? null, audience: tpl.audience,
     subject, html, text, vars: args.vars, status, dedupeKey: args.dedupeKey ?? null,
+    createdAt: await now(), // business time: the demo's shifted clock reads the same in the log as on screen
   }).onConflictDoNothing().returning({ id: emailOutbox.id });
   const id = rows[0]?.id ?? null;
   if (id && !tx && status === 'queued') await deliver(id);
@@ -85,7 +87,7 @@ export async function deliver(id: string): Promise<void> {
       if (!r.ok) throw new Error(j.message ?? `Resend ${r.status}`);
       providerMessageId = j.id ?? null;
     } // 'outbox': recorded only — Админ → Имейли shows it.
-    await db.update(emailOutbox).set({ status: 'sent', provider: transport, providerMessageId, sentAt: new Date(), attempts: m.attempts + 1, ...scrub(true) }).where(eq(emailOutbox.id, id));
+    await db.update(emailOutbox).set({ status: 'sent', provider: transport, providerMessageId, sentAt: await now(), attempts: m.attempts + 1, ...scrub(true) }).where(eq(emailOutbox.id, id));
   } catch (e) {
     const attempts = m.attempts + 1;
     await db.update(emailOutbox).set({ attempts, error: String(e), status: attempts >= 5 ? 'failed' : 'queued', ...scrub(attempts >= 5) }).where(eq(emailOutbox.id, id));
