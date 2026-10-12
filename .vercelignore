@@ -1,0 +1,13 @@
+# Uploaded by `vercel deploy` from a laptop: only what the build needs.
+.data
+.next
+.next-*
+.tools
+.vercel
+.env
+.env.local
+.env*.local
+public/uploads
+test-results
+tests/e2e/__pycache__
+*.log
