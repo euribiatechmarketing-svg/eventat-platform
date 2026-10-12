@@ -15,7 +15,7 @@ import {
 } from '@/db/schema';
 import { now } from '@/lib/clock';
 import {
-  date as fmtDate, dateNumeric, dateShort, daysBetween, money, moneyShort, monthName, plural, remaining, sofiaDate, sofiaInstant, time,
+  date as fmtDate, dateNumeric, dateShort, daysBetween, hoursText, money, moneyShort, monthName, plural, remaining, sofiaDate, sofiaInstant, time,
   weekdayName, type DateStr,
 } from '@/lib/format';
 import { initials as baseInitials, shortName } from '@/lib/initials';
@@ -27,8 +27,8 @@ import { ForbiddenError, assertCan, can, type Actor } from './actor';
 import { audit } from './audit';
 import { getSetting, getSettings } from './settings';
 import { commissionRateFor } from './commission';
-import { quoteBooking, policyStrings, type CancellationQuote } from './cancellation';
-import { getBookingForAdmin, paymentWindowHours } from './bookings';
+import { quoteBooking, policyStrings, type QuoteView } from './cancellation';
+import { extensionOf, getBookingForAdmin, paymentWindowHours } from './bookings';
 import { DISPUTE_REASON_LABEL, bpOf, low, paidCents, withTx } from './aftercare-shared';
 import { displayPhone } from './catalogue-kit';
 import { batchDetail, batchName, listBatches, partnerHoldReason, payoutKpis, prepareBatch, releaseBatch, type ReleaseBatchResult } from './payouts';
@@ -206,6 +206,7 @@ async function bookingRows(q: Queryable, where: SQL | undefined) {
 
 /** /admin/rezervacii: the month register (by event date), tab counts, the attention rows (all months). */
 export async function bookingsRegister(actor: Actor, p: { month?: string; category?: string; city?: string; tab?: string; q?: string; eventId?: string }) {
+  if (!actor.teamRole) throw new ForbiddenError('team');
   const at = await now();
   const today = sofiaDate(at);
   const finance = can(actor, 'view_finance');
@@ -295,7 +296,9 @@ export async function bookingsRegister(actor: Actor, p: { month?: string; catego
 
 /** The ‹Изискват намеса› card: every month. */
 export async function attentionRows(actor: Actor, at?: Date): Promise<AttentionRow[]> {
+  if (!actor.teamRole) throw new ForbiddenError('team');
   const t = at ?? (await now());
+  const extHours = await getSetting('payment.extension_hours', t);
   const soon = new Date(t.getTime() + ATTENTION_HOURS * 3_600_000);
   const raw = await bookingRows(db, or(
     and(eq(booking.status, 'awaiting_payment'), gte(booking.paymentDueAt, t), lte(booking.paymentDueAt, soon)),
@@ -309,7 +312,8 @@ export async function attentionRows(actor: Actor, at?: Date): Promise<AttentionR
       number: b.number, eventDate: b.eventDate, eventTypeName: r.eventTypeName, clientName: r.clientName, partnerName: r.partnerName,
       amountCents: b.amountCents + b.bookingFeeCents, problem: deadline ? 'deadline' as const : 'dispute' as const,
       badge: deadline ? { cls: 'badge--pink badge--dot', label: `Срокът изтича след ${hours} ч` } : { cls: 'badge--danger badge--dot', label: 'Отворен спор' },
-      disputeNumber: r.disputeNumber, canExtend: deadline && can(actor, 'extend_payment_deadline', { disputeOpen: !!r.disputeNumber }),
+      disputeNumber: r.disputeNumber,
+      canExtend: deadline && extensionOf(b, extHours).hours > 0 && can(actor, 'extend_payment_deadline', { disputeOpen: !!r.disputeNumber }),
     };
   });
 }
@@ -360,9 +364,9 @@ export async function bookingRecord(actor: Actor, number: string) {
   const line = lines.find(l => !l.chargeId) ?? lines[0] ?? null;
 
   // Cancel preview (D66): K9 completes a partner's request with a full refund; K11 defaults to the §5 quote.
-  let cancelQuote: CancellationQuote | null = null;
+  let cancelQuote: QuoteView | null = null;
   const canCancel = can(actor, 'cancel_booking') && !disputeOpen && (b.status === 'confirmed' || b.status === 'cancellation_requested');
-  if (canCancel) cancelQuote = await quoteBooking(b.id, { at, initiatedBy: b.status === 'cancellation_requested' ? 'partner' : 'team' });
+  if (canCancel) cancelQuote = await quoteBooking(actor, b.id, { at, initiatedBy: b.status === 'cancellation_requested' ? 'partner' : 'team' });
 
   // ‹Какво се случи›
   const tl: TimelineItem[] = [];
@@ -370,7 +374,7 @@ export async function bookingRecord(actor: Actor, number: string) {
   tl.push({ state: 'done', title: 'Клиентът изпрати заявка', time: `${fmtDate(sofiaDate(req.sentAt))}, ${time(req.sentAt)} · ${[evLower, plural(b.guests, 'гост', 'гости'), b.venueName].filter(Boolean).join(', ')}` });
   tl.push({ state: 'done', title: `${p.businessName} одобри заявката`, time: `${fmtDate(sofiaDate(b.approvedAt))}, ${time(b.approvedAt)} · датата е блокирана в календара` });
   const exts = await db.select().from(paymentExtension).where(eq(paymentExtension.bookingId, b.id)).orderBy(asc(paymentExtension.createdAt));
-  for (const x of exts) tl.push({ state: 'done', title: `Срокът е удължен с ${x.hours} часа`, time: `${fmtDate(sofiaDate(x.createdAt))}, ${time(x.createdAt)} · до ${fmtDate(sofiaDate(x.newDueAt))}, ${time(x.newDueAt)}` });
+  for (const x of exts) tl.push({ state: 'done', title: `Срокът е удължен с ${hoursText(x.hours)}`, time: `${fmtDate(sofiaDate(x.createdAt))}, ${time(x.createdAt)} · до ${fmtDate(sofiaDate(x.newDueAt))}, ${time(x.newDueAt)}` });
   if (b.paidAt) {
     const inTime = b.paidAt <= b.paymentDueAt;
     tl.push({ state: 'done', title: 'Плащането постъпи в платформата', time: `${fmtDate(sofiaDate(b.paidAt))} · ${money(v.money.paidCents + v.money.refundedCents)}${inTime ? ` · в срока от ${paymentWindowHours(b)} ${paymentWindowHours(b) === 1 ? 'час' : 'часа'}` : ''}` });
@@ -429,7 +433,8 @@ export async function bookingRecord(actor: Actor, number: string) {
     partnerRequest: pcr ? { requestedAt: pcr.requestedAt } : null,
     notes: notesRows.map(n => ({ id: n.n.id, author: shortName(n.authorName), initials: initials(n.authorName), at: `${fmtDate(sofiaDate(n.n.createdAt))}, ${time(n.n.createdAt)}`, body: n.n.body })),
     can: {
-      extend: b.status === 'awaiting_payment' && b.paymentDueAt > at && can(actor, 'extend_payment_deadline', { disputeOpen }),
+      extend: b.status === 'awaiting_payment' && b.paymentDueAt > at && extensionOf(b, await getSetting('payment.extension_hours', at)).hours > 0
+        && can(actor, 'extend_payment_deadline', { disputeOpen }),
       openDispute: !disp && can(actor, 'resolve_disputes') && ['awaiting_payment', 'confirmed', 'cancellation_requested', 'completed'].includes(b.status),
       viewDispute: !!disp && can(actor, 'resolve_disputes'),
       cancel: canCancel, finance: !!finance,
@@ -672,7 +677,7 @@ export async function disputeCase(actor: Actor, number: string) {
     else if (m.kind === 'question') events.push({ at: m.createdAt, item: { state: 'done', title: 'Поискахме още информация', time: `${stamp(m.createdAt, today)} · ${m.recipients === 'client' ? r.clientName : m.recipients === 'partner' ? partnerName : 'до двете страни'}` } });
     else if (m.kind === 'reminder') events.push({ at: m.createdAt, item: { state: 'done', title: `Писахме на ${m.recipients === 'client' ? r.clientName : partnerName}`, time: stamp(m.createdAt, today) } });
   }
-  for (const x of exts) events.push({ at: x.createdAt, item: { state: 'done', title: `Срокът за плащане е удължен с ${x.hours} часа`, time: `${stamp(x.createdAt, today)} · до ${dayText(x.newDueAt, today)}, ${time(x.newDueAt)}` } });
+  for (const x of exts) events.push({ at: x.createdAt, item: { state: 'done', title: `Срокът за плащане е удължен с ${hoursText(x.hours)}`, time: `${stamp(x.createdAt, today)} · до ${dayText(x.newDueAt, today)}, ${time(x.newDueAt)}` } });
   events.sort((a, b2) => a.at.getTime() - b2.at.getTime()).forEach(e => tl.push(e.item));
   const waitingFor = open && d.status === 'collecting' && !answered(d.positionFrom === 'team' ? 'partner' : d.positionFrom) && d.openedBy !== 'team' ? d.positionFrom : null;
   if (d.status === 'resolved' && d.decidedAt) {
@@ -715,10 +720,13 @@ export async function disputeCase(actor: Actor, number: string) {
   const opts = await db.select().from(disputeOption).where(eq(disputeOption.disputeId, d.id)).orderBy(asc(disputeOption.position));
   const options: CaseOption[] = opts.length ? opts.map(o => ({ id: o.id, kind: o.kind, label: o.label, description: o.description })) : defaultOptions(b, paid, r.clientName, sideName(d.positionFrom === 'client' ? 'client' : 'partner'));
 
-  const canExtend = open && b.status === 'awaiting_payment' && b.paymentDueAt > at && can(actor, 'extend_payment_deadline', { disputeOpen: true });
-  let warn: { text: string; extend: boolean } | null = null;
+  // ‹Удължи срока с N часа›: what K3 can still add before the event start (§17); nothing at the event start.
+  const extendHours = extensionOf(b, await getSetting('payment.extension_hours', at)).hours;
+  const canExtend = open && b.status === 'awaiting_payment' && b.paymentDueAt > at && extendHours > 0 && can(actor, 'extend_payment_deadline', { disputeOpen: true });
+  let warn: { text: string; extend: boolean; extendHours?: number } | null = null;
   if (open && b.status === 'awaiting_payment' && b.paymentDueAt > at) {
-    warn = { text: `Срокът за плащане изтича след ${remaining(at, b.paymentDueAt)}. Удължете го, за да не ${clientPl ? 'изгубят' : 'изгуби'} ${r.clientName} датата, докато решите.`, extend: canExtend };
+    const advice = extendHours > 0 ? ` Удължете го, за да не ${clientPl ? 'изгубят' : 'изгуби'} ${r.clientName} датата, докато решите.` : '';
+    warn = { text: `Срокът за плащане изтича след ${remaining(at, b.paymentDueAt)}.${advice}`, extend: canExtend, extendHours };
   } else if (waitingFor === 'partner' && d.positionDueAt > at) {
     // Waiting for the partner's position: the decision usually waits for it (prototype cases 0614; not 0630, where the client is silent).
     const w = sideName(waitingFor);
@@ -829,14 +837,14 @@ export async function payoutsOverview(actor: Actor) {
   const at = await now();
   const today = sofiaDate(at);
   const s = await getSettings(at);
-  const k = await payoutKpis({ at });
+  const k = await payoutKpis(actor, { at });
   const nb = k.nextBatch;
   const [batchRow] = await db.select().from(payoutBatch).where(eq(payoutBatch.batchDate, nb.batchDate));
   const items = await batchItems(nb.batchDate, batchRow?.id ?? null, batchRow?.status ?? 'scheduled');
   const [unpaid] = await db.select({ s: sql<number>`coalesce(sum(${payoutLine.amountCents}), 0)::bigint`.mapWith(Number) }).from(payoutLine)
     .where(inArray(payoutLine.status, ['awaiting_event', 'ready', 'held', 'released_early', 'in_batch']));
   const [approver] = batchRow?.releasedBy && batchRow.status === 'ready' ? await db.select({ name: user.name }).from(user).where(eq(user.id, batchRow.releasedBy)) : [];
-  const history = await listBatches({ limit: 12 });
+  const history = await listBatches(actor, { limit: 12 });
   const ym = today.slice(0, 7);
   const releasable = !!batchRow && (batchRow.status === 'ready' || batchRow.status === 'scheduled') && at >= sofiaInstant(nb.batchDate, 0, 0);
   return {
@@ -877,7 +885,7 @@ export async function batchPage(actor: Actor, batchId: string, partnerId?: strin
   let groups: { partnerId: string; partnerName: string; status: string; badge: Badge; amountCents: number; lines: Line[]; holdText: string | null }[] = [];
   const lineBadge = (status: string, held: boolean): string => held ? 'held' : status;
   if (batch.status !== 'scheduled') {
-    const det = await batchDetail(batchId);
+    const det = await batchDetail(actor, batchId);
     groups = det.items.map(it => ({
       partnerId: it.partnerId, partnerName: it.partnerName, status: it.status, badge: ITEM_BADGE[it.status] ?? ITEM_BADGE.ready, amountCents: it.amountCents,
       holdText: it.status === 'held' && it.holdReason ? HOLD_TEXT[it.holdReason] : it.status === 'failed' ? it.failureReason : null,

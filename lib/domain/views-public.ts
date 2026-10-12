@@ -6,7 +6,7 @@ import { and, asc, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import { db, type Queryable } from '@/db';
 import { category, city, clientEvent, eventType, legalDocument, media, partner, partnerEventType } from '@/db/schema';
 import { now } from '@/lib/clock';
-import { date as fmtDate, dateLong, monthName, sofiaDate, sofiaParts, type DateStr } from '@/lib/format';
+import { date as fmtDate, dateLong, hoursText, monthName, sofiaDate, sofiaParts, type DateStr } from '@/lib/format';
 import type { AnyActor } from './actor';
 import { check, isDate } from './availability';
 import { policyStrings } from './cancellation';
@@ -36,8 +36,7 @@ export function ordinal(n: number): string {
   return `${n}-${suf}`;
 }
 
-/** ‹24 часа› / ‹1 час›. */
-export const hoursText = (h: number) => `${h} ${h === 1 ? 'час' : 'часа'}`;
+export { hoursText };
 
 /** ‹1-во и 15-то› from ⚙ payout.days. */
 export function payoutDaysText(days: number[]): string {

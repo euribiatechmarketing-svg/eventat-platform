@@ -286,7 +286,7 @@ export async function dashboardView(actor: AnyActor, a: { month?: string }, q: Q
     .leftJoin(city, eq(city.id, booking.cityId))
     .where(and(eq(booking.partnerId, p.id), inArray(booking.status, ['confirmed', 'awaiting_payment', 'cancellation_requested']), gte(booking.eventDate, today)))
     .orderBy(asc(booking.eventDate), asc(booking.startTime)).limit(4);
-  const earnings = await partnerEarnings(p.id, { at }, q);
+  const earnings = await partnerEarnings(actor, p.id, { at }, q);
   const rating = await ratingSummary(p.id, q);
   const resp = rating ? await responsiveness(p.id, q) : null;
   const [latest] = rating ? await q.select({ r: review, eventType: eventType.name }).from(review)
@@ -585,7 +585,7 @@ export async function requestPartnerReport(actor: AnyActor, a: { kind: 'partner_
     const [r] = await t.insert(reportJob).values({
       kind: a.kind, requestedBy: userId, partnerId: p.id, params: a.params ?? {}, status: 'ready', createdAt: at, readyAt: at,
     }).returning({ id: reportJob.id });
-    const e = await partnerEarnings(p.id, { at }, t);
+    const e = await partnerEarnings(actor, p.id, { at }, t);
     const today = sofiaDate(at);
     await mail(t, {
       key: 'vendor-report-ready', to: p.notificationEmail, toUserId: userId, dedupeKey: `report:${r.id}`,

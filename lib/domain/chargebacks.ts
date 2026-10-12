@@ -14,7 +14,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { db, type Queryable, type Tx } from '@/db';
 import { booking, charge, chargeback, ledgerEntry, payoutLine, type PayoutLineStatus } from '@/db/schema';
 import { now } from '@/lib/clock';
-import { SYSTEM, assertCan, type Actor } from './actor';
+import { SYSTEM, assertCan, assertFinance, type Actor, type AnyActor } from './actor';
 import { audit } from './audit';
 import { postTransaction, type LedgerLine } from './ledger';
 import { syncBookingHold } from './payouts';
@@ -100,8 +100,9 @@ export async function resolveChargeback(actor: Actor, input: { chargebackId: str
   });
 }
 
-/** Open chargebacks (admin attention: the partner's payouts are frozen while one is open). */
-export async function openChargebacks(q: Queryable = db): Promise<ChargebackRow[]> {
+/** Open chargebacks (admin attention: the partner's payouts are frozen while one is open). view_finance. */
+export async function openChargebacks(actor: AnyActor, q: Queryable = db): Promise<ChargebackRow[]> {
+  assertFinance(actor);
   return q.select().from(chargeback).where(eq(chargeback.status, 'open')).orderBy(desc(chargeback.openedAt));
 }
 

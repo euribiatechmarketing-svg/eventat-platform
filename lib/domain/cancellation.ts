@@ -20,7 +20,7 @@ import {
 } from '@/db/schema';
 import { now } from '@/lib/clock';
 import { addDays, daysBetween, date as fmtDate, money, moneyShort, sofiaDate, sofiaInstant, type DateStr } from '@/lib/format';
-import { ForbiddenError, SYSTEM, assertCan, type Actor, type AnyActor } from './actor';
+import { ForbiddenError, SYSTEM, assertCan, can, isSystem, type Actor, type AnyActor } from './actor';
 import { audit } from './audit';
 import { DEFAULT_CANCELLATION_POLICIES, getSetting, type CancellationPolicies } from './settings';
 import { adjustLinesForCancellation, releaseBookingFunds } from './payouts';
@@ -235,11 +235,27 @@ export function settingsSummary(policies: CancellationPolicies = DEFAULT_CANCELL
 /** The policy table in force when the booking was approved (the snapshot of §2). */
 export const policiesFor = (b: { approvedAt: Date }, q: Queryable = db) => getSetting('cancellation.policies', b.approvedAt, q);
 
-/** quote() for a stored booking: paid from its charges and refunds, tiers as at approval. Used by the cancel page and the admin preview. */
-export async function quoteBooking(bookingId: string, opts: { at?: Date; initiatedBy?: Initiator } = {}, q: Queryable = db): Promise<CancellationQuote> {
+/** The commission figures of a quote: shown only with `view_finance` (SPEC §1.2, rule 9). */
+const COMMISSION_FIELDS = ['commissionBp', 'commissionCents', 'partnerAmountCents'] as const;
+/** A quote as its viewer may see it: without COMMISSION_FIELDS unless they hold `view_finance`. */
+export type QuoteView = Omit<CancellationQuote, (typeof COMMISSION_FIELDS)[number]> & Partial<Pick<CancellationQuote, (typeof COMMISSION_FIELDS)[number]>>;
+
+/**
+ * quote() for a stored booking: paid from its charges and refunds, tiers as at approval. Used by the
+ * cancel page (the booking's own client) and the admin preview (`cancel_booking` or `view_finance`);
+ * anyone else is refused. The commission figures stay out unless the viewer has `view_finance`.
+ */
+export async function quoteBooking(actor: AnyActor, bookingId: string, opts: { at?: Date; initiatedBy?: Initiator } = {}, q: Queryable = db): Promise<QuoteView> {
   const [b] = await q.select().from(booking).where(eq(booking.id, bookingId));
   if (!b) throw new AftercareError('not_found');
-  return quote({ ...b, paidCents: await refundablePaidCents(q, b.id) }, opts.at ?? (await now()), opts.initiatedBy ?? 'client', await policiesFor(b, q));
+  const finance = isSystem(actor) || can(actor, 'view_finance');
+  const ownClient = actor.role === 'client' && b.clientId === actor.userId;
+  if (!finance && !ownClient && !can(actor, 'cancel_booking')) throw new ForbiddenError('cancellation_quote');
+  const full = quote({ ...b, paidCents: await refundablePaidCents(q, b.id) }, opts.at ?? (await now()), opts.initiatedBy ?? 'client', await policiesFor(b, q));
+  if (finance) return full;
+  const view: QuoteView = { ...full };
+  for (const k of COMMISSION_FIELDS) delete view[k];
+  return view;
 }
 
 const OPEN_DISPUTE = ['collecting', 'awaiting_decision'] as const;

@@ -187,6 +187,7 @@ The legal documents ‹Условия за партньори (PDF)› and ‹Д
 
 ## Where the prototype disagreed, and what the seed did
 
+- **Dispute on a cancelled booking.** Case 2025-0509-СВ (resolved) sits on Деница и Иван's booking, which they cancelled on 05.05.2025, although X1 opens a case only on a booking that is awaiting payment, confirmed or completed. It is a historical record, from before that rule, kept as the prototype shows it; the admin, client and partner case pages show it.
 - **Message texts.** The vendor and client screens differ on two Студио Мелодия messages: ‹…настроим звука спокойно› and ‹ще ги заключим в плейлиста›. The seed uses DATA-MODEL S10, which follows client/messages.html.
 - **Booking numbers.** DATA-MODEL marks Мария's two Коледно парти bookings as generated. admin/client.html shows **2026-1219-ЕА** (Студио Мелодия) and **2026-1219-ТД** (Мед и мляко), so the seed uses those.
 - **Пакет „Вечер“ description.** The seed uses the full text from vendor/services.html. DATA-MODEL quotes the first sentence only.

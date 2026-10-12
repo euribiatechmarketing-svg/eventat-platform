@@ -149,6 +149,64 @@ describe('K3 extendPaymentDeadline', () => {
   });
 });
 
+describe('K3 is clamped to the event start like K1 (§3, decision in §17)', () => {
+  /** A partner who takes bookings for tomorrow (no lead time). */
+  const lastMinutePartner = async () => {
+    const p = await createPartner();
+    await db.update(s.partner).set({ leadTimeDays: 0 }).where(eq(s.partner.id, p.partner.id));
+    return p;
+  };
+
+  it('extends only up to the event start, says how long it really added, then refuses', async () => {
+    // Event 1 September 2025 at 18:00 = NOW + 30 h; K1 gives NOW + 24 h.
+    const { client, partner, number, bookingId, paymentDueAt } = await approvedBooking({ p: await lastMinutePartner(), request: { eventDate: '2025-09-01', startTime: '18:00' } });
+    const eventStart = sofiaInstant('2025-09-01', 18, 0);
+    expect(paymentDueAt).toEqual(new Date(NOW.getTime() + DAY));
+    const { actor: admin } = await createAdmin('admin');
+
+    const r = await extendPaymentDeadline(admin, { number });
+    expect(r).toEqual({ newDueAt: eventStart, hours: 6 });
+    expect((await bookingRow(bookingId)).paymentDueAt).toEqual(eventStart);
+    const [ext] = await db.select().from(s.paymentExtension).where(eq(s.paymentExtension.bookingId, bookingId));
+    expect(ext).toMatchObject({ previousDueAt: paymentDueAt, newDueAt: eventStart, hours: 6 });
+    const js = Object.fromEntries((await jobs(`booking:${bookingId}:`)).map(j => [j.dedupeKey!.split(':').slice(2).join(':'), j]));
+    expect(js.payexpire.runAt).toEqual(eventStart);
+    const [ce] = await emails('client-payment-extended', client.user.id);
+    expect(ce.vars).toMatchObject({ extraHours: 6, newDeadline: dateTime(eventStart) });
+    expect(ce.subject).toContain('удължен с 6 часа');
+    expect((await emails('vendor-payment-deadline-extended', partner.user.id))[0].vars).toMatchObject({ extraHours: 6, newDeadline: dateTime(eventStart) });
+
+    // The deadline is the event start: nothing is left to extend.
+    expect((await failure(extendPaymentDeadline(admin, { number }))).code).toBe('not_allowed');
+    expect(await db.select().from(s.paymentExtension).where(eq(s.paymentExtension.bookingId, bookingId))).toHaveLength(1);
+    expect(await emails('client-payment-extended', client.user.id)).toHaveLength(1);
+  });
+
+  it('one hour left to give reads ‹1 час›; T7 offers only what the button can still add', async () => {
+    // Event 1 September 2025 at 13:00 = NOW + 25 h; K1 gives NOW + 24 h, so ‹Удължи срока› can add 1 h.
+    const a = await approvedBooking({ p: await lastMinutePartner(), request: { eventDate: '2025-09-01', startTime: '13:00' } });
+    await openDispute(a.bookingId, a.number);
+    const { user: adm, actor: admin } = await createAdmin('admin');
+    setTestNow(new Date(a.paymentDueAt.getTime() - 4 * H));
+    await teamPaymentAlertJob({ bookingId: a.bookingId, hours: 4 });
+    const [first] = await emails('team-payment-deadline', adm.id);
+    expect(first.vars).toMatchObject({ extraHours: 1 });
+    expect(first.text).toContain('Удължете срока с 1 час,');
+
+    const r = await extendPaymentDeadline(admin, { number: a.number });
+    expect(r.hours).toBe(1);
+    expect((await emails('client-payment-extended', a.client.user.id))[0].subject).toContain('удължен с 1 час —');
+    // At the event start now: the alert keeps the facts and drops the advice to extend.
+    setTestNow(new Date(r.newDueAt.getTime() - 4 * H));
+    await teamPaymentAlertJob({ bookingId: a.bookingId, hours: 4 });
+    const [second] = await emails('team-payment-deadline', adm.id).then(es => es.filter(e => e.id !== first.id));
+    expect(second.vars).toMatchObject({ extraHours: 0 });
+    expect(second.text).not.toContain('Удължете');
+    expect(second.html).not.toContain('Удължи срока');
+    expect(second.html).toContain('Отвори кейса');
+  });
+});
+
 describe('K4 withdrawApproval', () => {
   it('releases the date, cancels the jobs, emails the client and notifies date watchers', async () => {
     const { client, partner, number, bookingId } = await approvedBooking({ partner: { businessName: 'Ана Петрова Photography' } });

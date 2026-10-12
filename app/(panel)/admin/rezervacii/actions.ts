@@ -4,8 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { extendPaymentDeadline } from '@/lib/domain/bookings';
-import { getSetting } from '@/lib/domain/settings';
 import { requestReport } from '@/lib/domain/views-admin-money';
+import { hoursText } from '@/lib/format';
 import { setFlash } from '@/lib/flash';
 import { NUMBER_RE, adminActor, backTo, deliverNow, refuse, str } from '../_money/server';
 
@@ -15,12 +15,13 @@ export async function extendDeadlineAction(fd: FormData) {
   const actor = await adminActor(back);
   const p = z.string().regex(NUMBER_RE).safeParse(str(fd.get('number')));
   if (!p.success) redirect(back);
+  let hours: number;
   try {
-    await extendPaymentDeadline(actor, { number: p.data });
+    ({ hours } = await extendPaymentDeadline(actor, { number: p.data }));
   } catch (e) { return refuse(e, back); }
   await deliverNow();
   revalidatePath('/admin', 'layout');
-  await setFlash(`Срокът е удължен с ${await getSetting('payment.extension_hours')} часа`);
+  await setFlash(`Срокът е удължен с ${hoursText(hours)}`);
   redirect(back);
 }
 

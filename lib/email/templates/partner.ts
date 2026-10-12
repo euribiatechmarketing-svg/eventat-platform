@@ -393,7 +393,7 @@ export const vendorPaymentReminder: EmailTemplate<PaymentReminderVars> = {
   }),
 };
 
-/** extraHours: how long the team extended the deadline by (24). */
+/** extraHours: how long the team extended the deadline by (24; less when the event start clamps it, §17). */
 type PaymentDeadlineExtendedVars = {
   requestId: string; requestNo: string; extraHours: number; clientName: string;
   eventType: string; eventDate: string; previousDeadline: string; newDeadline: string;
@@ -402,11 +402,11 @@ export const vendorPaymentDeadlineExtended: EmailTemplate<PaymentDeadlineExtende
   key: 'vendor-payment-deadline-extended', audience: 'partner', optional: false,
   render: v => ({
     subject: `Екипът удължи срока за плащане по заявка № ${v.requestNo}`,
-    preheader: `Датата ${v.eventDate} остава запазена още ${v.extraHours} часа.`,
+    preheader: `Датата ${v.eventDate} остава запазена още ${pl(v.extraHours, 'час', 'часа')}.`,
     trigger: 'Удължен срок за плащане',
-    heading: `Срокът за плащане е удължен с ${v.extraHours} часа`,
+    heading: `Срокът за плащане е удължен с ${pl(v.extraHours, 'час', 'часа')}`,
     paragraphs: [
-      `Екипът на EventAT удължи с ${v.extraHours} часа срока, в който ${v.clientName} трябва да плати. Датата ${v.eventDate} остава блокирана в календара ви дотогава.`,
+      `Екипът на EventAT удължи с ${pl(v.extraHours, 'час', 'часа')} срока, в който ${v.clientName} трябва да плати. Датата ${v.eventDate} остава блокирана в календара ви дотогава.`,
       'Ако плащането не постъпи и в новия срок, датата се освобождава автоматично.',
     ],
     details: [

@@ -1,5 +1,6 @@
 // SPEC §5 cancellation engine and §4.7 K7–K12. Runs on its own database.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { SYSTEM } from '@/lib/domain/actor';
 import { and, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { cancellation, charge, dateWatch, invoice, partnerCancellationRequest, payoutLine, refund } from '@/db/schema';
@@ -104,7 +105,7 @@ describe('K7 client cancels', () => {
     const watcher = await createClient();
     const [w] = await db.insert(dateWatch).values({ clientId: watcher.user.id, partnerId: partner.partner.id, date: b.eventDate }).returning();
     expect(await clientCancelEligibility(b.id)).toEqual({ allowed: true, reason: null });
-    expect((await quoteBooking(b.id)).refundCents).toBe(145_000);
+    expect((await quoteBooking(SYSTEM, b.id)).refundCents).toBe(145_000);
 
     const res = await cancelByClient(client.actor, { bookingId: b.id, reason: 'other', reasonText: 'Залата ще осигури собствено озвучаване.' });
     expect(res.quote).toMatchObject({ daysBefore: 287, refundCents: 145_000, retainedCents: 0 });

@@ -79,7 +79,7 @@ describe('F3 and the team’s tools', () => {
     expect(await emails('client-refund-sent', client.user.id)).toHaveLength(0);
     expect((await bookingBalances(db, b.id)).client_funds).toBe(145_000);
     expect((await db.select().from(auditLog).where(and(eq(auditLog.action, 'refund.failed'), eq(auditLog.entityId, r.id))))).toHaveLength(1);
-    expect((await failedRefunds()).map(f => f.refund.id)).toContain(r.id);
+    expect((await failedRefunds(SYSTEM)).map(f => f.refund.id)).toContain(r.id);
 
     expect(await failure(retryRefund(moderator, { refundId: r.id }))).toContain('Forbidden');
     const again = await retryRefund(accounting, { refundId: r.id });
@@ -87,7 +87,7 @@ describe('F3 and the team’s tools', () => {
     await runJobs();
     expect((await refundsOf(b.id)).map(x => x.status)).toEqual(['failed', 'succeeded']);
     expect(await emails('client-refund-sent', client.user.id)).toHaveLength(1);
-    expect((await failedRefunds()).map(f => f.refund.id)).not.toContain(r.id);
+    expect((await failedRefunds(SYSTEM)).map(f => f.refund.id)).not.toContain(r.id);
     expect(await failure(retryRefund(accounting, { refundId: again.id }))).toContain('refund_not_failed');
     await expectLedgerHealthy();
   });

@@ -186,7 +186,23 @@ async function computeMetrics(p: Period, at: Date, q: Queryable): Promise<Dashbo
 /** metrics_snapshot is refreshed when older than 15 minutes (DATA-MODEL §2.18); ‹обновено преди N минути› reads refreshed_at. */
 export const METRICS_TTL_MS = 15 * 60_000;
 
-export async function dashboardMetrics(kind: PeriodKind, q: Queryable = db): Promise<{ period: Period; data: DashboardMetrics; refreshedAt: Date }> {
+/** The money figures of the dashboard: turnover (GMV), commission, turnover by month, the season's share of turnover. */
+export type DashboardMoney = Pick<DashboardMetrics, 'gmv' | 'prevGmv' | 'commission' | 'months' | 'seasonShare'>;
+/** The figures every team member sees. */
+export type DashboardCounts = Omit<DashboardMetrics, 'v' | keyof DashboardMoney>;
+
+/**
+ * /admin KPIs for a team member. `money` (DashboardMoney) is null without `view_finance`: the
+ * function leaves those figures out itself rather than trusting the page to hide them (SPEC §1.2).
+ */
+export async function dashboardMetrics(actor: AnyActor, kind: PeriodKind, q: Queryable = db): Promise<{ period: Period; data: DashboardCounts; money: DashboardMoney | null; refreshedAt: Date }> {
+  assertTeamMember(actor);
+  const { period, data, refreshedAt } = await metricsSnapshotFor(kind, q);
+  const { v: _v, gmv, prevGmv, commission, months, seasonShare, ...counts } = data;
+  return { period, data: counts, money: can(actor, 'view_finance') ? { gmv, prevGmv, commission, months, seasonShare } : null, refreshedAt };
+}
+
+async function metricsSnapshotFor(kind: PeriodKind, q: Queryable): Promise<{ period: Period; data: DashboardMetrics; refreshedAt: Date }> {
   const at = await now();
   const period = periodOf(kind, sofiaDate(at));
   const [snap] = await q.select().from(metricsSnapshot)
@@ -201,8 +217,10 @@ export async function dashboardMetrics(kind: PeriodKind, q: Queryable = db): Pro
   return { period, data, refreshedAt: at };
 }
 
-/** ‹Топ категории› for the period, optionally in one city (booking city, else the partner's). */
-export async function topCategories(p: Period, citySlug: string | null, limit = 4, q: Queryable = db) {
+/** ‹Топ категории› for the period, optionally in one city (booking city, else the partner's). Team; `gmv` only with view_finance. */
+export async function topCategories(actor: AnyActor, p: Period, citySlug: string | null, limit = 4, q: Queryable = db) {
+  assertTeamMember(actor);
+  const finance = can(actor, 'view_finance');
   const rows = await q.execute<{ slug: string; name: string; n: number; gmv: string }>(sql`
     select c.slug, c.name, count(*)::int as n, coalesce(sum(b.amount_cents), 0) as gmv
     from booking b
@@ -215,11 +233,13 @@ export async function topCategories(p: Period, citySlug: string | null, limit = 
     group by c.slug, c.name
     order by sum(b.amount_cents) desc, count(*) desc, c.name
     limit ${limit}`);
-  return rows.map(r => ({ slug: r.slug, name: r.name, bookings: r.n, gmv: int(r.gmv) }));
+  return rows.map(r => ({ slug: r.slug, name: r.name, bookings: r.n, gmv: finance ? int(r.gmv) : null }));
 }
 
-/** ‹Последни резервации›: the newest approvals, any state. */
-export async function latestBookings(limit = 4, q: Queryable = db) {
+/** ‹Последни резервации›: the newest approvals, any state. Team; `commissionCents` only with view_finance. */
+export async function latestBookings(actor: AnyActor, limit = 4, q: Queryable = db) {
+  assertTeamMember(actor);
+  const finance = can(actor, 'view_finance');
   const std = await getSetting('commission.standard_bp', undefined, q);
   const rows = await q.execute<{
     number: string; status: string; amount: number; bp: number | null; event_date: string; client: string; partner: string; category: string | null;
@@ -231,7 +251,7 @@ export async function latestBookings(limit = 4, q: Queryable = db) {
     order by b.approved_at desc, b.created_at desc
     limit ${limit}`);
   return rows.map(r => ({
-    number: r.number, status: r.status, amountCents: r.amount, commissionCents: Math.floor((r.amount * (r.bp ?? std) + 5000) / 10000),
+    number: r.number, status: r.status, amountCents: r.amount, commissionCents: finance ? Math.floor((r.amount * (r.bp ?? std) + 5000) / 10000) : null,
     eventDate: r.event_date, clientName: r.client, partnerName: r.partner, categoryName: r.category ?? '',
   }));
 }

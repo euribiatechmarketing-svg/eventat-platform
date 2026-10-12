@@ -6,6 +6,7 @@ import { Fragment, type ReactNode } from 'react';
 import '@/styles/m-admin-money.css';
 import { PageChrome } from '../../_money/chrome';
 import { disputeCase, type CaseParty } from '@/lib/domain/views-admin-money';
+import { hoursText } from '@/lib/format';
 import { NUMBER_RE, adminActor, bookingPath, casePath } from '../../_money/server';
 import { DecisionForm, Dialog, DialogClose, Submit } from '../../_money/ui';
 import { decideAction, extendAction, holdAction, remindAction, requestInfoAction } from './actions';
@@ -176,7 +177,7 @@ export default async function AdminCase({ params }: { params: P }) {
                   {c.warn.extend && (
                     <form action={extendAction}>
                       <input type="hidden" name="number" value={c.number} />
-                      <Submit className="btn btn--outline btn--sm">Удължи срока с 24 часа</Submit>
+                      <Submit className="btn btn--outline btn--sm">Удължи срока с {hoursText(c.warn.extendHours ?? 0)}</Submit>
                     </form>
                   )}
                 </span></div>

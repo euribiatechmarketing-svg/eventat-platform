@@ -7,10 +7,9 @@ import { extendPaymentDeadline } from '@/lib/domain/bookings';
 import { cancelByTeam, completePartnerCancellation, declinePartnerCancellation } from '@/lib/domain/cancellation';
 import { openByTeam, CLIENT_REASONS, PARTNER_REASONS } from '@/lib/domain/disputes';
 import { DISPUTE_REASON_LABEL } from '@/lib/domain/aftercare-shared';
-import { getSetting } from '@/lib/domain/settings';
 import { addNote } from '@/lib/domain/team';
 import { bookingIdByNumber } from '@/lib/domain/views-admin-money';
-import { parseMoney } from '@/lib/format';
+import { parseMoney, hoursText } from '@/lib/format';
 import { setFlash } from '@/lib/flash';
 import { NUMBER_RE, adminActor, bookingPath, casePath, deliverNow, refuse, str } from '../../_money/server';
 
@@ -33,9 +32,10 @@ const done = async (page: string, toast: string) => {
 /** ‹Удължи срока› (awaiting payment, D66) → bookings.extendPaymentDeadline(). */
 export async function extendAction(fd: FormData) {
   const t = await target(fd);
-  try { await extendPaymentDeadline(t.actor, { number: t.number }); } catch (e) { return refuse(e, t.page); }
+  let hours: number;
+  try { ({ hours } = await extendPaymentDeadline(t.actor, { number: t.number })); } catch (e) { return refuse(e, t.page); }
   await deliverNow();
-  await done(t.page, `Срокът е удължен с ${await getSetting('payment.extension_hours')} часа`);
+  await done(t.page, `Срокът е удължен с ${hoursText(hours)}`);
 }
 
 /** ‹Отвори спор› → disputes.openByTeam() → toast ‹Спорът е отворен› → the case page (D68: no email). */

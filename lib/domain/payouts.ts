@@ -29,7 +29,7 @@ import {
 import { now } from '@/lib/clock';
 import { csvCell } from '@/lib/csv';
 import { addDays, date as fmtDate, monthName, money, sofiaDate, sofiaInstant, type DateStr } from '@/lib/format';
-import { SYSTEM, assertCan, type Actor } from './actor';
+import { ForbiddenError, SYSTEM, assertCan, assertFinance, can, isSystem, type Actor, type AnyActor } from './actor';
 import { audit } from './audit';
 import { accountBalance, partnerBalances, postTransaction } from './ledger';
 import { getSetting } from './settings';
@@ -877,8 +877,9 @@ const csvMoney = (cents: number) => `${cents < 0 ? '-' : ''}${Math.floor(Math.ab
 /** Semicolon-separated, decimal comma, UTF-8 with BOM: opens as-is in a Bulgarian Excel. */
 const toCsv = (rows: (string | number | null | undefined)[][]) => `﻿${rows.map(r => r.map(csvCell).join(';')).join('\r\n')}\r\n`;
 
-/** One row per payout line of the batch (paid, sent, held or failed). */
-export async function batchReportCsv(batchId: string, q: Queryable = db): Promise<string> {
+/** One row per payout line of the batch (paid, sent, held or failed). view_finance. */
+export async function batchReportCsv(actor: AnyActor, batchId: string, q: Queryable = db): Promise<string> {
+  assertFinance(actor);
   const [batch] = await q.select().from(payoutBatch).where(eq(payoutBatch.id, batchId));
   if (!batch) throw new AftercareError('not_found');
   const rows = await q.select({
@@ -902,8 +903,9 @@ export async function batchReportCsv(batchId: string, q: Queryable = db): Promis
   ]);
 }
 
-/** ‹Счетоводна справка›: every ledger movement in [from, to] (Sofia dates), one column per account. */
-export async function accountingCsv(p: { from: DateStr; to: DateStr }, q: Queryable = db): Promise<string> {
+/** ‹Счетоводна справка›: every ledger movement in [from, to] (Sofia dates), one column per account. view_finance. */
+export async function accountingCsv(actor: AnyActor, p: { from: DateStr; to: DateStr }, q: Queryable = db): Promise<string> {
+  assertFinance(actor);
   const rows = await q.execute<{
     id: string; kind: string; occurred_at: Date | string; description: string; number: string | null; partner_name: string | null;
     provider_held: string; client_funds: string; partner_payable: string; partner_receivable: string; commission_revenue: string; platform_cash: string;
@@ -969,9 +971,9 @@ export async function reportCsv(actor: Actor, reportId: string, q: Queryable = d
   const p = r.params as Record<string, string>;
   if (r.kind === 'batch_report') {
     const [b] = await q.select().from(payoutBatch).where(eq(payoutBatch.id, p.batchId));
-    return { filename: `partida-${b.batchDate}.csv`, csv: await batchReportCsv(p.batchId, q) };
+    return { filename: `partida-${b.batchDate}.csv`, csv: await batchReportCsv(actor, p.batchId, q) };
   }
-  if (r.kind === 'accounting') return { filename: `spravka-${p.from}-${p.to}.csv`, csv: await accountingCsv({ from: p.from, to: p.to }, q) };
+  if (r.kind === 'accounting') return { filename: `spravka-${p.from}-${p.to}.csv`, csv: await accountingCsv(actor, { from: p.from, to: p.to }, q) };
   throw new AftercareError('unsupported_report');
 }
 
@@ -992,7 +994,8 @@ export type BatchPreview = {
  * Prepared → its stored totals; not yet → a projection from the lines due by
  * then (events that end before the batch date included).
  */
-export async function nextBatchPreview(at?: Date, q: Queryable = db): Promise<BatchPreview> {
+export async function nextBatchPreview(actor: AnyActor, at?: Date, q: Queryable = db): Promise<BatchPreview> {
+  assertFinance(actor);
   const t = at ?? (await now());
   const days = await getSetting('payout.days', t, q);
   let d = payoutDayOnOrAfter(sofiaDate(t), days);
@@ -1039,8 +1042,9 @@ export type PayoutKpis = {
   refunded: { cents: number; cases: number };
 };
 
-/** SPEC §8.1 admin KPIs for a Sofia period (default: the current month). */
-export async function payoutKpis(opts: { at?: Date; from?: DateStr; to?: DateStr } = {}, q: Queryable = db): Promise<PayoutKpis> {
+/** SPEC §8.1 admin KPIs for a Sofia period (default: the current month). view_finance. */
+export async function payoutKpis(actor: AnyActor, opts: { at?: Date; from?: DateStr; to?: DateStr } = {}, q: Queryable = db): Promise<PayoutKpis> {
+  assertFinance(actor);
   const t = opts.at ?? (await now());
   const today = sofiaDate(t);
   const ym = today.slice(0, 7);
@@ -1063,7 +1067,7 @@ export async function payoutKpis(opts: { at?: Date; from?: DateStr; to?: DateStr
   }).from(refund).where(and(eq(refund.status, 'succeeded'), gte(refund.succeededAt, sofiaInstant(from)), lt(refund.succeededAt, sofiaInstant(addDays(to, 1)))));
   return {
     heldForEvents: { cents: Number(held?.cents ?? 0), bookings: Number(held?.n ?? 0) },
-    nextBatch: await nextBatchPreview(t, q),
+    nextBatch: await nextBatchPreview(actor, t, q),
     commission: { month: ym, cents: cur, prevCents: prev, deltaPct: deltaPct(cur, prev) },
     refunded: { cents: ref?.s ?? 0, cases: ref?.cases ?? 0 },
   };
@@ -1078,8 +1082,13 @@ export type PartnerEarnings = {
   paidYear: { year: number; cents: number; count: number; averageCents: number | null };
 };
 
-/** SPEC §8.2 partner earnings (what the partner receives; never the commission). */
-export async function partnerEarnings(partnerId: string, opts: { at?: Date } = {}, q: Queryable = db): Promise<PartnerEarnings> {
+/**
+ * SPEC §8.2 partner earnings (what the partner receives; never the commission): the partner's own,
+ * or a team member with view_finance (and the system).
+ */
+export async function partnerEarnings(actor: AnyActor, partnerId: string, opts: { at?: Date } = {}, q: Queryable = db): Promise<PartnerEarnings> {
+  const own = actor.role === 'partner' && !!actor.partnerId && actor.partnerId === partnerId;
+  if (!own && !isSystem(actor) && !can(actor, 'view_finance')) throw new ForbiddenError('partner_earnings');
   const t = opts.at ?? (await now());
   const today = sofiaDate(t);
   const ym = today.slice(0, 7);
@@ -1123,8 +1132,9 @@ export async function partnerEarnings(partnerId: string, opts: { at?: Date } = {
   };
 }
 
-/** A batch with its items and lines (/admin/plashtaniya/partidi/[id]). */
-export async function batchDetail(batchId: string, q: Queryable = db) {
+/** A batch with its items and lines (/admin/plashtaniya/partidi/[id]). view_finance. */
+export async function batchDetail(actor: AnyActor, batchId: string, q: Queryable = db) {
+  assertFinance(actor);
   const [batch] = await q.select().from(payoutBatch).where(eq(payoutBatch.id, batchId));
   if (!batch) throw new AftercareError('not_found');
   const items = await q.select({ item: payoutItem, partnerName: partner.businessName }).from(payoutItem)
@@ -1142,7 +1152,8 @@ export async function batchDetail(batchId: string, q: Queryable = db) {
  * nothing due (T17 still prepares it) is not a batch anyone was paid in, so it is not listed —
  * it would read ‹Готово› with 0 изпълнители for ever, never to be released.
  */
-export async function listBatches(opts: { limit?: number } = {}, q: Queryable = db): Promise<BatchRow[]> {
+export async function listBatches(actor: AnyActor, opts: { limit?: number } = {}, q: Queryable = db): Promise<BatchRow[]> {
+  assertFinance(actor);
   return q.select().from(payoutBatch)
     .where(and(ne(payoutBatch.status, 'scheduled'), sql`exists (select 1 from payout_item i where i.batch_id = ${payoutBatch.id})`))
     .orderBy(desc(payoutBatch.batchDate)).limit(opts.limit ?? 24);

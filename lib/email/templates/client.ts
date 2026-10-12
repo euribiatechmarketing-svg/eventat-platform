@@ -99,14 +99,15 @@ export const client2faOn: EmailTemplate<TwoFactorVars> = {
   }),
 };
 
-type SignoutAllVars = { email: string; sessions: { device: string; city: string }[] };
+/** sessions[].city: null when the session's place is unknown — the place is then left out, never guessed. */
+type SignoutAllVars = { email: string; sessions: { device: string; city: string | null }[] };
 export const clientSignoutAll: EmailTemplate<SignoutAllVars> = {
   key: 'client-signout-all', audience: 'client', optional: false,
   render: v => {
     const cities = [...new Set(v.sessions.map(s => s.city))];
     const where = cities.length === 1
-      ? `${andJoin(v.sessions.map(s => s.device))} ${inAt(cities[0])}`
-      : andJoin(v.sessions.map(s => `${s.device} ${inAt(s.city)}`));
+      ? `${andJoin(v.sessions.map(s => s.device))}${cities[0] ? ` ${inAt(cities[0])}` : ''}`
+      : andJoin(v.sessions.map(s => (s.city ? `${s.device} ${inAt(s.city)}` : s.device)));
     return {
       subject: 'Излязохте от профила си на всички устройства',
       preheader: 'За да продължите, влезте отново с имейла и паролата си.',
@@ -116,7 +117,7 @@ export const clientSignoutAll: EmailTemplate<SignoutAllVars> = {
         `По ваше искане прекратихме всички активни сесии в профила ви, включително на ${where}.`,
         'За да продължите, влезте отново. Ако не сте поискали това вие, сменете паролата си.',
       ],
-      details: [['Профил', v.email], ['Прекратени сесии', v.sessions.map(s => `${s.device} · ${s.city}`).join(', ')]],
+      details: [['Профил', v.email], ['Прекратени сесии', v.sessions.map(s => (s.city ? `${s.device} · ${s.city}` : s.device)).join(', ')]],
       cta: { label: 'Вход', href: '/vhod' },
     };
   },
@@ -314,32 +315,43 @@ export const clientPaymentExpired: EmailTemplate<PaymentExpiredVars> = {
   }),
 };
 
-/** reason: the decline reason as shown, e.g. 'Датата е заета'. The running text is written for that reason. */
+/**
+ * reason: the decline reason as shown — 'Датата е заета', or the partner's own text for ‹Друга причина›.
+ * dateTaken: false for ‹Друга причина› (default true, the prototype's case). The prototype words only the
+ * date-taken case, so for another reason the email keeps its wording minus every claim that the date is
+ * taken (the client request page says it the same way: ‹… отказа заявката ви. Не дължите нищо …›).
+ */
 type RequestDeclinedVars = {
   requestNo: string; partnerName: string; partnerCategory: string; serviceName: string;
-  eventType: string; eventDate: string; reason: string; amount: string;
+  eventType: string; eventDate: string; reason: string; dateTaken?: boolean; amount: string;
 };
 export const clientRequestDeclined: EmailTemplate<RequestDeclinedVars> = {
   key: 'client-request-declined', audience: 'client', optional: false,
-  render: v => ({
-    subject: `${v.partnerName} отказа заявката ви за ${v.eventDate}`,
-    preheader: `${v.reason} и не дължите нищо — вижте подобни изпълнители.`,
-    trigger: 'Отказана заявка',
-    heading: 'Заявката ви е отказана',
-    paragraphs: [
-      `${v.partnerName} отказа заявката ви, защото датата ${v.eventDate} е заета. Не дължите нищо — плащате само за одобрени заявки.`,
-      'Вижте подобни изпълнители, които са свободни на тази дата. Можете и да следите датата — ако се освободи, ще ви известим веднага.',
-    ],
-    details: [
-      ['Заявка №', v.requestNo],
-      ['Изпълнител', `${v.partnerName} · ${v.partnerCategory}`],
-      ['Услуга', v.serviceName],
-      ['Събитие', `${v.eventType} · ${v.eventDate}`],
-      ['Причина', v.reason],
-      ['Сума', v.amount],
-    ],
-    cta: { label: 'Виж подобни', href: '/tarsene' },
-  }),
+  render: v => {
+    const taken = v.dateTaken ?? true;
+    return {
+      subject: `${v.partnerName} отказа заявката ви за ${v.eventDate}`,
+      preheader: taken ? `${v.reason} и не дължите нищо — вижте подобни изпълнители.` : 'Не дължите нищо — вижте подобни изпълнители.',
+      trigger: 'Отказана заявка',
+      heading: 'Заявката ви е отказана',
+      paragraphs: taken ? [
+        `${v.partnerName} отказа заявката ви, защото датата ${v.eventDate} е заета. Не дължите нищо — плащате само за одобрени заявки.`,
+        'Вижте подобни изпълнители, които са свободни на тази дата. Можете и да следите датата — ако се освободи, ще ви известим веднага.',
+      ] : [
+        `${v.partnerName} отказа заявката ви. Не дължите нищо — плащате само за одобрени заявки.`,
+        'Вижте подобни изпълнители, които са свободни на тази дата.',
+      ],
+      details: [
+        ['Заявка №', v.requestNo],
+        ['Изпълнител', `${v.partnerName} · ${v.partnerCategory}`],
+        ['Услуга', v.serviceName],
+        ['Събитие', `${v.eventType} · ${v.eventDate}`],
+        ['Причина', v.reason],
+        ['Сума', v.amount],
+      ],
+      cta: { label: 'Виж подобни', href: '/tarsene' },
+    };
+  },
 };
 
 type RequestExpiredVars = {
@@ -772,7 +784,7 @@ export const clientDateFreed: EmailTemplate<DateFreedVars> = {
   }),
 };
 
-/** extraHours: how long the team extended the deadline by (24). */
+/** extraHours: how long the team extended the deadline by (24; less when the event start clamps it, §17). */
 type PaymentExtendedVars = {
   bookingId: string; requestNo: string; extraHours: number;
   partnerName: string; partnerCategory: string; eventType: string; eventDate: string; location: string; newDeadline: string;
@@ -780,12 +792,12 @@ type PaymentExtendedVars = {
 export const clientPaymentExtended: EmailTemplate<PaymentExtendedVars> = {
   key: 'client-payment-extended', audience: 'client', optional: false,
   render: v => ({
-    subject: `Срокът за плащане е удължен с ${v.extraHours} часа — ${v.partnerName}, ${v.eventDate}`,
+    subject: `Срокът за плащане е удължен с ${pl(v.extraHours, 'час', 'часа')} — ${v.partnerName}, ${v.eventDate}`,
     preheader: `Датата ${v.eventDate} остава запазена за вас до ${v.newDeadline}.`,
     trigger: 'Удължен срок за плащане',
     heading: 'Срокът за плащане е удължен',
     paragraphs: [
-      `Екипът на EventAT удължи с ${v.extraHours} часа срока за плащане по заявка № ${v.requestNo}. Датата ${v.eventDate} остава запазена за вас при ${v.partnerName} до новия срок.`,
+      `Екипът на EventAT удължи с ${pl(v.extraHours, 'час', 'часа')} срока за плащане по заявка № ${v.requestNo}. Датата ${v.eventDate} остава запазена за вас при ${v.partnerName} до новия срок.`,
       'Ако не платите дотогава, датата се освобождава автоматично и не дължите нищо.',
     ],
     details: [

@@ -8,21 +8,21 @@
 // While a dispute with holds_payout is open the booking's payout is held
 // (booking.payout_hold, lines `held`; K13 does not release). When it ends the
 // payout returns to its schedule and anything already due is released.
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import { db, type Queryable, type Tx } from '@/db';
 import {
-  booking, charge, dispute, disputeAttachment, disputeMessage, disputeOption, job, media, request, user,
+  booking, charge, dispute, disputeAttachment, disputeMessage, disputeOption, media, request, user,
   type DisputeDecisionKind, type DisputeParty, type DisputeReason,
 } from '@/db/schema';
 import { now } from '@/lib/clock';
 import { addDays, date as fmtDate, dateTime, money, moneyShort, sofiaDate, sofiaInstant } from '@/lib/format';
 import { ForbiddenError, SYSTEM, assertCan, type Actor, type AnyActor } from './actor';
 import { audit } from './audit';
-import { getSetting } from './settings';
+import { getSetting, getSettings } from './settings';
 import { cancelBookingCore, quoteFor } from './cancellation';
 import { reprojectBookingLine, syncBookingHold } from './payouts';
 import { createRefunds, refundableCharges } from './refunds';
-import { expireOpenCharges } from './bookings';
+import { cancelPaymentJobs, expireOpenCharges, schedulePaymentJobs } from './bookings';
 import {
   AftercareError, DISPUTE_REASON_LABEL, bpOf, cancelPending, ctxText, loadBookingCtx, low, mailClient, mailPartner, mailTeam, paidCents,
   percentOf, refundablePaidCents, routes, schedule, withTx, type BookingCtx,
@@ -611,8 +611,10 @@ export async function decide(actor: Actor, input: DecideInput, tx?: Tx): Promise
 /**
  * K16: a new price while awaiting payment. The payment plan follows the
  * booking's mode; an open checkout or transfer for the old amount is expired;
- * with a new deadline the pending payment timers (T5–T8, all relative to the
- * deadline) move by the same shift.
+ * with a new deadline (restore_price) the payment timers T5–T8 are armed again
+ * for it, as at K1: reminders that already ran for the old deadline run again
+ * (their email dedupe keys carry the deadline, so they are fresh), and a
+ * reminder whose moment is already past is not scheduled.
  */
 async function repriceBooking(tx: Tx, b: typeof booking.$inferSelect, amount: number, newDueAt: Date | null): Promise<void> {
   const at = await now();
@@ -623,15 +625,14 @@ async function repriceBooking(tx: Tx, b: typeof booking.$inferSelect, amount: nu
     dueNow = depositPay;
     balance = amount - depositPay;
   }
-  await tx.update(booking).set({
+  const [updated] = await tx.update(booking).set({
     amountCents: amount, dueNowCents: dueNow, depositPayCents: depositPay, balanceCents: balance,
     ...(newDueAt ? { paymentDueAt: newDueAt } : {}), updatedAt: at,
-  }).where(eq(booking.id, b.id));
+  }).where(eq(booking.id, b.id)).returning();
   await expireOpenCharges(tx, b.id, at);
   if (newDueAt) {
-    const shiftMs = newDueAt.getTime() - b.paymentDueAt.getTime();
-    await tx.execute(sql`update job set run_at = run_at + (${shiftMs} * interval '1 millisecond') where id in (
-      select id from ${job} where status = 'pending' and dedupe_key like ${`booking:${b.id}:%`} for update skip locked)`);
+    await cancelPaymentJobs(tx, b.id);
+    await schedulePaymentJobs(tx, updated, await getSettings(at, tx), at);
   }
 }
 
