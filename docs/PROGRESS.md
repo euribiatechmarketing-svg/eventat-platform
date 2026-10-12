@@ -42,14 +42,28 @@ Living log of the platform build. Newest state at the top of each section.
   every measured page < 300 ms on the production build (worst `/admin/klienti`: 3 s → 106 ms); 5 indexes; long lists
   capped with ‹Покажи още› (decision 158).
 
+- **Launch readiness** (12 Oct):
+  - Stripe Connect path tested against the official stripe-mock (`tools/stripe-mock.sh`) and signed webhooks:
+    50 payment tests; 11 bugs fixed (double balance charge on timeout, dropped events, stuck refunds/payouts,
+    late `account.updated` undoing a newer one…). Real test-mode setup: `docs/STRIPE-TEST-MODE.md`.
+  - Hardening: CSP + HSTS + frame/referrer/permissions headers (e2e fails on any CSP violation), `/api/health`,
+    Bulgarian error boundaries, structured error logs with optional Sentry (`SENTRY_DSN`), boot-time env checks.
+  - Domain leftovers closed (reminders re-armed after restore_price, finance read functions check permissions,
+    K3 extension clamped, declined-request and sign-out-everywhere emails, GMV hidden without view_finance).
+  - Vercel Blob storage driver for staging (public + private stores); `npm run vercel-build` migrates on every deploy
+    and seeds an empty staging database once (`STAGING_SEED=true`).
+  - After the merge: 674 unit tests (+50 Stripe tests with stripe-mock), 13/13 e2e suites with zero CSP violations.
+
 ## In progress
-- Nothing running.
+- Waiting for the staging project in Vercel (the Vercel connection here can view the Euribiatech team but not create
+  projects — 403). Env values to paste: `~/Desktop/eventat-staging.env` (not in git).
 
 ## Next
 State at end of 9 Oct: main `6a8bd34` — 586 unit tests, 13/13 e2e suites (9 areas + 4 journeys) pass on the production build.
-1. **Staging online** as soon as a Neon database exists (Vercel → Euribiatech → Storage → Neon, Frankfurt):
-   Vercel project in the Euribiatech team from `euribiatechmarketing-svg/eventat-platform`, env vars per docs/DEPLOY.md,
-   `STAGING_DB_HOST=… npm run db:reset && npm run db:seed`, Deployment Protection on.
+1. **Staging online** (a person, ~5 min): Vercel → Euribiatech → Add New → Project → import
+   `euribiatechmarketing-svg/eventat-platform`, paste `~/Desktop/eventat-staging.env` into Environment Variables, Deploy;
+   Storage → Neon (Frankfurt) → connect; Storage → Blob `eventat-staging-public` (public) and `eventat-staging-private`
+   (private, prefix `BLOB_PRIVATE`) → connect; Redeploy. The build migrates and seeds by itself. Then: check it end to end.
 2. **Apply Nikola's answers** to `docs/review-list.md` (158 items), then rerun `tools/e2e-all.sh`.
 3. Before launch: error monitoring (Sentry; also to catch the rare hydration warning #418), real Stripe test-mode run
    with test keys, Postmark sending domain (SPF/DKIM/DMARC), private R2 bucket, Stripe Connect webhook.
