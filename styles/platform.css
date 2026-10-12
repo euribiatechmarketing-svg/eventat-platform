@@ -147,3 +147,5 @@ textarea { resize: vertical; }
 .ui-notfound-code { margin: 0; font-family: var(--font-num); font-size: 56px; font-weight: 700; color: var(--primary-300); line-height: 1; }
 .ui-notfound-t { font-family: var(--font-display); font-weight: 700; font-size: 30px; color: var(--primary-900); margin: 16px 0 10px; }
 .ui-notfound-d { margin: 0 0 24px; color: var(--neutral-600); font-size: 15px; text-wrap: pretty; }
+/* error pages (error.tsx, global-error.tsx): the same layout, the message as the heading, then the button */
+.ui-error .ui-notfound-t { margin: 0 0 24px; text-wrap: balance; }

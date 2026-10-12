@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next';
+import { securityHeaders } from './lib/security-headers';
 
 const nextConfig: NextConfig = {
   // The prototype's Bulgarian copy and the app share one language; no i18n routing.
@@ -10,6 +11,10 @@ const nextConfig: NextConfig = {
   // and transformed anyone's R2 images at our expense. Should it be turned on, only our own media host.
   images: { unoptimized: true, remotePatterns: [{ protocol: 'https', hostname: 'media.eventat.bg', pathname: '/public/**' }] },
   experimental: { serverActions: { bodySizeLimit: '12mb' }, globalNotFound: true },
+  // HSTS, CSP, framing, referrer and permissions for every route (lib/security-headers.ts).
+  async headers() {
+    return securityHeaders(process.env);
+  },
 };
 
 export default nextConfig;

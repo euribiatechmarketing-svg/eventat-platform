@@ -604,3 +604,7 @@ The automated audit (WCAG 2.2 AA) now finds only colour contrast, all coming fro
 **158. ‹Покажи още› on long lists (speed check, 9 Oct)** — `/tarsene`, `/kategorii/[slug]`, `/partner/zayavki`, `/admin/rezervacii`, `/admin/klienti`
 - Now: at launch-year volume these lists were slow and heavy (the client list took 3 s). They now show 24 cards (search, category), 50 rows (partner requests, clients) or 100 rows (admin bookings) and a ‹Покажи още› link, the same link the partner profile already uses for reviews. Counts and totals still cover everything. With the demo data the link never appears.
 - The prototype has no paging pattern. Options: A — keep ‹Покажи още›; B — numbered pages; C — something else.
+
+**159. Error page (production hardening, 12 Oct)** — any page that fails on the server: site, client account, partner and admin panels, partner sign-up
+- Now: heading ‹Нещо се обърка. Опитайте отново.› and the button ‹Към началото› (site, sign-up) or ‹Към таблото› (partner and admin panels), laid out like the page-not-found screen (17). Inside the panels the side menu stays. On the start page or the dashboard itself the button loads that page again.
+- Why: the prototype has no error screen. It reuses approved copy (28, 17) and adds none.
