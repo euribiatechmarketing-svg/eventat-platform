@@ -70,8 +70,9 @@ export interface PaymentProvider {
   expireCheckout(providerRef: string): Promise<void>;
   /**
    * Charge a saved card without the client present (balance before the event). `failed` only when the
-   * provider declined it; `processing` when its result comes later (as a ProviderEvent). A call that
-   * throws (timeout, outage) may still have charged: the caller asks again under the same charge id.
+   * provider declined or refused it (nothing charged); `processing` when its result comes later (as a
+   * ProviderEvent). A call that throws (timeout, outage) may still have charged: the caller asks again
+   * under the same charge id.
    */
   chargeOffSession(a: OffSessionChargeArgs): Promise<{ providerRef: string; status: 'succeeded' | 'processing' | 'failed' | 'requires_action'; reason?: string }>;
   /** Refund (part of) a charge back to the original card. */

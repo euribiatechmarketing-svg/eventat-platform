@@ -210,6 +210,21 @@ describe.skipIf(!mock.up)(`Stripe provider against stripe-mock (${STRIPE_MOCK_UR
       rec.override({ method: 'POST', path: '/v1/payment_intents', reply: () => ({ status: 500, body: stripeError('api_error', 'Internal error'), headers: { 'stripe-should-retry': 'false' } }) });
       await expect(stripeProvider.chargeOffSession(args)).rejects.toThrow();
     });
+
+    it('a refusal that asking again cannot change (an invalid request: the card or customer is gone) is a failure, not a call in doubt', async () => {
+      rec.override({
+        method: 'POST', path: '/v1/payment_intents',
+        reply: () => ({ status: 400, body: stripeError('invalid_request_error', "No such PaymentMethod: 'pm_visa4242'", { code: 'resource_missing', param: 'payment_method' }) }),
+      });
+      expect(await stripeProvider.chargeOffSession(args)).toEqual({ providerRef: '', status: 'failed', reason: "No such PaymentMethod: 'pm_visa4242'" });
+      // A request conflicting with one still running (409) or a changed request under the same key may still charge: in doubt.
+      rec.reset();
+      rec.override({ method: 'POST', path: '/v1/payment_intents', reply: () => ({ status: 409, body: stripeError('invalid_request_error', 'There is currently another in-progress request using this Stripe-Idempotency-Key', { code: 'idempotency_key_in_use' }), headers: { 'stripe-should-retry': 'false' } }) });
+      await expect(stripeProvider.chargeOffSession(args)).rejects.toThrow();
+      rec.reset();
+      rec.override({ method: 'POST', path: '/v1/payment_intents', reply: () => ({ status: 400, body: stripeError('idempotency_error', 'Keys for idempotent requests can only be used with the same parameters they were first used with.') }) });
+      await expect(stripeProvider.chargeOffSession(args)).rejects.toThrow();
+    });
   });
 
   describe('refunds (F1–F3)', () => {
@@ -326,6 +341,20 @@ describe.skipIf(!mock.up)(`Stripe provider against stripe-mock (${STRIPE_MOCK_UR
         paymentMethodRef: pm.id, cardBrand: pm.card.brand, cardLast4: pm.card.last4,
       }]);
       expect(pm.card).toMatchObject({ brand: 'visa', last4: '4242' });
+    });
+
+    it('account.updated reads the account as Stripe holds it now (an older event delivered late cannot undo a newer one)', async () => {
+      vi.stubEnv('STRIPE_CONNECT_WEBHOOK_SECRET', 'whsec_provider_connect');
+      rec.override({
+        method: 'GET', path: '/v1/accounts/acct_partner1',
+        patch: b => ({ ...b, charges_enabled: true, payouts_enabled: true, requirements: { ...(b.requirements as object), currently_due: [] } }),
+      });
+      const stale = stripeEvent('account.updated', {
+        id: 'acct_partner1', object: 'account', charges_enabled: false, payouts_enabled: false, requirements: { currently_due: ['external_account'] },
+      }, { account: 'acct_partner1' });
+      const out = await stripeProvider.parseWebhook(signedWebhook(stale, 'whsec_provider_connect'));
+      one('/v1/accounts/acct_partner1', 'GET');
+      expect(out).toEqual([{ type: 'account.updated', accountRef: 'acct_partner1', status: { chargesEnabled: true, payoutsEnabled: true, requirementsDue: [] } }]);
     });
   });
 });

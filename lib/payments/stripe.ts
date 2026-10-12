@@ -41,6 +41,9 @@ const refundResult = (r: Stripe.Refund) => ({
   status: r.status === 'succeeded' ? 'succeeded' as const : r.status === 'failed' || r.status === 'canceled' ? 'failed' as const : 'pending' as const,
   reason: r.failure_reason ?? (r.status === 'canceled' ? 'canceled' : undefined),
 });
+const accountStatus = (a: Stripe.Account) => ({
+  chargesEnabled: !!a.charges_enabled, payoutsEnabled: !!a.payouts_enabled, requirementsDue: a.requirements?.currently_due ?? [],
+});
 const payoutResult = (p: Stripe.Payout) => ({
   payoutRef: p.id,
   status: p.status === 'paid' ? 'paid' as const : p.status === 'failed' || p.status === 'canceled' ? 'failed' as const : 'pending' as const,
@@ -67,8 +70,7 @@ export const stripeProvider: PaymentProvider = {
   },
 
   async partnerAccountStatus(accountRef) {
-    const a = await stripe().accounts.retrieve(accountRef);
-    return { chargesEnabled: !!a.charges_enabled, payoutsEnabled: !!a.payouts_enabled, requirementsDue: a.requirements?.currently_due ?? [] };
+    return accountStatus(await stripe().accounts.retrieve(accountRef));
   },
 
   async createCheckout(a) {
@@ -116,9 +118,11 @@ export const stripeProvider: PaymentProvider = {
       const status = pi.status === 'succeeded' ? 'succeeded' : pi.status === 'processing' ? 'processing' : pi.status === 'requires_action' ? 'requires_action' : 'failed';
       return { providerRef: pi.id, status, ...(status === 'failed' ? { reason: pi.last_payment_error?.message ?? pi.status } : {}) };
     } catch (e) {
-      // Only a decline is a failure. A timeout or an outage may have charged the card: it throws, and the
-      // caller asks again with the same charge (idempotency key) instead of charging under a new one.
-      if (!(e instanceof Stripe.errors.StripeCardError)) throw e;
+      // A decline, or a request Stripe refused outright (invalid: the card or the customer is gone, the partner's
+      // account cannot take it), charged nothing and would be answered the same again: a failure. Anything else
+      // (a timeout, an outage, a request still running under the same key) may have charged the card: it throws,
+      // and the caller asks again with the same charge (idempotency key) instead of charging under a new one.
+      if (!(e instanceof Stripe.errors.StripeCardError || e instanceof Stripe.errors.StripeInvalidRequestError)) throw e;
       return { providerRef: (e.payment_intent as { id?: string } | undefined)?.id ?? '', status: 'failed', reason: e.message };
     }
   },
@@ -220,8 +224,10 @@ export const stripeProvider: PaymentProvider = {
         break;
       }
       case 'account.updated': {
-        const a = ev.data.object as Stripe.Account;
-        out.push({ type: 'account.updated', accountRef: a.id, status: { chargesEnabled: !!a.charges_enabled, payoutsEnabled: !!a.payouts_enabled, requirementsDue: a.requirements?.currently_due ?? [] } });
+        // Stripe does not deliver events in order, and retries one answered 500 later: an older snapshot can
+        // arrive after a newer one. The account is read as Stripe holds it now, so a late event never undoes P11.
+        const a = await stripe().accounts.retrieve((ev.data.object as Stripe.Account).id);
+        out.push({ type: 'account.updated', accountRef: a.id, status: accountStatus(a) });
         break;
       }
       case 'charge.dispute.created': {

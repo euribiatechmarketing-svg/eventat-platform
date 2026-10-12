@@ -10,6 +10,7 @@ import { db } from '@/db';
 import * as s from '@/db/schema';
 import { setTestNow } from '@/lib/clock';
 import { sofiaInstant } from '@/lib/format';
+import { MAX_JOB_ATTEMPTS, runDueJobs } from '@/lib/jobs';
 import { SYSTEM } from '@/lib/domain/actor';
 import { startPayment } from '@/lib/domain/charges';
 import { prepareBatch, releaseBatch, releaseBookingFunds } from '@/lib/domain/payouts';
@@ -17,7 +18,7 @@ import { createRefunds } from '@/lib/domain/refunds';
 import { POST as webhook } from '@/app/api/webhooks/stripe/route';
 import { createAdmin, createPartner } from '../helpers/factories';
 import { clearJobs, confirmPayoutAccount, paidBooking as paidRow, reloadBooking } from '../helpers/aftercare';
-import { NOW, approvedBooking, bookingRow, emails, expectLedgerHealthy, forceSetting, jobs, tickAt } from '../helpers/lifecycle';
+import { H, NOW, approvedBooking, bookingRow, emails, expectLedgerHealthy, forceSetting, jobs, tickAt } from '../helpers/lifecycle';
 import { signedWebhook, stripeEvent, stripeRecorder, type StripeRecorder } from '../helpers/stripe';
 
 const PLATFORM = 'whsec_platform_endpoint_test';
@@ -26,6 +27,8 @@ const UNKNOWN_ID = '00000000-0000-4000-8000-0000000000ff';
 
 let fake: StripeRecorder;
 let seq = 0;
+/** What GET /v1/accounts/:id answers: each connected account as Stripe holds it now. */
+const accountsAtStripe = new Map<string, Record<string, unknown>>();
 beforeAll(async () => { fake = await stripeRecorder(); });
 afterAll(async () => { await fake?.close(); });
 
@@ -46,10 +49,18 @@ function answerApi() {
     method: 'POST', path: /^\/v1\/checkout\/sessions\/[^/]+\/expire$/,
     reply: c => ({ status: 200, body: { id: c.path.split('/')[4], object: 'checkout.session', status: 'expired' } }),
   });
+  fake.override({
+    method: 'GET', path: /^\/v1\/accounts\/[^/]+$/,
+    reply: c => {
+      const a = accountsAtStripe.get(c.path.split('/').pop()!);
+      return a ? { status: 200, body: a } : { status: 404, body: { error: { type: 'invalid_request_error', code: 'resource_missing', message: 'No such account' } } };
+    },
+  });
 }
 
 beforeEach(async () => {
   fake.reset();
+  accountsAtStripe.clear();
   answerApi();
   vi.stubEnv('PAYMENT_PROVIDER', 'stripe');
   vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_webhookFake');
@@ -281,6 +292,84 @@ describe('the off-session balance (deposit schedule, T9)', () => {
   });
 });
 
+describe('the off-session balance when Stripe does not answer (T9 / T10)', () => {
+  beforeEach(async () => { await forceSetting('payment.schedule', { mode: 'deposit_balance', deposit_percent: null, balance_due_days: 30 }); });
+  afterEach(async () => { await forceSetting('payment.schedule', { mode: 'full', deposit_percent: null, balance_due_days: 30 }); });
+
+  /** A booking paid by deposit through Stripe Checkout (the card kept); its balance is due on 20 September, T9 at 10:00. */
+  async function depositPaid() {
+    const a = await openCheckout({ eventDate: '2025-10-20' });
+    await expectStatus(post(stripeEvent('checkout.session.completed', session(a.sessionId, a.chargeId))), 200);
+    expect(await bookingRow(a.bookingId)).toMatchObject({ status: 'confirmed', balanceDueDate: '2025-09-20' });
+    return a;
+  }
+  const T9 = sofiaInstant('2025-09-20', 10, 0);
+  const balanceOf = (bookingId: string) => db.select().from(s.charge).where(and(eq(s.charge.bookingId, bookingId), eq(s.charge.kind, 'balance')));
+  const job = async (key: string) => (await jobs(key)).find(j => j.dedupeKey === key);
+  const stripeDown = (times?: number) => fake.override({
+    method: 'POST', path: '/v1/payment_intents', times,
+    reply: () => ({ status: 500, body: { error: { type: 'api_error', message: 'Stripe is down' } }, headers: { 'stripe-should-retry': 'false' } }),
+  });
+  const stripeCharges = () => fake.override({
+    method: 'POST', path: '/v1/payment_intents',
+    reply: c => ({ status: 200, body: { id: `pi_offsession_${c.form['metadata[chargeId]'].slice(0, 8)}`, object: 'payment_intent', status: 'succeeded' } }),
+  });
+
+  it('Stripe out of reach for longer than the job\'s own retries: the T10 retry still comes, and asks again for the same charge under the same key', async () => {
+    const a = await depositPaid();
+    stripeDown();
+    for (let i = 0; i < MAX_JOB_ATTEMPTS; i++) {
+      setTestNow(new Date(T9.getTime() + i * H));
+      expect((await runDueJobs()).failed).toBe(1);
+    }
+    expect((await job(`booking:${a.bookingId}:balance`))?.status).toBe('failed');
+    const [inDoubt] = await balanceOf(a.bookingId);
+    expect(inDoubt).toMatchObject({ status: 'pending', providerRef: null });
+    const retry = await job(`booking:${a.bookingId}:balanceretry:1`);
+    expect(retry).toMatchObject({ status: 'pending', payload: { bookingId: a.bookingId, attempt: 1 } });
+    expect(retry!.runAt.getTime()).toBeGreaterThan(T9.getTime() + 24 * H);
+
+    stripeCharges();
+    await tickAt(retry!.runAt);
+    expect(await balanceOf(a.bookingId)).toMatchObject([{ id: inDoubt.id, status: 'succeeded', isDuplicate: false }]);
+    expect(new Set(fake.callsTo('/v1/payment_intents', 'POST').map(c => c.headers['idempotency-key']))).toEqual(new Set([`offsession-${inDoubt.id}`]));
+  });
+
+  it('a refusal that asking again cannot change (the saved card is gone at Stripe) fails the attempt, and the T10 retry follows', async () => {
+    const a = await depositPaid();
+    fake.override({
+      method: 'POST', path: '/v1/payment_intents',
+      reply: () => ({ status: 400, body: { error: { type: 'invalid_request_error', code: 'resource_missing', param: 'payment_method', message: "No such PaymentMethod: 'pm_card_visa'" } } }),
+    });
+    await tickAt(T9);
+    expect(await balanceOf(a.bookingId)).toMatchObject([{ status: 'failed', failureReason: "No such PaymentMethod: 'pm_card_visa'" }]);
+    expect((await job(`booking:${a.bookingId}:balanceretry:1`))?.status).toBe('pending');
+  });
+
+  it('a balance charge in doubt is not asked again while the client is paying the balance in a checkout', async () => {
+    const a = await depositPaid();
+    stripeDown(1);
+    setTestNow(T9);
+    expect((await runDueJobs()).failed).toBe(1);
+    const [inDoubt] = await balanceOf(a.bookingId);
+    expect(inDoubt).toMatchObject({ status: 'pending', providerRef: null, checkoutUrl: null });
+
+    // Meanwhile the client pays the balance on /plashtane/[nomer] (‹Плати›).
+    const pay = await startPayment(a.client.actor, { number: a.number, method: 'card' });
+    const checkout = await chargeRow(pay.chargeId);
+    expect(checkout).toMatchObject({ kind: 'balance', status: 'pending', providerRef: expect.stringMatching(/^cs_test_/) });
+    stripeCharges();
+    const asked = fake.callsTo('/v1/payment_intents', 'POST').length;
+    setTestNow(new Date(T9.getTime() + H)); // the job's retry
+    expect((await runDueJobs()).failed).toBe(0);
+    expect(fake.callsTo('/v1/payment_intents', 'POST')).toHaveLength(asked);
+
+    await expectStatus(post(stripeEvent('checkout.session.completed', session(checkout.providerRef!, checkout.id))), 200);
+    expect((await chargeRow(checkout.id))).toMatchObject({ status: 'succeeded', isDuplicate: false });
+    expect(await db.select().from(s.auditLog).where(and(eq(s.auditLog.entityId, a.bookingId), eq(s.auditLog.action, 'booking.balance_paid')))).toHaveLength(1);
+  });
+});
+
 describe('refunds (platform endpoint)', () => {
   async function pendingRefund(ref?: string) {
     const b = await paidRow();
@@ -395,6 +484,13 @@ describe('payouts (Connect endpoint)', () => {
 });
 
 describe('partner accounts (Connect endpoint)', () => {
+  /** The account as Stripe holds it from now on (what GET /v1/accounts/:id answers), and the event payload that says so. */
+  const atStripe = (id: string, charges: boolean, payouts: boolean, due: string[]) => {
+    const a = stripeAccount(id, charges, payouts, due);
+    accountsAtStripe.set(id, a);
+    return a;
+  };
+
   it('account.updated keeps the partner\'s charges, payouts and requirements in step (P11)', async () => {
     const p = await stripePartner();
     await db.update(s.partner).set({ providerStatus: 'pending', providerChargesEnabled: false, providerPayoutsEnabled: false }).where(eq(s.partner.id, p.partner.id));
@@ -402,20 +498,35 @@ describe('partner accounts (Connect endpoint)', () => {
     const row = async () => (await db.select().from(s.partner).where(eq(s.partner.id, p.partner.id)))[0];
 
     // A new account before onboarding: still pending (as when it was created), not restricted.
-    await expectStatus(post(stripeEvent('account.updated', stripeAccount(acct, false, false, ['external_account', 'tos_acceptance.date']), { account: acct }), CONNECT), 200);
+    await expectStatus(post(stripeEvent('account.updated', atStripe(acct, false, false, ['external_account', 'tos_acceptance.date']), { account: acct }), CONNECT), 200);
     expect(await row()).toMatchObject({ providerStatus: 'pending', providerChargesEnabled: false, providerRequirements: ['external_account', 'tos_acceptance.date'] });
 
-    const enabled = stripeEvent('account.updated', stripeAccount(acct, true, true, []), { account: acct });
+    const enabled = stripeEvent('account.updated', atStripe(acct, true, true, []), { account: acct });
     await expectStatus(post(enabled, CONNECT), 200);
     expect(await row()).toMatchObject({ providerStatus: 'enabled', providerChargesEnabled: true, providerPayoutsEnabled: true, providerRequirements: [] });
     await expectStatus(post(enabled, CONNECT), 200);
     expect((await row()).providerStatus).toBe('enabled');
 
-    await expectStatus(post(stripeEvent('account.updated', stripeAccount(acct, true, false, ['external_account']), { account: acct }), CONNECT), 200);
+    await expectStatus(post(stripeEvent('account.updated', atStripe(acct, true, false, ['external_account']), { account: acct }), CONNECT), 200);
     expect(await row()).toMatchObject({ providerStatus: 'restricted', providerPayoutsEnabled: false, providerRequirements: ['external_account'] });
+    expect(fake.callsTo(`/v1/accounts/${acct}`, 'GET')).toHaveLength(4);
+  });
+
+  it('an older account.updated delivered late (Stripe retries it after a 500) does not undo a newer one: the account is read as Stripe holds it now', async () => {
+    const p = await stripePartner();
+    await db.update(s.partner).set({ providerStatus: 'pending', providerChargesEnabled: false, providerPayoutsEnabled: false }).where(eq(s.partner.id, p.partner.id));
+    const acct = p.partner.providerAccountRef!;
+    const row = async () => (await db.select().from(s.partner).where(eq(s.partner.id, p.partner.id)))[0];
+    // Stripe's first event about the new account (before onboarding) failed to apply and is retried later…
+    const first = stripeEvent('account.updated', stripeAccount(acct, false, false, ['external_account']), { account: acct });
+    // …while the partner finishes onboarding and the newer event is applied.
+    await expectStatus(post(stripeEvent('account.updated', atStripe(acct, true, true, []), { account: acct }), CONNECT), 200);
+    expect(await row()).toMatchObject({ providerStatus: 'enabled', providerChargesEnabled: true });
+    await expectStatus(post(first, CONNECT), 200);
+    expect(await row()).toMatchObject({ providerStatus: 'enabled', providerChargesEnabled: true, providerPayoutsEnabled: true, providerRequirements: [] });
   });
 
   it('an account not stored (yet) answers 500', async () => {
-    await expectStatus(post(stripeEvent('account.updated', stripeAccount('acct_test_not_ours', true, true, []), { account: 'acct_test_not_ours' }), CONNECT), 500);
+    await expectStatus(post(stripeEvent('account.updated', atStripe('acct_test_not_ours', true, true, []), { account: 'acct_test_not_ours' }), CONNECT), 500);
   });
 });

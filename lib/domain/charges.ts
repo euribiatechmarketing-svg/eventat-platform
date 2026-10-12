@@ -359,7 +359,11 @@ async function scheduleNextBalanceStep(t: Tx, b: { id: string; eventDate: string
  * The charge is committed before the provider is asked, and asked outside the
  * transaction: a call that throws (a timeout, an outage) may still have charged
  * the card, so the job's retry asks again for the same charge — the same
- * idempotency key — and never charges under a new one.
+ * idempotency key — and never charges under a new one. The next T10 step is
+ * scheduled before the error is passed on, so an outage longer than the job's
+ * own retries still leaves the retries and the last check; that step asks
+ * again for the charge in doubt, unless the client is paying the balance in a
+ * checkout by then.
  */
 async function attemptBalance(bookingId: string, attempt: number): Promise<'paid' | 'failed' | 'pending' | 'skipped'> {
   const plan = await db.transaction(async t => {
@@ -371,9 +375,10 @@ async function attemptBalance(bookingId: string, attempt: number): Promise<'paid
     if (bw.charges.some(c => c.kind === 'balance' && (SUCCEEDED as readonly string[]).includes(c.status))) return null;
     // An off-session charge the provider never answered for (no checkout, no ref): asked again below.
     const unanswered = bw.charges.find(c => c.kind === 'balance' && c.status === 'pending' && c.method === 'card' && !c.checkoutUrl && !c.providerRef);
-    if (!unanswered && bw.charges.some(c => c.kind === 'balance' && c.status === 'pending')) {
+    if (bw.charges.some(c => c.kind === 'balance' && c.status === 'pending' && c.id !== unanswered?.id)) {
       // The client is paying it on /plashtane/[nomer] right now, or the provider is still processing the last
-      // attempt: no second charge, but come back if that checkout is abandoned or that payment fails.
+      // attempt: no second charge (nor an attempt in doubt asked again), but come back if that checkout is
+      // abandoned or that payment fails.
       await scheduleNextBalanceStep(t, b, at, attempt);
       return null;
     }
@@ -402,8 +407,15 @@ async function attemptBalance(bookingId: string, attempt: number): Promise<'paid
   });
   if (!plan) return 'skipped';
   const { c, saved, b } = plan;
-  // Throws on a timeout or an outage: the job runner retries this attempt (same charge, same key).
-  const r = await providerFor(c.provider).chargeOffSession(plan.args);
+  let r: Awaited<ReturnType<PaymentProvider['chargeOffSession']>>;
+  try {
+    r = await providerFor(c.provider).chargeOffSession(plan.args);
+  } catch (e) {
+    // In doubt (a timeout, an outage): the job runner retries this attempt within minutes (same charge, same
+    // key); the next step stands in case the provider stays out of reach longer than that.
+    await db.transaction(async t => scheduleNextBalanceStep(t, b, await now(), attempt));
+    throw e;
+  }
   return db.transaction(async t => {
     const at = await now();
     if (r.status === 'succeeded') {

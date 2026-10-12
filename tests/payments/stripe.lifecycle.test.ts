@@ -76,6 +76,11 @@ describe.skipIf(!mock.up)(`PAYMENT_PROVIDER=stripe against stripe-mock (${STRIPE
       provider: 'stripe', providerAccountRef: accountRef, providerStatus: 'pending', providerChargesEnabled: status.chargesEnabled,
       providerPayoutsEnabled: status.payoutsEnabled, providerRequirements: status.requirementsDue,
     }).where(eq(s.partner.id, p.partner.id));
+    // The partner completes Stripe's onboarding: the account is enabled (P11 reads it back from Stripe).
+    rec.override({
+      method: 'GET', path: `/v1/accounts/${accountRef}`,
+      patch: b => ({ ...b, id: accountRef, charges_enabled: true, payouts_enabled: true, requirements: { ...(b.requirements as object), currently_due: [] } }),
+    });
     await post(stripeEvent('account.updated', {
       id: accountRef, object: 'account', type: 'express', country: 'BG', charges_enabled: true, payouts_enabled: true,
       requirements: { currently_due: [], eventually_due: [], past_due: [], disabled_reason: null },
