@@ -19,7 +19,8 @@
     "db:seed": "tsx --conditions=react-server scripts/seed.ts",
     "tick": "tsx --conditions=react-server scripts/tick.ts",
     "db:create": "tsx scripts/create-db.ts",
-    "db:perf-data": "tsx --conditions=react-server scripts/perf-data.ts"
+    "db:perf-data": "tsx --conditions=react-server scripts/perf-data.ts",
+    "vercel-build": "tsx scripts/vercel-build.ts"
   },
   "dependencies": {
     "aws4fetch": "^1.0.20",
