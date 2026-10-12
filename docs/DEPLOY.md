@@ -52,3 +52,18 @@ A staging deployment runs the seed and the shifted clock, on its own database (n
    `STAGING_DB_HOST=<staging db hostname> DATABASE_URL=<staging url> npm run db:reset && npm run db:seed`
    The reset/seed scripts refuse every non-local host except the one named in `STAGING_DB_HOST`.
 3. Keep staging password-protected (Vercel → Settings → Deployment Protection).
+4. **File storage on Vercel Blob** (until the R2 buckets exist): `STORAGE_DRIVER=blob` and two Blob stores, both in
+   Frankfurt (`fra1`), mirroring the two R2 buckets — a store is created public or private, and a public store's URL
+   serves every blob in it:
+   - a **public** store (`vercel blob create-store eventat-staging-public --access public --region fra1`), connected to
+     the project with the default prefix, so Vercel adds `BLOB_READ_WRITE_TOKEN`. Listing photos, covers and avatars;
+     pages load them from `https://<store id>.public.blob.vercel-storage.com`.
+   - a **private** store (`… eventat-staging-private --access private --region fra1`); its read-write token goes into
+     `BLOB_PRIVATE_READ_WRITE_TOKEN` (connect it with the environment variable prefix `BLOB_PRIVATE`, or add the
+     variable by hand). Evidence, inspiration photos, review photos, bank proofs, message attachments, invoices and
+     reports: never linked, read only by `/api/files/<media id>` after the access check, which fetches them with the token.
+   Without `BLOB_PRIVATE_READ_WRITE_TOKEN` (or with a token of the public store) private uploads are refused.
+   Connect both stores to the environment staging builds in, then redeploy: the build reads the public store's host
+   from `BLOB_READ_WRITE_TOKEN` (`next.config.ts`).
+   **Production keeps R2** (`STORAGE_DRIVER=s3`, the two buckets in step 2 above). Files stored in Blob are not copied
+   when staging moves to R2.
