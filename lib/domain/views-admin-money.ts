@@ -21,7 +21,7 @@ import {
 import { initials as baseInitials, shortName } from '@/lib/initials';
 import { CATALOGUE, TEMPLATES } from '@/lib/email/templates';
 import { SAMPLES } from '@/lib/email/templates/samples';
-import { hasSecrets, storedCopy } from '@/lib/email/secrets';
+import { hasSecrets, liveCopy, storedCopy } from '@/lib/email/secrets';
 import type { Audience, EmailContent } from '@/lib/email/types';
 import { ForbiddenError, assertCan, can, type Actor } from './actor';
 import { audit } from './audit';
@@ -1031,11 +1031,20 @@ export const OUTBOX_STATUS: Record<string, Badge> = {
  */
 export const canReadOutbox = (actor: Actor | null | undefined) => can(actor, 'manage_team_settings');
 
+/**
+ * Demo/staging only: no email can leave (EMAIL_TRANSPORT=outbox) and the shifted demo clock is on, so the
+ * outbox is the only place a tester can read a sign-up code or reset link. There the team sees messages
+ * as sent (codes and links included). Production never has ALLOW_TIME_TRAVEL (lib/env-check.ts refuses it).
+ */
+export const outboxShowsCredentials = (env: Record<string, string | undefined> = process.env) =>
+  env.ALLOW_TIME_TRAVEL === 'true' && (env.EMAIL_TRANSPORT ?? 'outbox') === 'outbox';
+
 /** A stored message's subject, with any credential masked (rows queued before masking existed included). */
 function safeSubject(key: string, subject: string, vars: unknown): string {
   const tpl = TEMPLATES[key];
   if (!hasSecrets(tpl)) return subject;
-  return storedCopy(tpl, (vars ?? {}) as Record<string, unknown>).subject;
+  const v = (vars ?? {}) as Record<string, unknown>;
+  return (outboxShowsCredentials() ? liveCopy(tpl, v) : storedCopy(tpl, v)).subject;
 }
 
 /** The real outbox, newest first: what went out (filter by audience, template, search). manage_team_settings. */
@@ -1090,7 +1099,8 @@ export async function emailPreview(actor: Actor, key: string, outboxId?: string 
     if (!/^[0-9a-f-]{36}$/.test(outboxId)) return null;
     const [m] = await db.select().from(emailOutbox).where(and(eq(emailOutbox.id, outboxId), eq(emailOutbox.templateKey, key)));
     if (!m) return null;
-    const copy = hasSecrets(t) ? storedCopy(t, (m.vars ?? {}) as Record<string, unknown>) : { subject: m.subject, html: m.html };
+    const v = (m.vars ?? {}) as Record<string, unknown>;
+    const copy = !hasSecrets(t) ? { subject: m.subject, html: m.html } : outboxShowsCredentials() ? liveCopy(t, v) : storedCopy(t, v);
     return { kind: 'sent', subject: copy.subject, to: m.toEmail, html: copy.html, audience: m.audience as Audience, status: m.status, at: m.sentAt ?? m.createdAt };
   }
   const SAMPLE_TO: Record<Audience, string> = { client: 'maria.dimitrova@gmail.com', partner: 'studio.melodia@gmail.com', team: 'monika.kovacheva@eventat.bg' };

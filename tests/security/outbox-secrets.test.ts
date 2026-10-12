@@ -8,7 +8,7 @@ import { db } from '@/db';
 import { emailOutbox } from '@/db/schema';
 import { setTestNow } from '@/lib/clock';
 import { invite } from '@/lib/domain/team';
-import { emailPreview, outboxList } from '@/lib/domain/views-admin-money';
+import { emailPreview, outboxList, outboxShowsCredentials } from '@/lib/domain/views-admin-money';
 import { deliver, sendEmail } from '@/lib/email/send';
 import { MASK, maskLink } from '@/lib/email/secrets';
 import { createAdmin } from '../helpers/factories';
@@ -19,7 +19,8 @@ const RESET_URL = `http://localhost:3000/api/auth/reset-password/${RESET_TOKEN}?
 
 const row = async (id: string) => (await db.select().from(emailOutbox).where(eq(emailOutbox.id, id)))[0];
 
-beforeEach(() => setTestNow(NOW));
+// Production behaviour by default; the demo/staging exception has its own test below.
+beforeEach(() => { setTestNow(NOW); vi.stubEnv('ALLOW_TIME_TRAVEL', 'false'); });
 afterEach(() => { setTestNow(null); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe('one-time links and codes are masked wherever the team can look', () => {
@@ -95,5 +96,19 @@ describe('one-time links and codes are masked wherever the team can look', () =>
     expect(m.status).toBe('sent');
     expect(JSON.stringify(m.vars)).not.toContain(RESET_TOKEN);
     expect(m.html).not.toContain(RESET_TOKEN);
+  });
+  it('demo/staging (demo clock on, no email can leave): the team reads the code, so a tester can finish sign-up', async () => {
+    expect(outboxShowsCredentials({ ALLOW_TIME_TRAVEL: 'true', EMAIL_TRANSPORT: 'outbox' })).toBe(true);
+    expect(outboxShowsCredentials({ ALLOW_TIME_TRAVEL: 'true', EMAIL_TRANSPORT: 'postmark' })).toBe(false);
+    expect(outboxShowsCredentials({ EMAIL_TRANSPORT: 'outbox' })).toBe(false);
+    vi.stubEnv('ALLOW_TIME_TRAVEL', 'true'); vi.stubEnv('EMAIL_TRANSPORT', 'outbox');
+    const { actor } = await createAdmin('admin');
+    const id = await sendEmail({ key: 'client-verify-code', to: 'tester@example.com', vars: { code: '735102', email: 'tester@example.com' } });
+    const list = await outboxList(actor, { q: 'tester@example.com' });
+    expect(list.rows[0].subject).toContain('735102');
+    const prev = await emailPreview(actor, 'client-verify-code', id);
+    expect(prev && prev.kind === 'sent' && prev.html).toContain('735102');
+    // what is stored stays masked all the same
+    expect((await row(id!)).subject).not.toContain('735102');
   });
 });
