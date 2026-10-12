@@ -68,5 +68,6 @@ State at end of 9 Oct: main `6a8bd34` — 586 unit tests, 13/13 e2e suites (9 ar
 - Email copy needing approval: partial-refund / team-cancellation wording, deposit-mode emails (D5), offer screens (D60);
   `client-request-declined` for ‹Друга причина› (the approved text minus the date-taken claims, as the client request page words it).
 - Closed on `feat/leftovers` (12 Oct): K16 `restore_price` re-arms T5–T8; K3 clamped to the event start (D97); read-only finance
-  functions check the actor themselves; `client-signout-all` leaves an unknown city out; the decline email for ‹Друга причина›;
+  functions check the actor themselves (the bookings register's month turnover and the booking page's ‹В платформата› totals
+  too: `view_finance` only); `client-signout-all` leaves an unknown city out; the decline email for ‹Друга причина›;
   2025-0509-СВ noted in scripts/seed/README.md as a historical record (all three case pages verified).

@@ -50,10 +50,12 @@ describe('bookings register', () => {
     const r = await bookingsRegister(admin, {});
     expect(r.month).toBe('2026-05');
   });
-  it('hides the commission without view_finance', async () => {
+  it('hides the commission and the month turnover (GMV) without view_finance (SPEC §1.2)', async () => {
     const r = await bookingsRegister(support, { month: '2026-06' });
     expect(r.commissionCents).toBeNull();
+    expect(r.turnoverCents).toBeNull();
     expect(r.rows.every(x => x.commissionCents === null)).toBe(true);
+    expect((await bookingsRegister(admin, { month: '2026-06' })).turnoverCents).toBeGreaterThan(0);
   });
   it('attention: open disputes (and deadlines within 4 hours)', async () => {
     const a = await attentionRows(admin);
@@ -70,6 +72,14 @@ describe('booking record', () => {
     expect(r.timeline.map(t => t.title)).toEqual(['Клиентът изпрати заявка', 'Студио Мелодия одобри заявката', 'Плащането постъпи в платформата', 'Предстоящо събитие']);
     expect(r.can.cancel && r.can.openDispute).toBe(true);
     expect(await bookingRecord(admin, '2099-0101-ЯЯ')).toBeNull();
+  });
+  it('the parties’ totals in the platform (‹похарчени›, ‹оборот›) only with view_finance, as on their own pages', async () => {
+    const full = (await bookingRecord(admin, '2026-0614-ЕА'))!;
+    expect(full.client.stats).toMatch(/^6\sрезервации · .+€ похарчени$/);
+    expect(full.partner.stats).toMatch(/резервации · .+€ оборот$/);
+    const plain = (await bookingRecord(support, '2026-0614-ЕА'))!;
+    expect(plain.client.stats).toBe(full.client.stats.split(' · ')[0]);
+    expect(plain.partner.stats).toBe(full.partner.stats.split(' · ')[0]);
   });
 });
 

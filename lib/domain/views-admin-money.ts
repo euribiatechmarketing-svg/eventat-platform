@@ -274,7 +274,8 @@ export async function bookingsRegister(actor: Actor, p: { month?: string; catego
   const tab = (BOOKING_TABS.find(t => t.key === p.tab)?.key ?? 'vsichki') as BookingTab;
   const counts = Object.fromEntries(BOOKING_TABS.map(t => [t.key, rows.filter(inTab[t.key]).length])) as Record<BookingTab, number>;
 
-  // Turnover: the price of paid bookings, the retained part of cancelled ones.
+  // Turnover: the price of paid bookings, the retained part of cancelled ones. Like the commission it is a money
+  // total (GMV), so only view_finance gets it (SPEC §1.2; the dashboard and the partner/client lists hide it too).
   let turnover = 0, commission = 0;
   for (const r of raw) {
     const b = r.b;
@@ -289,7 +290,7 @@ export async function bookingsRegister(actor: Actor, p: { month?: string; catego
 
   return {
     month, monthLabel: monthLabel(month), monthOptions, categories: cats, category: cat, city: ct ?? null, tab, counts,
-    rows: rows.filter(inTab[tab]), total: rows.length, turnoverCents: turnover, commissionCents: finance ? commission : null, finance,
+    rows: rows.filter(inTab[tab]), total: rows.length, turnoverCents: finance ? turnover : null, commissionCents: finance ? commission : null, finance,
     attention: await attentionRows(actor, at), q: query ?? '',
   };
 }
@@ -344,6 +345,8 @@ export async function bookingRecord(actor: Actor, number: string) {
     n: count(), s: sql<number>`coalesce(sum(${booking.amountCents} + ${booking.bookingFeeCents}), 0)::bigint`.mapWith(Number),
   }).from(booking).where(and(eq(col, id), inArray(booking.status, PAID_STATUSES)));
   const [[cs], [ps]] = await Promise.all([paidBy(booking.clientId, b.clientId), paidBy(booking.partnerId, b.partnerId)]);
+  // ‹В платформата›: the parties' money totals only with view_finance, as on /admin/klienti/[id] and /admin/partnyori/[id] (SPEC §1.2).
+  const partyTotals = can(actor, 'view_finance');
 
   const paidCharge = v.charges.find(c => !c.isDuplicate && ['succeeded', 'partially_refunded', 'refunded'].includes(c.status));
   const card = paidCharge ? (paidCharge.method === 'bank_transfer' ? 'Банков превод' : `Карта ${paidCharge.card}`.trim()) : null;
@@ -403,12 +406,12 @@ export async function bookingRecord(actor: Actor, number: string) {
     client: {
       id: v.client.id, name: v.client.name, initials: initials(v.client.name), email: v.client.email,
       phone: displayPhone(v.client.phone ?? v.client.contactPhone) || null, role: ['Клиент', cp?.type === 'business' ? 'бизнес' : 'частно лице', cp?.cityName].filter(Boolean).join(' · '),
-      card, stats: `${plural(cs.n, 'резервация', 'резервации')} · ${moneyShort(cs.s)} похарчени`,
+      card, stats: `${plural(cs.n, 'резервация', 'резервации')}${partyTotals ? ` · ${moneyShort(cs.s)} похарчени` : ''}`,
     },
     partner: {
       id: p.id, name: p.businessName, initials: initials(p.businessName), contactName: p.contactName, email: p.notificationEmail, eik: p.eik,
       role: ['Изпълнител', v.partner.category, pc?.name].filter(Boolean).join(' · '),
-      stats: `${plural(ps.n, 'резервация', 'резервации')} · ${moneyShort(ps.s)} оборот`,
+      stats: `${plural(ps.n, 'резервация', 'резервации')}${partyTotals ? ` · ${moneyShort(ps.s)} оборот` : ''}`,
     },
     event: {
       name: v.eventType.name, guests: plural(b.guests, 'гост', 'гости'), date: fmtDate(b.eventDate),
