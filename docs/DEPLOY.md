@@ -62,7 +62,9 @@ A staging deployment runs the seed and the shifted clock, on its own database (n
      `BLOB_PRIVATE_READ_WRITE_TOKEN` (connect it with the environment variable prefix `BLOB_PRIVATE`, or add the
      variable by hand). Evidence, inspiration photos, review photos, bank proofs, message attachments, invoices and
      reports: never linked, read only by `/api/files/<media id>` after the access check, which fetches them with the token.
-   Without `BLOB_PRIVATE_READ_WRITE_TOKEN` (or with a token of the public store) private uploads are refused.
+   Without `BLOB_PRIVATE_READ_WRITE_TOKEN` (or with a token of the public store) private uploads are refused; so is any
+   upload a store keeps with the wrong access (a public store behind the private token, or the two tokens swapped),
+   and that file is deleted again.
    Connect both stores to the environment staging builds in, then redeploy: the build reads the public store's host
    from `BLOB_READ_WRITE_TOKEN` (`next.config.ts`).
    **Production keeps R2** (`STORAGE_DRIVER=s3`, the two buckets in step 2 above). Files stored in Blob are not copied

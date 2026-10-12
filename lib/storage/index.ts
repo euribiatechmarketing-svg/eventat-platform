@@ -62,10 +62,11 @@ const objectUrl = (key: string) => `${process.env.S3_ENDPOINT?.replace(/\/$/, ''
 // BLOB_STORE_ID, else BLOB_READ_WRITE_TOKEN), and a private file could land in the public store.
 
 /** The store id inside a read-write token (`vercel_blob_rw_<store id>_<secret>`), lower case as in the store's host name. */
+const storeIdOf = (token: string) => /^vercel_blob_rw_([A-Za-z0-9]+)_/.exec(token)?.[1]?.toLowerCase();
 function blobStoreId(name: 'BLOB_READ_WRITE_TOKEN' | 'BLOB_PRIVATE_READ_WRITE_TOKEN'): string {
-  const id = /^vercel_blob_rw_([A-Za-z0-9]+)_/.exec(process.env[name] ?? '')?.[1];
+  const id = storeIdOf(process.env[name] ?? '');
   if (!id) throw new Error(`${name} is not set to a Vercel Blob read-write token`);
-  return id.toLowerCase();
+  return id;
 }
 
 /** The token of the store a key lives in. Private files need their own private store; without one they are not stored at all. */
@@ -98,8 +99,20 @@ export async function putFile(file: File, folder: string, visibility: Visibility
     await writeFile(path, body);
   } else if (driver() === 'blob') {
     // The store adds a random suffix to the name (`<uuid>-<suffix>.jpg`): the key is the pathname it answers with.
-    const r = await blobPut(key, body, { access: blobAccess(key), addRandomSuffix: true, contentType: file.type, token: blobToken(key) });
-    if (!r.pathname.startsWith(`${visibility}/${folder}/`) || !BLOB_KEY.test(r.pathname)) throw new Error(`Upload failed: unexpected pathname ${r.pathname}`);
+    const token = blobToken(key), access = blobAccess(key);
+    const r = await blobPut(key, body, { access, addRandomSuffix: true, contentType: file.type, token });
+    // The store's answer is checked, not assumed: a store's access is fixed when it is created, and the token's own
+    // store must have kept the file with the access asked for. A private file put through the token of another, public
+    // store (or a public one through the private store's) is deleted again and refused.
+    let host = '';
+    try { host = new URL(r.url).hostname; } catch { /* refused below */ }
+    const name = access === 'private' ? 'BLOB_PRIVATE_READ_WRITE_TOKEN' : 'BLOB_READ_WRITE_TOKEN';
+    const problem = host !== `${storeIdOf(token)}.${access}.blob.vercel-storage.com` ? `${name} must belong to a ${access} store (the file was kept at ${host || 'no address'})`
+      : !r.pathname.startsWith(`${visibility}/${folder}/`) || !BLOB_KEY.test(r.pathname) ? `Upload failed: unexpected pathname ${r.pathname}` : null;
+    if (problem) {
+      await blobDel(r.url || r.pathname, { token }).catch(e => console.error('storage: could not delete a refused blob upload', e));
+      throw new Error(problem);
+    }
     key = r.pathname;
   } else {
     const r = await s3().fetch(objectUrl(key), { method: 'PUT', body, headers: { 'Content-Type': file.type } });

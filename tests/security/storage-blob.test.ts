@@ -59,7 +59,8 @@ beforeEach(() => {
       blob: { url: blobUrl(o, pathname), downloadUrl: '', pathname, contentType: f.contentType, contentDisposition: '', cacheControl: '', uploadedAt: new Date(), etag: '"1"', size: f.body.length },
     };
   });
-  blob.del.mockImplementation(async (pathname: string, o: { token: string }) => {
+  blob.del.mockImplementation(async (urlOrPathname: string, o: { token: string }) => {
+    const pathname = urlOrPathname.startsWith('https://') ? new URL(urlOrPathname).pathname.slice(1) : urlOrPathname;
     if (blob.saved.get(pathname)?.token === o.token) blob.saved.delete(pathname);
   });
 });
@@ -97,6 +98,35 @@ describe('blob driver: where files go', () => {
     vi.stubEnv('BLOB_PRIVATE_READ_WRITE_TOKEN', `vercel_blob_rw_${STORE.public}_othersecret`);
     await expect(putFile(jpeg(), 'request_attachment/u1', 'private')).rejects.toThrow(/private store/);
     expect(blob.put).not.toHaveBeenCalled();
+  });
+
+  it('refuses a private file a public store kept (the token of another public store), and removes it again', async () => {
+    // A second public store's token in the private slot: a different store id, so only the store's answer tells.
+    const other = 'OtherPublic456';
+    vi.stubEnv('BLOB_PRIVATE_READ_WRITE_TOKEN', `vercel_blob_rw_${other}_othersecret`);
+    blob.put.mockImplementationOnce(async (pathname: string, body: Buffer, o: { token: string; contentType: string }) => {
+      const p = pathname.replace(/(\.[a-z]+)$/, '-k3y5uff1x$1');
+      blob.saved.set(p, { body: Buffer.from(body), contentType: o.contentType, access: 'public', token: o.token });
+      return { pathname: p, url: `https://${other.toLowerCase()}.public.blob.vercel-storage.com/${p}`, downloadUrl: '', contentType: o.contentType, contentDisposition: 'inline', etag: '"1"' };
+    });
+    await expect(putFile(pdf(), 'bank_proof/u1', 'private')).rejects.toThrow(/BLOB_PRIVATE_READ_WRITE_TOKEN.*private store/);
+    const kept = await (blob.put.mock.results[0].value as Promise<{ url: string; pathname: string }>);
+    expect(blob.del).toHaveBeenCalledWith(kept.url, { token: `vercel_blob_rw_${other}_othersecret` });
+    expect(blob.saved.has(kept.pathname)).toBe(false);
+  });
+
+  it('refuses a public file the private store kept (the two tokens swapped), and removes it again', async () => {
+    vi.stubEnv('BLOB_READ_WRITE_TOKEN', TOKEN.private);
+    vi.stubEnv('BLOB_PRIVATE_READ_WRITE_TOKEN', TOKEN.public);
+    blob.put.mockImplementationOnce(async (pathname: string, body: Buffer, o: { token: string; contentType: string }) => {
+      const p = pathname.replace(/(\.[a-z]+)$/, '-k3y5uff1x$1');
+      blob.saved.set(p, { body: Buffer.from(body), contentType: o.contentType, access: 'private', token: o.token });
+      return { pathname: p, url: `https://${STORE.private.toLowerCase()}.private.blob.vercel-storage.com/${p}`, downloadUrl: '', contentType: o.contentType, contentDisposition: 'inline', etag: '"1"' };
+    });
+    await expect(putFile(jpeg(), 'gallery/u1', 'public')).rejects.toThrow(/BLOB_READ_WRITE_TOKEN.*public store/);
+    const kept = await (blob.put.mock.results[0].value as Promise<{ url: string; pathname: string }>);
+    expect(blob.del).toHaveBeenCalledWith(kept.url, { token: TOKEN.private });
+    expect(blob.saved.has(kept.pathname)).toBe(false);
   });
 
   it('refuses a public file without the public store’s token', async () => {
