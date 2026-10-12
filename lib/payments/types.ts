@@ -68,8 +68,13 @@ export interface PaymentProvider {
   createCheckout(a: CheckoutArgs): Promise<{ redirectUrl: string; providerRef: string }>;
   /** Close an open checkout so it can no longer be paid (its charge was expired on our side). */
   expireCheckout(providerRef: string): Promise<void>;
-  /** Charge a saved card without the client present (balance before the event). */
-  chargeOffSession(a: OffSessionChargeArgs): Promise<{ providerRef: string; status: 'succeeded' | 'failed' | 'requires_action'; reason?: string }>;
+  /**
+   * Charge a saved card without the client present (balance before the event). `failed` only when the
+   * provider declined or refused it (nothing charged); `processing` when its result comes later (as a
+   * ProviderEvent). A call that throws (timeout, outage) may still have charged: the caller asks again
+   * under the same charge id.
+   */
+  chargeOffSession(a: OffSessionChargeArgs): Promise<{ providerRef: string; status: 'succeeded' | 'processing' | 'failed' | 'requires_action'; reason?: string }>;
   /** Refund (part of) a charge back to the original card. */
   refund(a: { refundId: string; providerChargeRef: string; amountCents: number; refundApplicationFee: boolean }): Promise<{ refundRef: string; status: 'succeeded' | 'pending' | 'failed'; reason?: string }>;
   /**
@@ -81,6 +86,18 @@ export interface PaymentProvider {
   payout(a: { payoutItemId: string; partnerAccountRef: string; amountCents: number; description: string }): Promise<{ payoutRef: string; status: 'paid' | 'pending' | 'failed'; reason?: string }>;
   /** The payout made for our payout item (its metadata), if any — as findRefund. */
   findPayout(a: { payoutItemId: string; partnerAccountRef: string; since: Date }): Promise<{ payoutRef: string; status: 'paid' | 'pending' | 'failed'; reason?: string } | null>;
-  /** Verify and normalise a webhook request. Simulated provider returns []. */
+  /**
+   * Verify and normalise a webhook request. Simulated provider returns []. Throws WebhookSignatureError
+   * when the request is not the provider's; any other error (the provider's API while normalising) is
+   * worth a retry.
+   */
   parseWebhook(req: Request): Promise<ProviderEvent[]>;
+}
+
+/** The webhook request is not signed by the provider (wrong secret, altered body, too old). */
+export class WebhookSignatureError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = 'WebhookSignatureError';
+  }
 }

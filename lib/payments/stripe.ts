@@ -6,17 +6,49 @@
 // of holding outside the US — the payment schedule (deposit + balance due
 // N days before the event) must respect that (see platform settings).
 import Stripe from 'stripe';
-import type { PaymentProvider, ProviderEvent } from './types';
+import { WebhookSignatureError, type PaymentProvider, type ProviderEvent } from './types';
 
-let client: Stripe | null = null;
-function stripe(): Stripe {
-  if (!client) {
-    const key = process.env.STRIPE_SECRET_KEY;
-    if (!key) throw new Error('STRIPE_SECRET_KEY is not set');
-    client = new Stripe(key);
+/**
+ * STRIPE_API_BASE (tests only, never set in production) sends the API calls to another server
+ * instead of api.stripe.com: stripe-mock in tests/payments (`http://127.0.0.1:12111`). A live key
+ * or a Vercel production deployment refuses it, so a stray variable cannot leak a live key.
+ */
+export function stripeApiBase(env: Record<string, string | undefined> = process.env): Pick<Stripe.StripeConfig, 'host' | 'port' | 'protocol'> {
+  const base = env.STRIPE_API_BASE;
+  if (!base) return {};
+  if (/^(sk|rk)_live_/.test(env.STRIPE_SECRET_KEY ?? '') || env.VERCEL_ENV === 'production') {
+    throw new Error('STRIPE_API_BASE is for tests only: it cannot be used with a live key or in production');
   }
-  return client;
+  const u = new URL(base);
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error(`STRIPE_API_BASE must be an http(s) URL, not ${base}`);
+  const protocol = u.protocol === 'http:' ? 'http' : 'https';
+  return { host: u.hostname, port: u.port || (protocol === 'http' ? '80' : '443'), protocol };
 }
+
+let client: { key: string; base: string; stripe: Stripe } | null = null;
+function stripe(): Stripe {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) throw new Error('STRIPE_SECRET_KEY is not set');
+  const base = process.env.STRIPE_API_BASE ?? '';
+  if (!client || client.key !== key || client.base !== base) client = { key, base, stripe: new Stripe(key, stripeApiBase()) };
+  return client.stripe;
+}
+
+// Stripe's statuses in ours. A canceled refund or payout moved no money: it is a failure (F3 / Y8, on
+// the team's list), never left pending for ever.
+const refundResult = (r: Stripe.Refund) => ({
+  refundRef: r.id,
+  status: r.status === 'succeeded' ? 'succeeded' as const : r.status === 'failed' || r.status === 'canceled' ? 'failed' as const : 'pending' as const,
+  reason: r.failure_reason ?? (r.status === 'canceled' ? 'canceled' : undefined),
+});
+const accountStatus = (a: Stripe.Account) => ({
+  chargesEnabled: !!a.charges_enabled, payoutsEnabled: !!a.payouts_enabled, requirementsDue: a.requirements?.currently_due ?? [],
+});
+const payoutResult = (p: Stripe.Payout) => ({
+  payoutRef: p.id,
+  status: p.status === 'paid' ? 'paid' as const : p.status === 'failed' || p.status === 'canceled' ? 'failed' as const : 'pending' as const,
+  reason: p.failure_message ?? (p.status === 'canceled' ? 'canceled' : undefined),
+});
 
 export const stripeProvider: PaymentProvider = {
   id: 'stripe',
@@ -38,8 +70,7 @@ export const stripeProvider: PaymentProvider = {
   },
 
   async partnerAccountStatus(accountRef) {
-    const a = await stripe().accounts.retrieve(accountRef);
-    return { chargesEnabled: !!a.charges_enabled, payoutsEnabled: !!a.payouts_enabled, requirementsDue: a.requirements?.currently_due ?? [] };
+    return accountStatus(await stripe().accounts.retrieve(accountRef));
   },
 
   async createCheckout(a) {
@@ -84,10 +115,15 @@ export const stripeProvider: PaymentProvider = {
         application_fee_amount: a.applicationFeeCents, on_behalf_of: a.partnerAccountRef,
         transfer_data: { destination: a.partnerAccountRef }, metadata: { chargeId: a.chargeId },
       }, { idempotencyKey: `offsession-${a.chargeId}` });
-      return { providerRef: pi.id, status: pi.status === 'succeeded' ? 'succeeded' : pi.status === 'requires_action' ? 'requires_action' : 'failed' };
+      const status = pi.status === 'succeeded' ? 'succeeded' : pi.status === 'processing' ? 'processing' : pi.status === 'requires_action' ? 'requires_action' : 'failed';
+      return { providerRef: pi.id, status, ...(status === 'failed' ? { reason: pi.last_payment_error?.message ?? pi.status } : {}) };
     } catch (e) {
-      const err = e as Stripe.errors.StripeError;
-      return { providerRef: (err.payment_intent as { id?: string } | undefined)?.id ?? '', status: 'failed', reason: err.message };
+      // A decline, or a request Stripe refused outright (invalid: the card or the customer is gone, the partner's
+      // account cannot take it), charged nothing and would be answered the same again: a failure. Anything else
+      // (a timeout, an outage, a request still running under the same key) may have charged the card: it throws,
+      // and the caller asks again with the same charge (idempotency key) instead of charging under a new one.
+      if (!(e instanceof Stripe.errors.StripeCardError || e instanceof Stripe.errors.StripeInvalidRequestError)) throw e;
+      return { providerRef: (e.payment_intent as { id?: string } | undefined)?.id ?? '', status: 'failed', reason: e.message };
     }
   },
 
@@ -97,14 +133,12 @@ export const stripeProvider: PaymentProvider = {
       reverse_transfer: true, refund_application_fee: a.refundApplicationFee,
       metadata: { refundId: a.refundId },
     }, { idempotencyKey: `refund-${a.refundId}` });
-    return { refundRef: r.id, status: r.status === 'succeeded' ? 'succeeded' : r.status === 'failed' ? 'failed' : 'pending', reason: r.failure_reason ?? undefined };
+    return refundResult(r);
   },
 
   async findRefund(a) {
     for await (const r of stripe().refunds.list({ payment_intent: a.providerChargeRef, limit: 100 })) {
-      if (r.metadata?.refundId === a.refundId) {
-        return { refundRef: r.id, status: r.status === 'succeeded' ? 'succeeded' : r.status === 'failed' ? 'failed' : 'pending', reason: r.failure_reason ?? undefined };
-      }
+      if (r.metadata?.refundId === a.refundId) return refundResult(r);
     }
     return null;
   },
@@ -112,9 +146,7 @@ export const stripeProvider: PaymentProvider = {
   async findPayout(a) {
     const since = Math.floor(a.since.getTime() / 1000) - 24 * 3600;
     for await (const p of stripe().payouts.list({ created: { gte: since }, limit: 100 }, { stripeAccount: a.partnerAccountRef })) {
-      if (p.metadata?.payoutItemId === a.payoutItemId) {
-        return { payoutRef: p.id, status: p.status === 'paid' ? 'paid' : p.status === 'failed' ? 'failed' : 'pending', reason: p.failure_message ?? undefined };
-      }
+      if (p.metadata?.payoutItemId === a.payoutItemId) return payoutResult(p);
     }
     return null;
   },
@@ -124,7 +156,7 @@ export const stripeProvider: PaymentProvider = {
       { amount: a.amountCents, currency: 'eur', description: a.description, metadata: { payoutItemId: a.payoutItemId } },
       { stripeAccount: a.partnerAccountRef, idempotencyKey: `payout-${a.payoutItemId}` },
     );
-    return { payoutRef: p.id, status: p.status === 'paid' ? 'paid' : p.status === 'failed' ? 'failed' : 'pending', reason: p.failure_message ?? undefined };
+    return payoutResult(p);
   },
 
   async parseWebhook(req) {
@@ -136,9 +168,10 @@ export const stripeProvider: PaymentProvider = {
     let ev: Stripe.Event | null = null;
     let lastError: unknown = new Error('STRIPE_WEBHOOK_SECRET is not set');
     for (const secret of secrets) {
-      try { ev = stripe().webhooks.constructEvent(body, sig, secret); break; } catch (e) { lastError = e; }
+      try { ev = Stripe.webhooks.constructEvent(body, sig, secret); break; } catch (e) { lastError = e; }
     }
-    if (!ev) throw lastError;
+    // Not Stripe's request: 400. Anything that fails after this point (the API, below) is answered 500 and retried.
+    if (!ev) throw new WebhookSignatureError('Stripe webhook signature not verified', { cause: lastError });
     const out: ProviderEvent[] = [];
     switch (ev.type) {
       case 'checkout.session.completed': {
@@ -158,7 +191,11 @@ export const stripeProvider: PaymentProvider = {
       }
       case 'payment_intent.payment_failed': {
         const pi = ev.data.object as Stripe.PaymentIntent;
-        if (pi.metadata?.chargeId) out.push({ type: 'charge.failed', chargeId: pi.metadata.chargeId, providerRef: pi.id, reason: pi.last_payment_error?.message ?? 'failed' });
+        // A decline inside the checkout leaves the charge naming its session (cs_…), which is still open for
+        // another card and is what expireCheckout closes when the charge is voided.
+        if (pi.metadata?.chargeId) {
+          out.push({ type: 'charge.failed', chargeId: pi.metadata.chargeId, ...(pi.metadata.viaCheckout ? {} : { providerRef: pi.id }), reason: pi.last_payment_error?.message ?? 'failed' });
+        }
         break;
       }
       case 'payment_intent.succeeded': {
@@ -171,8 +208,9 @@ export const stripeProvider: PaymentProvider = {
       case 'refund.updated': case 'refund.created': {
         const r = ev.data.object as Stripe.Refund;
         const refundId = r.metadata?.refundId || undefined;
-        if (r.status === 'succeeded') out.push({ type: 'refund.succeeded', refundRef: r.id, refundId });
-        if (r.status === 'failed') out.push({ type: 'refund.failed', refundRef: r.id, reason: r.failure_reason ?? 'failed', refundId });
+        const res = refundResult(r);
+        if (res.status === 'succeeded') out.push({ type: 'refund.succeeded', refundRef: r.id, refundId });
+        if (res.status === 'failed') out.push({ type: 'refund.failed', refundRef: r.id, reason: res.reason ?? 'failed', refundId });
         break;
       }
       case 'payout.paid': {
@@ -180,14 +218,16 @@ export const stripeProvider: PaymentProvider = {
         out.push({ type: 'payout.paid', payoutRef: p.id, payoutItemId: p.metadata?.payoutItemId || undefined });
         break;
       }
-      case 'payout.failed': {
+      case 'payout.failed': case 'payout.canceled': {
         const p = ev.data.object as Stripe.Payout;
-        out.push({ type: 'payout.failed', payoutRef: p.id, reason: p.failure_message ?? 'failed', payoutItemId: p.metadata?.payoutItemId || undefined });
+        out.push({ type: 'payout.failed', payoutRef: p.id, reason: payoutResult(p).reason ?? 'failed', payoutItemId: p.metadata?.payoutItemId || undefined });
         break;
       }
       case 'account.updated': {
-        const a = ev.data.object as Stripe.Account;
-        out.push({ type: 'account.updated', accountRef: a.id, status: { chargesEnabled: !!a.charges_enabled, payoutsEnabled: !!a.payouts_enabled, requirementsDue: a.requirements?.currently_due ?? [] } });
+        // Stripe does not deliver events in order, and retries one answered 500 later: an older snapshot can
+        // arrive after a newer one. The account is read as Stripe holds it now, so a late event never undoes P11.
+        const a = await stripe().accounts.retrieve((ev.data.object as Stripe.Account).id);
+        out.push({ type: 'account.updated', accountRef: a.id, status: accountStatus(a) });
         break;
       }
       case 'charge.dispute.created': {

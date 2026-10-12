@@ -351,44 +351,88 @@ async function scheduleNextBalanceStep(t: Tx, b: { id: string; eventDate: string
 
 /**
  * One off-session attempt to charge the balance with the card saved at the
- * deposit. Success applies C3 at once; a failure (or a needed authentication)
+ * deposit. Success applies C3 at once; a decline (or a needed authentication)
  * schedules the next T10 retry in 24 h, up to 3 times, and then the last check
- * at 10:00 seven days before the event.
+ * at 10:00 seven days before the event; a payment still processing stays
+ * pending until the provider reports it.
+ *
+ * The charge is committed before the provider is asked, and asked outside the
+ * transaction: a call that throws (a timeout, an outage) may still have charged
+ * the card, so the job's retry asks again for the same charge — the same
+ * idempotency key — and never charges under a new one. The next T10 step is
+ * scheduled before the error is passed on, so an outage longer than the job's
+ * own retries still leaves the retries and the last check; that step asks
+ * again for the charge in doubt, unless the client is paying the balance in a
+ * checkout by then.
  */
-async function attemptBalance(bookingId: string, attempt: number): Promise<'paid' | 'failed' | 'skipped'> {
-  return db.transaction(async t => {
+async function attemptBalance(bookingId: string, attempt: number): Promise<'paid' | 'failed' | 'pending' | 'skipped'> {
+  const plan = await db.transaction(async t => {
     const bw = await loadBooking(t, { id: bookingId }, { forUpdate: true });
-    if (!bw) return 'skipped';
+    if (!bw) return null;
     const b = bw.booking;
     const at = await now();
-    if (b.status !== 'confirmed' || b.balanceCents <= 0) return 'skipped';
-    if (bw.charges.some(c => c.kind === 'balance' && (SUCCEEDED as readonly string[]).includes(c.status))) return 'skipped';
-    if (bw.charges.some(c => c.kind === 'balance' && c.status === 'pending')) {
-      // The client is paying it on /plashtane/[nomer] right now: no second charge, but come back if that checkout is abandoned.
+    if (b.status !== 'confirmed' || b.balanceCents <= 0) return null;
+    if (bw.charges.some(c => c.kind === 'balance' && (SUCCEEDED as readonly string[]).includes(c.status))) return null;
+    // An off-session charge the provider never answered for (no checkout, no ref): asked again below.
+    const unanswered = bw.charges.find(c => c.kind === 'balance' && c.status === 'pending' && c.method === 'card' && !c.checkoutUrl && !c.providerRef);
+    if (bw.charges.some(c => c.kind === 'balance' && c.status === 'pending' && c.id !== unanswered?.id)) {
+      // The client is paying it on /plashtane/[nomer] right now, or the provider is still processing the last
+      // attempt: no second charge (nor an attempt in doubt asked again), but come back if that checkout is
+      // abandoned or that payment fails.
       await scheduleNextBalanceStep(t, b, at, attempt);
-      return 'skipped';
+      return null;
     }
     const saved = bw.charges.find(c => c.kind !== 'balance' && (SUCCEEDED as readonly string[]).includes(c.status) && c.customerRef && c.paymentMethodRef);
-    const s = await getSettings(at, t);
-    const [c] = await t.insert(charge).values({
-      bookingId: b.id, kind: 'balance', method: 'card', provider: saved?.provider ?? s['payment.provider'], amountCents: b.balanceCents,
-      applicationFeeCents: commissionCents(b.balanceCents, b.commissionBp ?? 0), commissionBp: b.commissionBp, status: 'pending', createdAt: at, updatedAt: at,
-    }).returning();
-    await audit(t, { actor: SYSTEM, action: 'charge.created', entity: 'charge', entityId: c.id, data: { number: b.number, kind: 'balance', attempt } });
-    const r = saved
-      ? await providerFor(saved.provider).chargeOffSession({
+    let c = unanswered;
+    if (!c) {
+      const s = await getSettings(at, t);
+      [c] = await t.insert(charge).values({
+        bookingId: b.id, kind: 'balance', method: 'card', provider: saved?.provider ?? s['payment.provider'], amountCents: b.balanceCents,
+        applicationFeeCents: commissionCents(b.balanceCents, b.commissionBp ?? 0), commissionBp: b.commissionBp, status: 'pending', createdAt: at, updatedAt: at,
+      }).returning();
+      await audit(t, { actor: SYSTEM, action: 'charge.created', entity: 'charge', entityId: c.id, data: { number: b.number, kind: 'balance', attempt } });
+    }
+    if (!saved) {
+      await onChargeFailed({ chargeId: c.id, reason: 'no saved card' }, t);
+      await scheduleNextBalanceStep(t, b, at, attempt);
+      return null;
+    }
+    return {
+      c, saved, b: { id: b.id, eventDate: b.eventDate },
+      args: {
         chargeId: c.id, amountCents: c.amountCents, applicationFeeCents: c.applicationFeeCents, partnerAccountRef: bw.parties.partner.providerAccountRef ?? '',
         description: `${b.serviceTitle} · ${bw.parties.partner.businessName} · ${date(b.eventDate)}`, customerRef: saved.customerRef!, paymentMethodRef: saved.paymentMethodRef!,
-      })
-      : { providerRef: '', status: 'failed' as const, reason: 'no saved card' };
+      },
+    };
+  });
+  if (!plan) return 'skipped';
+  const { c, saved, b } = plan;
+  let r: Awaited<ReturnType<PaymentProvider['chargeOffSession']>>;
+  try {
+    r = await providerFor(c.provider).chargeOffSession(plan.args);
+  } catch (e) {
+    // In doubt (a timeout, an outage): the job runner retries this attempt within minutes (same charge, same
+    // key); the next step stands in case the provider stays out of reach longer than that.
+    await db.transaction(async t => scheduleNextBalanceStep(t, b, await now(), attempt));
+    throw e;
+  }
+  return db.transaction(async t => {
+    const at = await now();
     if (r.status === 'succeeded') {
-      await onChargeSucceeded({ chargeId: c.id, providerRef: r.providerRef || undefined, cardBrand: saved?.cardBrand ?? undefined, cardLast4: saved?.cardLast4 ?? undefined }, t);
-      return 'paid';
+      await onChargeSucceeded({ chargeId: c.id, providerRef: r.providerRef || undefined, cardBrand: saved.cardBrand ?? undefined, cardLast4: saved.cardLast4 ?? undefined }, t);
+      return 'paid' as const;
+    }
+    if (r.status === 'processing') {
+      // payment_intent.succeeded / payment_failed settles it; the next step comes back if it fails.
+      await t.update(charge).set({ providerRef: r.providerRef, updatedAt: at }).where(and(eq(charge.id, c.id), eq(charge.status, 'pending')));
+      await audit(t, { actor: SYSTEM, action: 'charge.processing', entity: 'charge', entityId: c.id, data: { kind: 'balance', attempt } });
+      await scheduleNextBalanceStep(t, b, at, attempt);
+      return 'pending' as const;
     }
     await onChargeFailed({ chargeId: c.id, providerRef: r.providerRef || undefined, reason: r.reason ?? r.status }, t);
     // `client-balance-failed` does not exist yet (D5).
     await scheduleNextBalanceStep(t, b, at, attempt);
-    return 'failed';
+    return 'failed' as const;
   });
 }
 
