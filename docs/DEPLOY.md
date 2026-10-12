@@ -32,11 +32,12 @@ These belong to the operating company, not to Euribia. Each one needs a person t
      photos, and `S3_PRIVATE_BUCKET` with **no** public access (no r2.dev URL, no custom domain) for evidence,
      inspiration photos, bank proofs and documents. A bucket's public URL serves every object in it.
    - `ALLOW_TIME_TRAVEL` must be **unset** in production. `ALLOW_INDEXING=true` only at public launch.
-3. **Stripe webhook**: endpoint `https://<domain>/api/webhooks/stripe`, events: `checkout.session.completed`,
+3. **Stripe webhook**: endpoint `https://<domain>/api/webhooks/stripe`, API version `2026-09-30.endive`, events: `checkout.session.completed`,
    `checkout.session.expired`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `refund.created`,
    `refund.updated`, `charge.dispute.created` (secret → `STRIPE_WEBHOOK_SECRET`); and a second endpoint at the same
-   URL for **connected accounts** with `payout.paid`, `payout.failed`, `account.updated` (secret →
+   URL for **connected accounts** with `payout.paid`, `payout.failed`, `payout.canceled`, `account.updated` (secret →
    `STRIPE_CONNECT_WEBHOOK_SECRET`). An event the platform has not stored yet answers 500, so Stripe retries it.
+   Connect settings, test mode and test partners: `docs/STRIPE-TEST-MODE.md`. `STRIPE_API_BASE` is for tests only — never set it.
 4. **Email DNS** at SuperHosting for `eventat.bg`: the SPF, DKIM and return-path records Postmark shows, plus
    `_dmarc TXT "v=DMARC1; p=none; rua=mailto:help@eventat.bg"` to start.
 5. **Domain**: add the production domain in Vercel → Domains and the CNAME at SuperHosting.

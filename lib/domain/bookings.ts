@@ -12,7 +12,7 @@
 // Every state transition runs in one DB transaction that also writes
 // audit_log, queues the emails (sendEmail(…, tx)), adds the bell items
 // (SPEC §4 bell rule) and schedules or cancels the jobs.
-import { and, asc, count, desc, eq, gte, inArray, isNull, lte, ne, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { db, type Queryable, type Tx } from '@/db';
 import {
   auditLog, availabilityBlock, availabilityOpenDate, booking, category, charge, city, clientEvent, conversation, dispute, eventType,
@@ -238,15 +238,19 @@ export const jobKey = {
 };
 
 /**
- * The booking's open charges (a pending checkout, an awaited transfer) can no longer complete: they
- * become `expired`, and each card checkout is closed at the provider after commit (job
- * charge.expire_checkout). A payment that still arrives on one is never taken as the booking's
- * payment (charges.onChargeSucceeded): it is flagged as a duplicate for a refund. Used by T8, K16
- * repricing and cancellations.
+ * The booking's open charges (a pending checkout, an awaited transfer, a checkout whose card was
+ * declined — its session still takes another card) can no longer complete: they become `expired`,
+ * and each card checkout is closed at the provider after commit (job charge.expire_checkout). A
+ * payment that still arrives on one is never taken as the booking's payment
+ * (charges.onChargeSucceeded): it is flagged as a duplicate for a refund. Used by T8, K16 repricing
+ * and cancellations.
  */
 export async function expireOpenCharges(tx: Tx, bookingId: string, at: Date): Promise<void> {
   const rows = await tx.update(charge).set({ status: 'expired', updatedAt: at })
-    .where(and(eq(charge.bookingId, bookingId), inArray(charge.status, ['pending', 'awaiting_transfer']))).returning();
+    .where(and(eq(charge.bookingId, bookingId), or(
+      inArray(charge.status, ['pending', 'awaiting_transfer']),
+      and(eq(charge.status, 'failed'), eq(charge.method, 'card'), isNotNull(charge.checkoutUrl)),
+    ))).returning();
   for (const c of rows) {
     if (c.method === 'card' && c.providerRef) await scheduleJob(LIFECYCLE_JOBS.expireCheckout, at, { chargeId: c.id }, jobKey.expireCheckout(c.id), tx);
   }
