@@ -32,6 +32,8 @@ These belong to the operating company, not to Euribia. Each one needs a person t
      photos, and `S3_PRIVATE_BUCKET` with **no** public access (no r2.dev URL, no custom domain) for evidence,
      inspiration photos, bank proofs and documents. A bucket's public URL serves every object in it.
    - `ALLOW_TIME_TRAVEL` must be **unset** in production. `ALLOW_INDEXING=true` only at public launch.
+   - `SENTRY_DSN` (optional): the DSN of a Sentry project (Sentry → Project settings → Client Keys). When set,
+     every server error is also sent to Sentry; unset (the default), nothing is sent anywhere. See "Errors" below.
 3. **Stripe webhook**: endpoint `https://<domain>/api/webhooks/stripe`, API version `2026-09-30.endive`, events: `checkout.session.completed`,
    `checkout.session.expired`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `refund.created`,
    `refund.updated`, `charge.dispute.created` (secret → `STRIPE_WEBHOOK_SECRET`); and a second endpoint at the same
@@ -43,6 +45,41 @@ These belong to the operating company, not to Euribia. Each one needs a person t
 5. **Domain**: add the production domain in Vercel → Domains and the CNAME at SuperHosting.
 6. **First admin**: sign up normally, then promote: `update "user" set role = 'admin' where email = '…';`
    and turn on two-factor in the admin settings.
+7. **Uptime monitor**: point it at `https://<domain>/api/health` (GET or HEAD, every 1–5 min).
+   It answers `200 {"ok":true,"db":"up","time":"…"}` when the app can query the database, and
+   `503 {"ok":false,"db":"down",…}` otherwise (no host or error text in the body; never cached).
+
+## Production guards
+
+A production server refuses to start (`instrumentation.ts` → `lib/env-check.ts`; every request answers 500 and the
+log names each problem, never a value) when:
+- `BETTER_AUTH_SECRET` is missing, shorter than 32 characters, or the `.env.example` placeholder;
+- `CRON_SECRET` is missing or `change-me`;
+- `ALLOW_TIME_TRAVEL=true` while `APP_URL` is `eventat.bg` / `www.eventat.bg`;
+- `PAYMENT_PROVIDER=stripe` without `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` and `STRIPE_CONNECT_WEBHOOK_SECRET`;
+- the app runs on Vercel with `STORAGE_DRIVER` other than `s3`.
+
+Staging (a Vercel preview, or `ALLOW_TIME_TRAVEL=true` with a `*.vercel.app` `APP_URL`) starts anyway and logs the
+same findings as one warning line.
+
+## Errors
+
+Every server error (page, server action, route handler, middleware) is logged as one JSON line in the Vercel runtime
+logs: `{"level":"error","msg":"request error","route":"/akaunt/rezervacii/[nomer]","routeType":"render","digest":"…","message":"…","cause":"…"}`
+(the route pattern, never the address, which may hold a one-time token; the stack only outside production). The
+`digest` is the code Next.js shows instead of the message in the browser. With `SENTRY_DSN` set the error also goes
+to Sentry (a plain HTTPS post, no SDK), without a failed query's bound values. Errors inside the browser are not sent.
+Visitors see ‹Нещо се обърка. Опитайте отново.› with ‹Към началото› / ‹Към таблото›.
+
+## Security headers
+
+`next.config.ts` (`lib/security-headers.ts`) sends HSTS (2 years, subdomains), `nosniff`, `strict-origin-when-cross-origin`,
+a Permissions-Policy, `X-Frame-Options: DENY` and a Content-Security-Policy on every route. The policy is fixed when
+the app is **built**: it allows images from `media.eventat.bg` and the host of `S3_PUBLIC_URL`, and, when those sign-ins
+are configured, Google / Facebook profile pictures and sign-in pages; changing these variables needs a redeploy.
+HSTS with `includeSubDomains` binds every `*.eventat.bg` host to HTTPS for two years once a browser has seen it.
+`python3 tools/csp-check.py --base <url>` visits the app as each role and fails on any violation; `tools/e2e-all.sh`
+runs every suite under the same check.
 
 ## Demo / staging
 
@@ -52,4 +89,5 @@ A staging deployment runs the seed and the shifted clock, on its own database (n
 2. From a laptop, once and after each schema change:
    `STAGING_DB_HOST=<staging db hostname> DATABASE_URL=<staging url> npm run db:reset && npm run db:seed`
    The reset/seed scripts refuse every non-local host except the one named in `STAGING_DB_HOST`.
-3. Keep staging password-protected (Vercel → Settings → Deployment Protection).
+3. Keep staging password-protected (Vercel → Settings → Deployment Protection). An uptime monitor then needs
+   Vercel's protection bypass for automation to reach `/api/health`.
