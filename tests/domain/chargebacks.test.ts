@@ -1,6 +1,7 @@
 // Chargebacks (provider dispute.created): the money leaves at once, the partner's payouts freeze,
 // a receivable is netted later; the team records won/lost. Runs on its own database.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { SYSTEM } from '@/lib/domain/actor';
 import { and, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { booking, chargeback, ledgerTransaction, payoutLine } from '@/db/schema';
@@ -38,7 +39,7 @@ describe('chargebacks', () => {
     expect(await bookingBalances(db, disputed.booking.id)).toMatchObject({ client_funds: 0, provider_held: 0 });
     expect((await reloadBooking(disputed.booking.id)).payoutHold).toBe(true);
     expect(await partnerHasOpenChargeback(p.partner.id)).toBe(true);
-    expect((await openChargebacks()).map(c => c.id)).toContain(first.chargebackId);
+    expect((await openChargebacks(SYSTEM)).map(c => c.id)).toContain(first.chargebackId);
 
     // The partner's other payout is frozen while the chargeback is open.
     const frozen = await prepareBatch('2025-09-01');

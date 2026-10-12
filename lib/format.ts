@@ -135,6 +135,9 @@ export function plural(n: number, one: string, many: string): string {
   return `${group(n)}${NBSP}${n === 1 ? one : many}`;
 }
 
+/** ‹24 часа› / ‹1 час› (running text, a plain space). */
+export const hoursText = (h: number) => `${h} ${h === 1 ? 'час' : 'часа'}`;
+
 /** Remaining time "23 ч 12 мин" / "45 мин" until a deadline. */
 export function remaining(from: Date, to: Date): string {
   const mins = Math.max(0, Math.round((to.getTime() - from.getTime()) / 60000));

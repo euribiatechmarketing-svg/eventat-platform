@@ -115,13 +115,13 @@ describe('T17 → Y5 → Y6 → Y7', () => {
     await submitPayoutItem(i1.id); // the job ran already: the provider is not called again
     expect(payout).not.toHaveBeenCalled();
 
-    const earn = await partnerEarnings(p1.partner.id);
+    const earn = await partnerEarnings(p1.actor, p1.partner.id);
     expect(earn.paidYear).toEqual({ year: 2025, cents: 188_100, count: 2, averageCents: 94_100 });
     expect(earn.toBePaidCents).toBe(0);
     expect(earn.month.bars).toHaveLength(5);
     expect(earn.month).toMatchObject({ month: '2025-09', cents: 0, prevCents: 188_100, deltaPct: -100 });
 
-    const csv = await batchReportCsv(batch.id);
+    const csv = await batchReportCsv(accounting, batch.id);
     expect(csv.startsWith('﻿Партида;Дата на партидата;Изпълнител')).toBe(true);
     expect(csv.trim().split('\r\n')).toHaveLength(4);
     expect(csv).toContain('1305,00');
@@ -133,9 +133,9 @@ describe('T17 → Y5 → Y6 → Y7', () => {
     const ledgerCsv = (await reportCsv(accounting, acc.reportId)).csv;
     expect(ledgerCsv).toContain(';payout;');
     expect(ledgerCsv).toContain(';release;');
-    expect((await accountingCsv({ from: '2025-09-14', to: '2025-09-15' }))).toBe(ledgerCsv);
-    expect((await batchDetail(batch.id)).items.flatMap(i => i.lines)).toHaveLength(3);
-    expect((await listBatches()).map(x => x.batchDate)).toContain('2025-09-15');
+    expect((await accountingCsv(accounting, { from: '2025-09-14', to: '2025-09-15' }))).toBe(ledgerCsv);
+    expect((await batchDetail(accounting, batch.id)).items.flatMap(i => i.lines)).toHaveLength(3);
+    expect((await listBatches(accounting)).map(x => x.batchDate)).toContain('2025-09-15');
     await expectLedgerHealthy();
   });
 });
@@ -148,7 +148,7 @@ describe('batch history', () => {
     const empty = await batchOn('2020-01-15');
     expect(empty.status).toBe('ready');
     expect(await itemsOf(empty.id)).toHaveLength(0);
-    expect((await listBatches({ limit: 1000 })).map(x => x.batchDate)).not.toContain('2020-01-15');
+    expect((await listBatches(SYSTEM, { limit: 1000 })).map(x => x.batchDate)).not.toContain('2020-01-15');
   });
 });
 
@@ -378,19 +378,19 @@ describe('queries (SPEC §8.1, §8.2)', () => {
     setTestNow(t('2026-02-20'));
     await ensurePayoutSchedule();
     expect(await pendingJobs('batch:2026-03-01')).toHaveLength(1);
-    const before = await payoutKpis();
+    const before = await payoutKpis(SYSTEM);
     const p = await payablePartner();
     const future = await paidBooking({ partner: p, eventDate: '2026-04-10' });
     const past = await paidBooking({ partner: p, eventDate: '2026-02-18' });
     await release(past.booking.id);
-    const after = await payoutKpis();
+    const after = await payoutKpis(SYSTEM);
     expect(after.heldForEvents.cents - before.heldForEvents.cents).toBe(145_000);
     expect(after.heldForEvents.bookings - before.heldForEvents.bookings).toBe(1);
-    const preview = await nextBatchPreview();
+    const preview = await nextBatchPreview(SYSTEM);
     expect(preview).toMatchObject({ batchDate: '2026-03-01', label: 'Партида февруари · втора половина', status: 'scheduled' });
     expect(preview.netCents).toBeGreaterThanOrEqual(130_500);
     expect(after.nextBatch.batchDate).toBe('2026-03-01');
-    const earn = await partnerEarnings(p.partner.id);
+    const earn = await partnerEarnings(SYSTEM, p.partner.id);
     expect(earn.toBePaidCents).toBe(261_000);
     expect(await bookingBalances(db, future.booking.id)).toMatchObject({ client_funds: 145_000 });
   });

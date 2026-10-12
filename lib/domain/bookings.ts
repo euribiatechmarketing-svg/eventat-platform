@@ -121,6 +121,18 @@ export function eventStartInstant(eventDate: DateStr, startTime: string | null):
   return sofiaInstant(eventDate, hh || 0, mm || 0);
 }
 
+/**
+ * K3 ‹Удължи срока›: the new deadline is ⚙ payment.extension_hours later, clamped to the event
+ * start like K1's (§3; decision in §17), and `hours` is what that adds, rounded like
+ * paymentWindowHours() — the figure the emails, the toast and the button state. 0 = the deadline
+ * already is the event start, so there is nothing to extend.
+ */
+export function extensionOf(b: Pick<BookingRow, 'paymentDueAt' | 'eventDate' | 'startTime'>, extensionHours: number): { newDueAt: Date; hours: number } {
+  const from = b.paymentDueAt.getTime();
+  const to = Math.min(from + extensionHours * HOUR, eventStartInstant(b.eventDate, b.startTime).getTime());
+  return to > from ? { newDueAt: new Date(to), hours: Math.max(1, Math.round((to - from) / HOUR)) } : { newDueAt: b.paymentDueAt, hours: 0 };
+}
+
 const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
 
 // ── Parties: who an email goes to and what it names ───────────────────────
@@ -652,8 +664,11 @@ function clientPaymentReminderVars(bw: BookingWithSnapshots, hoursLeft: number) 
 
 // ── K3: ‹Удължи срока› ───────────────────────────────────────────────────
 
-/** K3 / X10: the team moves payment_due_at by ⚙ payment.extension_hours; T5–T8 move with it. */
-export async function extendPaymentDeadline(actor: AnyActor, input: { number: string }, tx?: Tx): Promise<{ newDueAt: Date }> {
+/**
+ * K3 / X10: the team moves payment_due_at by ⚙ payment.extension_hours, never past the event start
+ * (extensionOf); T5–T8 move with it. Refused (`not_allowed`) when the deadline is the event start.
+ */
+export async function extendPaymentDeadline(actor: AnyActor, input: { number: string }, tx?: Tx): Promise<{ newDueAt: Date; hours: number }> {
   return withTx(tx, async t => {
     const bw = await bookingFor(t, actor, input.number, 'team');
     const b = bw.booking;
@@ -662,9 +677,9 @@ export async function extendPaymentDeadline(actor: AnyActor, input: { number: st
     if (b.status !== 'awaiting_payment') throw new LifecycleError('invalid_state', 'Only a booking awaiting payment can be extended');
     const at = await now();
     const s = await getSettings(at, t);
-    const hours = s['payment.extension_hours'];
     const previous = b.paymentDueAt;
-    const newDueAt = new Date(previous.getTime() + hours * HOUR);
+    const { newDueAt, hours } = extensionOf(b, s['payment.extension_hours']);
+    if (hours === 0) throw new LifecycleError('not_allowed', 'The payment deadline already is the event start');
     const [updated] = await t.update(booking).set({ paymentDueAt: newDueAt, paymentExtensions: b.paymentExtensions + 1, updatedAt: at })
       .where(eq(booking.id, b.id)).returning();
     await t.insert(paymentExtension).values({
@@ -695,7 +710,7 @@ export async function extendPaymentDeadline(actor: AnyActor, input: { number: st
       actor, action: 'booking.payment_extended', entity: 'booking', entityId: b.id,
       data: { number: b.number, previousDueAt: previous.toISOString(), newDueAt: newDueAt.toISOString(), hours, disputeId: open?.id ?? null },
     });
-    return { newDueAt };
+    return { newDueAt, hours };
   });
 }
 
@@ -781,7 +796,8 @@ export async function teamPaymentAlertJob(p: Record<string, unknown>): Promise<v
       await mail(t, {
         key: 'team-payment-deadline', to: r.email, toUserId: r.id, dedupeKey: `${jobKey.teamAlert(b.id)}:${b.paymentDueAt.getTime()}:${r.id}`,
         vars: {
-          caseId: d.number, bookingNo: b.number, hoursLeft, extraHours: s['payment.extension_hours'], clientName: c.name,
+          // What ‹Удължи срока› can still add (0 at the event start: the email then leaves the advice out).
+          caseId: d.number, bookingNo: b.number, hoursLeft, extraHours: extensionOf(b, s['payment.extension_hours']).hours, clientName: c.name,
           clientShortName: c.name.trim().split(/\s+/)[0], partnerName: bw.parties.partner.businessName,
           // The template's „за цената“-style topic is not stored on a dispute; the case title is the closest record.
           disputeTopic: `„${d.title}“`, disputeSummary: d.summary ?? d.description,

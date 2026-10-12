@@ -2,13 +2,16 @@
 // review (money, guards, timers, copy) and the fix that closes it. Runs on its
 // own database.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SYSTEM } from '@/lib/domain/actor';
 import { and, asc, eq } from 'drizzle-orm';
 import { db } from '@/db';
-import { dispute, emailOutbox, payoutBatch, payoutLine, refund } from '@/db/schema';
+import { booking, dispute, emailOutbox, payoutBatch, payoutLine, refund } from '@/db/schema';
 import { advanceTestNow, setTestNow } from '@/lib/clock';
-import { sofiaInstant } from '@/lib/format';
+import { money, sofiaInstant } from '@/lib/format';
 import { simulatedProvider } from '@/lib/payments/simulated';
 import { bookingBalances } from '@/lib/domain/ledger';
+import { schedulePaymentJobs } from '@/lib/domain/bookings';
+import { getSettings } from '@/lib/domain/settings';
 import { cancelByClient, cancelByTeam } from '@/lib/domain/cancellation';
 import { applyChargebackEvent } from '@/lib/domain/chargebacks';
 import { decide, openByClient, updateCase } from '@/lib/domain/disputes';
@@ -152,6 +155,43 @@ describe('K16 restore_price keeps the §3 clamp', () => {
   });
 });
 
+describe('K16 restore_price re-arms the payment reminders for the new deadline', () => {
+  it('T5–T7 that already ran for the old deadline run again before the new one', async () => {
+    const { actor: admin } = await createAdmin('admin');
+    const client = await createClient();
+    const partner = await createPartner();
+    const approvedAt = new Date(NOW.getTime() - 20 * H);
+    const { booking: b } = await createBookingRow({ client: client.user, partner, status: 'awaiting_payment', approvedAt });
+    await db.update(booking).set({ amountCents: 160_000, dueNowCents: 160_000 }).where(eq(booking.id, b.id));
+    // K1 at approval: T5 at −6 h / −2 h, T6 at −6 h, T7 at −4 h, T8 at the deadline (NOW + 4 h).
+    await db.transaction(async t => schedulePaymentJobs(t, b, await getSettings(approvedAt, t), approvedAt));
+    await runJobs();
+    expect(await emails('client-payment-reminder', client.user.id)).toHaveLength(1);
+    expect(await emails('vendor-payment-reminder')).toHaveLength(1);
+
+    const d = await openByClient(client.actor, { bookingId: b.id, reason: 'payment_problem', description: 'Цената е различна.' });
+    await decide(admin, { disputeId: d.id, kind: 'restore_price', motive: 'одобрената цена важи.' });
+    const due = new Date(NOW.getTime() + 24 * H);
+    expect((await reloadBooking(b.id)).paymentDueAt).toEqual(due);
+    const at = async (key: string) => (await pendingJobs(key))[0]?.runAt ?? null;
+    expect(await at(`booking:${b.id}:payrem:6`)).toEqual(new Date(due.getTime() - 6 * H));
+    expect(await at(`booking:${b.id}:payrem:2`)).toEqual(new Date(due.getTime() - 2 * H));
+    expect(await at(`booking:${b.id}:vpayrem`)).toEqual(new Date(due.getTime() - 6 * H));
+    expect(await at(`booking:${b.id}:teamalert`)).toEqual(new Date(due.getTime() - 4 * H));
+    expect(await at(`booking:${b.id}:payexpire`)).toEqual(due);
+
+    setTestNow(new Date(due.getTime() - 6 * H));
+    await runJobs();
+    const client6 = await emails('client-payment-reminder', client.user.id);
+    expect(client6).toHaveLength(2);
+    expect(client6[0].vars).toMatchObject({ hoursLeft: 6, amount: money(145_000) });
+    expect(await emails('vendor-payment-reminder')).toHaveLength(2);
+    setTestNow(new Date(due.getTime() - 2 * H));
+    await runJobs();
+    expect(await emails('client-payment-reminder', client.user.id)).toHaveLength(3);
+  });
+});
+
 describe('X2: the team may change the position deadline', () => {
   it('moves position_due_at and the T15 timer', async () => {
     const { actor: admin } = await createAdmin('admin');
@@ -176,7 +216,7 @@ describe('a provider call that keeps throwing ends in F3 / Y8, never stuck', () 
     const [r] = await refundsOf(b.id);
     expect(r).toMatchObject({ status: 'failed' });
     expect(r.failureReason).toContain('charge_disputed');
-    expect((await failedRefunds()).map(f => f.refund.id)).toContain(r.id);
+    expect((await failedRefunds(SYSTEM)).map(f => f.refund.id)).toContain(r.id);
     expect((await bookingBalances(db, b.id)).client_funds).toBe(145_000);
     await expectLedgerHealthy();
   });

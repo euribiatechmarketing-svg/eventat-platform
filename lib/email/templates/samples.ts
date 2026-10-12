@@ -70,7 +70,7 @@ sample(client.clientPaymentExpired, {
 });
 sample(client.clientRequestDeclined, {
   requestNo: '2026-0614-ФТ', partnerName: 'Ана Петрова Photography', partnerCategory: 'Фотография', serviceName: 'Цял ден с втори фотограф',
-  eventType: 'Сватба', eventDate: wedding.eventDate, reason: 'Датата е заета', amount: '1 900,00 €',
+  eventType: 'Сватба', eventDate: wedding.eventDate, reason: 'Датата е заета', dateTaken: true, amount: '1 900,00 €',
 });
 sample(client.clientRequestExpired, {
   requestNo: '2026-0614-ДК', partnerName: 'Флора Студио', partnerCategory: 'Декорация', serviceName: 'Арка, маси и букет',

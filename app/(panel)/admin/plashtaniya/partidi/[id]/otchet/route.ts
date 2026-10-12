@@ -17,7 +17,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (!/^[0-9a-f-]{36}$/.test(id)) return new NextResponse('Not found', { status: 404 });
   const [b] = await db.select({ date: payoutBatch.batchDate }).from(payoutBatch).where(eq(payoutBatch.id, id));
   if (!b) return new NextResponse('Not found', { status: 404 });
-  const csv = await batchReportCsv(id);
+  const csv = await batchReportCsv(actor, id);
   return new NextResponse(csv, {
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',

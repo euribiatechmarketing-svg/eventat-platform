@@ -2,6 +2,7 @@
 // (csv-formula-injection, csv-formula-admin-finance-reports). Before the fix a partner who renamed
 // the business to `=HYPERLINK(…)` had it evaluated in the finance team's batch report.
 import { afterEach, describe, expect, it } from 'vitest';
+import { SYSTEM } from '@/lib/domain/actor';
 import { eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { payoutBatch } from '@/db/schema';
@@ -43,7 +44,7 @@ describe('the batch report (finance team)', () => {
     setTestNow(sofiaInstant('2025-09-14', 9, 1));
     await runJobs(); // T17 prepares the 15 September batch
     const [batch] = await db.select().from(payoutBatch).where(eq(payoutBatch.batchDate, '2025-09-15'));
-    const csv = await batchReportCsv(batch.id);
+    const csv = await batchReportCsv(SYSTEM, batch.id);
     const row = csv.split('\r\n').find(l => l.includes('HYPERLINK'))!;
     const cells = row.match(/("([^"]|"")*"|[^;]*)(;|$)/g)!.map(c => c.replace(/;$/, ''));
     for (const c of cells) expect(c.replace(/^"/, ''), c).not.toMatch(/^[=+@]/);

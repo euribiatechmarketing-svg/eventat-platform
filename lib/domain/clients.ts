@@ -171,10 +171,11 @@ export async function signOutEverywhere(actor: AnyActor, tx?: Tx) {
     const rows = await revokeSignIns(t, u.id);
     const at = await now();
     await audit(t, { actor, action: 'user.signed_out_everywhere', entity: 'user', entityId: u.id, data: { sessions: rows.length } });
-    const sessions = rows.map(r => ({ device: r.deviceLabel ?? deviceFromUserAgent(r.userAgent), city: r.city ?? u.lastLoginCity ?? 'София' }));
+    // The city as Настройки › Сигурност shows it; unknown → null, and the email leaves the place out (never a guess).
+    const sessions = rows.map(r => ({ device: r.deviceLabel ?? deviceFromUserAgent(r.userAgent), city: r.city ?? u.lastLoginCity ?? null }));
     await mail(t, {
       key: 'client-signout-all', to: u.email, toUserId: u.id, dedupeKey: `signout:${u.id}:${at.toISOString()}`,
-      vars: { email: u.email, sessions: sessions.length ? sessions : [{ device: 'Браузър', city: u.lastLoginCity ?? 'София' }] },
+      vars: { email: u.email, sessions: sessions.length ? sessions : [{ device: 'Браузър', city: u.lastLoginCity ?? null }] },
     });
     return { revoked: rows.length };
   });

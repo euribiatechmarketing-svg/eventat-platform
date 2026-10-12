@@ -14,7 +14,9 @@ import {
 import { AftercareError } from '@/lib/domain/aftercare-shared';
 import { seedDemo } from '@/scripts/seed/run';
 import { prepareBatch } from '@/lib/domain/payouts';
+import { eventStartInstant } from '@/lib/domain/bookings';
 import { adminBell } from '@/lib/domain/views-panel';
+import { caseView } from '@/lib/domain/views-messaging-support';
 
 const NOW = sofiaInstant('2025-08-31', 12, 0);
 let admin: Actor, support: Actor;
@@ -48,10 +50,12 @@ describe('bookings register', () => {
     const r = await bookingsRegister(admin, {});
     expect(r.month).toBe('2026-05');
   });
-  it('hides the commission without view_finance', async () => {
+  it('hides the commission and the month turnover (GMV) without view_finance (SPEC §1.2)', async () => {
     const r = await bookingsRegister(support, { month: '2026-06' });
     expect(r.commissionCents).toBeNull();
+    expect(r.turnoverCents).toBeNull();
     expect(r.rows.every(x => x.commissionCents === null)).toBe(true);
+    expect((await bookingsRegister(admin, { month: '2026-06' })).turnoverCents).toBeGreaterThan(0);
   });
   it('attention: open disputes (and deadlines within 4 hours)', async () => {
     const a = await attentionRows(admin);
@@ -68,6 +72,14 @@ describe('booking record', () => {
     expect(r.timeline.map(t => t.title)).toEqual(['Клиентът изпрати заявка', 'Студио Мелодия одобри заявката', 'Плащането постъпи в платформата', 'Предстоящо събитие']);
     expect(r.can.cancel && r.can.openDispute).toBe(true);
     expect(await bookingRecord(admin, '2099-0101-ЯЯ')).toBeNull();
+  });
+  it('the parties’ totals in the platform (‹похарчени›, ‹оборот›) only with view_finance, as on their own pages', async () => {
+    const full = (await bookingRecord(admin, '2026-0614-ЕА'))!;
+    expect(full.client.stats).toMatch(/^6\sрезервации · .+€ похарчени$/);
+    expect(full.partner.stats).toMatch(/резервации · .+€ оборот$/);
+    const plain = (await bookingRecord(support, '2026-0614-ЕА'))!;
+    expect(plain.client.stats).toBe(full.client.stats.split(' · ')[0]);
+    expect(plain.partner.stats).toBe(full.partner.stats.split(' · ')[0]);
   });
 });
 
@@ -124,6 +136,38 @@ describe('disputes', () => {
     expect(c.warn?.extend).toBe(true);
     expect(c.revisionHref).toMatch(/^\/admin\/moderatsiya\?usluga=/);
     expect(plain(c.money.note)).toBe('За плащане: 3 600 € вместо одобрените 3 200 €.');
+  });
+  it('‹Удължи срока› offers what K3 can still add before the event start, and nothing at it (§17)', async () => {
+    expect((await disputeCase(admin, '2026-0621-ТЛ'))!.warn).toMatchObject({ extend: true, extendHours: 24 });
+    const [b] = await db.select().from(s.booking).where(eq(s.booking.number, '2026-0621-ТЛ'));
+    const start = eventStartInstant(b.eventDate, b.startTime);
+    try {
+      await db.update(s.booking).set({ paymentDueAt: new Date(start.getTime() - 5 * 3600_000) }).where(eq(s.booking.id, b.id));
+      expect((await disputeCase(admin, '2026-0621-ТЛ'))!.warn).toMatchObject({ extend: true, extendHours: 5 });
+      await db.update(s.booking).set({ paymentDueAt: start }).where(eq(s.booking.id, b.id));
+      setTestNow(new Date(start.getTime() - 3 * 3600_000));
+      const c = (await disputeCase(admin, '2026-0621-ТЛ'))!;
+      expect(c.warn).toMatchObject({ extend: false, extendHours: 0 });
+      expect(plain(c.warn?.text)).toBe('Срокът за плащане изтича след 3 ч 0 мин.');
+      const row = (await attentionRows(admin)).find(x => x.number === '2026-0621-ТЛ')!;
+      expect(row).toMatchObject({ problem: 'deadline', canExtend: false });
+      expect((await bookingRecord(admin, '2026-0621-ТЛ'))!.can.extend).toBe(false);
+    } finally {
+      setTestNow(NOW);
+      await db.update(s.booking).set({ paymentDueAt: b.paymentDueAt }).where(eq(s.booking.id, b.id));
+    }
+  });
+  it('case 2025-0509-СВ sits on a cancelled booking (seed README: historical record): every side’s case page still reads', async () => {
+    const [b] = await db.select().from(s.booking).where(eq(s.booking.number, '2025-0509-СВ'));
+    expect(b.status).toBe('cancelled');
+    const c = (await disputeCase(admin, '2025-0509-СВ'))!;
+    expect(c).toMatchObject({ open: false, warn: null });
+    expect(plain(c.decision?.title)).toBe('Без възстановяване');
+    expect((await bookingRecord(admin, '2025-0509-СВ'))!.can).toMatchObject({ extend: false, cancel: false, openDispute: false });
+    const client = await caseView(await actor('denitsa.ivan@example.invalid'), '2025-0509-СВ');
+    const partner = await caseView(await actor('studio.melodia@gmail.com'), '2025-0509-СВ');
+    for (const v of [client, partner]) expect(v).toMatchObject({ number: '2025-0509-СВ', status: 'resolved' });
+    expect(await caseView(await actor('maria.dimitrova@gmail.com'), '2025-0509-СВ')).toBeNull();
   });
   it('a decided case shows its decision', async () => {
     const c = (await disputeCase(admin, '2025-0517-РД'))!;

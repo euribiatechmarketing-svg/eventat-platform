@@ -5,9 +5,8 @@ import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { decide, remind, requestInfo, setHoldsPayout, type DecideInput } from '@/lib/domain/disputes';
 import { extendPaymentDeadline } from '@/lib/domain/bookings';
-import { getSetting } from '@/lib/domain/settings';
 import { disputeCase, obligationTitle } from '@/lib/domain/views-admin-money';
-import { moneyShort, parseMoney } from '@/lib/format';
+import { moneyShort, parseMoney, hoursText } from '@/lib/format';
 import { setFlash } from '@/lib/flash';
 import { NUMBER_RE, adminActor, casePath, deliverNow, refuse, str } from '../../_money/server';
 
@@ -79,12 +78,13 @@ export async function remindAction(fd: FormData) {
   await done(t.page, `Напомнянето е изпратено на ${side === 'client' ? t.c.clientName : t.c.partnerName}`);
 }
 
-/** ‹Удължи срока с 24 часа› → bookings.extendPaymentDeadline() (X10). */
+/** ‹Удължи срока с 24 часа› → bookings.extendPaymentDeadline() (X10); fewer hours when the event start clamps it (§17). */
 export async function extendAction(fd: FormData) {
   const t = await target(fd);
-  try { await extendPaymentDeadline(t.actor, { number: t.c.bookingNumber }); } catch (e) { return refuse(e, t.page); }
+  let hours: number;
+  try { ({ hours } = await extendPaymentDeadline(t.actor, { number: t.c.bookingNumber })); } catch (e) { return refuse(e, t.page); }
   await deliverNow();
-  await done(t.page, `Срокът за плащане е удължен с ${await getSetting('payment.extension_hours')} часа`);
+  await done(t.page, `Срокът за плащане е удължен с ${hoursText(hours)}`);
 }
 
 /** D13: the payout hold of an open case on or off (control is new copy). */

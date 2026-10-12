@@ -298,6 +298,28 @@ describe('R7 declineRequest', () => {
     expect(await requestRow(r2.requestId)).toMatchObject({ declineReason: 'other', declineText: 'Нямаме свободен екип за този ден.' });
     expect((await emails('client-request-declined', client.user.id))[1].vars).toMatchObject({ reason: 'Нямаме свободен екип за този ден.' });
   });
+
+  it('‹Друга причина›: the email does not claim the date is taken (the client screen’s wording)', async () => {
+    const client = await createClient();
+    const partner = await createPartner({ businessName: 'Ана Петрова Photography' });
+    const r = await sendFor(client, partner);
+    await declineRequest(partner.actor, { number: r.number, reason: 'date_taken' });
+    const [taken] = await emails('client-request-declined', client.user.id);
+    expect(taken.text).toContain('отказа заявката ви, защото датата');
+    expect(taken.text).toContain('Можете и да следите датата');
+
+    const other = await createPartner({ businessName: 'Ана Петрова Photography' });
+    const r2 = await sendFor(client, other);
+    await declineRequest(other.actor, { number: r2.number, reason: 'other', text: 'Нямаме свободен екип за този ден.' });
+    const [m] = (await emails('client-request-declined', client.user.id)).filter(e => e.id !== taken.id);
+    expect(m.text).not.toMatch(/заета|ако се освободи/);
+    expect(m.text).toContain('Ана Петрова Photography отказа заявката ви. Не дължите нищо — плащате само за одобрени заявки.');
+    expect(m.text).toContain('Вижте подобни изпълнители, които са свободни на тази дата.');
+    expect(m.text).toMatch(/Причина\W+Нямаме свободен екип за този ден\./);
+    expect(m.subject).toBe(`Ана Петрова Photography отказа заявката ви за ${date(EVENT)}`);
+    expect(m.html).not.toContain('Нямаме свободен екип за този ден. и не дължите');
+    expect(m.html).toContain('Не дължите нищо — вижте подобни изпълнители.');
+  });
 });
 
 describe('T1 reminder and T2 expiry', () => {

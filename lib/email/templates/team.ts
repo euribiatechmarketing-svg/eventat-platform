@@ -171,7 +171,9 @@ export const teamDisputeDeadline: EmailTemplate<DisputeDeadlineVars> = {
 
 /**
  * Sent only when the booking has an open dispute. disputeTopic: 'за цената'; disputeSummary: the sentence
- * after „По резервацията има отворен спор:“. extraHours: the extension the button grants (24).
+ * after „По резервацията има отворен спор:“. extraHours: the extension the button grants (24; less when the
+ * event start clamps it, §17). At 0 the deadline is the event start: the advice to extend and the
+ * ‹Удължи срока› button are left out, and the button opens the case.
  * clientShortName: the client as named in running text ('Технолинк' for 'Технолинк ЕООД').
  */
 type PaymentDeadlineVars = {
@@ -183,12 +185,12 @@ export const teamPaymentDeadline: EmailTemplate<PaymentDeadlineVars> = {
   key: 'team-payment-deadline', audience: 'team', optional: false,
   render: v => ({
     subject: `Срокът за плащане по резервация ${v.bookingNo} изтича след ${pl(v.hoursLeft, 'час', 'часа')}`,
-    preheader: `Има отворен спор ${v.disputeTopic} — удължете срока, за да не се освободи датата.`,
+    preheader: v.extraHours > 0 ? `Има отворен спор ${v.disputeTopic} — удължете срока, за да не се освободи датата.` : `Има отворен спор ${v.disputeTopic}.`,
     trigger: 'Срок за плащане по резервация с отворен спор',
     heading: 'Срокът за плащане изтича',
     paragraphs: [
       `Срокът на ${v.clientName} да плати резервация ${v.bookingNo} при ${v.partnerName} изтича след ${pl(v.hoursLeft, 'час', 'часа')}. След това датата се освобождава автоматично.`,
-      `По резервацията има отворен спор: ${v.disputeSummary} Удължете срока с ${v.extraHours} часа, за да не изгуби ${v.clientShortName} датата, докато решите.`,
+      `По резервацията има отворен спор: ${v.disputeSummary}${v.extraHours > 0 ? ` Удължете срока с ${pl(v.extraHours, 'час', 'часа')}, за да не изгуби ${v.clientShortName} датата, докато решите.` : ''}`,
     ],
     details: [
       ['Резервация', v.bookingNo],
@@ -198,7 +200,7 @@ export const teamPaymentDeadline: EmailTemplate<PaymentDeadlineVars> = {
       ['За плащане сега', v.payNowAmount],
       ['Срок за плащане', v.payBy],
     ],
-    cta: { label: 'Удължи срока', href: `/admin/sporove/${v.caseId}` },
+    cta: { label: v.extraHours > 0 ? 'Удължи срока' : 'Отвори кейса', href: `/admin/sporove/${v.caseId}` },
   }),
 };
 

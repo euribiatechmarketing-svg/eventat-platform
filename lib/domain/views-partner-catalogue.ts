@@ -270,7 +270,7 @@ export const EARNINGS_PER_PAGE = 10;
 
 export async function earningsPage(actor: AnyActor, a: { page: number }, q: Queryable = db) {
   const p = await partnerOf(actor, q);
-  const e = await partnerEarnings(p.id, {}, q);
+  const e = await partnerEarnings(actor, p.id, {}, q);
   const conds = and(eq(payoutLine.partnerId, p.id), ne(payoutLine.status, 'cancelled'));
   const [{ n: total }] = await q.select({ n: count() }).from(payoutLine).where(conds);
   const pages = Math.max(1, Math.ceil(total / EARNINGS_PER_PAGE));
@@ -326,7 +326,7 @@ export async function requestEarningsReport(actor: AnyActor, tx?: Tx): Promise<{
     const p = await partnerOf(actor, t);
     if (p.status !== 'approved' && p.status !== 'deactivated') throw new DomainError('partner_status');
     const at = await now();
-    const e = await partnerEarnings(p.id, { at }, t);
+    const e = await partnerEarnings(actor, p.id, { at }, t);
     const [y, m] = e.month.month.split('-').map(Number);
     const [r] = await t.insert(reportJob).values({
       kind: 'partner_earnings', requestedBy: actor.userId, partnerId: p.id, params: { month: e.month.month }, status: 'ready', createdAt: at, readyAt: at,
@@ -350,7 +350,7 @@ export async function earningsReportCsv(actor: AnyActor, reportId: string, q: Qu
   const p = await partnerOf(actor, q);
   const [r] = await q.select().from(reportJob).where(and(eq(reportJob.id, reportId), eq(reportJob.partnerId, p.id), eq(reportJob.kind, 'partner_earnings')));
   if (!r || r.status !== 'ready') return null;
-  const e = await partnerEarnings(p.id, {}, q);
+  const e = await partnerEarnings(actor, p.id, {}, q);
   const rows = await q.select({
     status: payoutLine.status, amount: payoutLine.amountCents, paidAt: payoutLine.paidAt, number: booking.number, eventDate: booking.eventDate,
     serviceTitle: booking.serviceTitle, typeName: eventType.name, hosts: clientEvent.hosts, clientName: user.name,

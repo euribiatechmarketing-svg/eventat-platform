@@ -34,7 +34,7 @@ export default async function AdminBookings({ searchParams }: { searchParams: SP
       <div className="page-head">
         <div>
           <h1 className="page-title">Резервации</h1>
-          <p className="page-sub">{r.total} през {monthLower} · {moneyShort(r.turnoverCents)} оборот · {plural(att.length, 'изисква', 'изискват')} намеса</p>
+          <p className="page-sub">{r.total} през {monthLower} · {r.turnoverCents !== null ? `${moneyShort(r.turnoverCents)} оборот · ` : ''}{plural(att.length, 'изисква', 'изискват')} намеса</p>
         </div>
         <div className="page-head-right">
           <form action={exportBookingsAction}>
@@ -102,7 +102,7 @@ export default async function AdminBookings({ searchParams }: { searchParams: SP
       <section className="dcard">
         <div className="month-div" style={{ marginTop: 0 }}>
           <b>{r.monthLabel}</b>
-          <span>{plural(r.total, 'резервация', 'резервации')} · {moneyShort(r.turnoverCents)} оборот{r.commissionCents !== null ? ` · ${moneyShort(r.commissionCents)} комисиона` : ''}</span>
+          <span>{plural(r.total, 'резервация', 'резервации')}{r.turnoverCents !== null ? ` · ${moneyShort(r.turnoverCents)} оборот` : ''}{r.commissionCents !== null ? ` · ${moneyShort(r.commissionCents)} комисиона` : ''}</span>
         </div>
         {r.rows.length ? (
           <div className="am-tbl-wrap"><table className="tbl am-stack am-reg">

@@ -323,7 +323,8 @@ async function declineInTx(t: Tx, ctx: RequestContext, a: { actor: AnyActor; rea
     vars: {
       requestNo: r.number, partnerName: p.partner.businessName, partnerCategory: p.partnerCategory, serviceName: r.serviceTitle,
       eventType: p.eventType.name, eventDate: date(r.eventDate),
-      reason: a.reason === 'date_taken' ? DECLINE_REASON_LABEL.date_taken : (a.text ?? DECLINE_REASON_LABEL.other), amount: amountText(r.amountCents),
+      reason: a.reason === 'date_taken' ? DECLINE_REASON_LABEL.date_taken : (a.text ?? DECLINE_REASON_LABEL.other), dateTaken: a.reason === 'date_taken',
+      amount: amountText(r.amountCents),
     },
   });
   await audit(t, { actor: a.actor, action: 'request.declined', entity: 'request', entityId: r.id, data: { number: r.number, reason: a.reason, text: a.text } });

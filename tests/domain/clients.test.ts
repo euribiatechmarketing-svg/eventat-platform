@@ -81,6 +81,27 @@ describe('A6 – A8 security', () => {
     expect(deviceFromUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)')).toBe('MacBook');
     expect(deviceFromUserAgent(null)).toBe('Браузър');
   });
+
+  it('A8: a session whose city is unknown is listed without a place, never as „София“', async () => {
+    const { actor, user } = await createClient();
+    await addSession(user.id, { device: 'MacBook' });
+    await addSession(user.id, { ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)' });
+    await signOutEverywhere(actor);
+    const [m] = await emails('client-signout-all', user.id);
+    expect(m.vars).toEqual({ email: user.email, sessions: [{ device: 'MacBook', city: null }, { device: 'iPhone', city: null }] });
+    expect(m.text).not.toContain('София');
+    expect(m.text).toContain('прекратихме всички активни сесии в профила ви, включително на MacBook и iPhone.');
+    expect(m.text).toMatch(/Прекратени сесии\W+MacBook, iPhone/);
+
+    // One place known, one not: each session with what is known about it.
+    const other = await createClient();
+    await addSession(other.user.id, { device: 'MacBook', city: 'Пловдив' });
+    await addSession(other.user.id, { device: 'iPhone' });
+    await signOutEverywhere(other.actor);
+    const [m2] = await emails('client-signout-all', other.user.id);
+    expect(m2.text).toContain('включително на MacBook в Пловдив и iPhone.');
+    expect(m2.text).toMatch(/Прекратени сесии\W+MacBook · Пловдив, iPhone/);
+  });
 });
 
 describe('A9 – A11 deletion', () => {

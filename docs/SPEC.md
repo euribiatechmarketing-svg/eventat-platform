@@ -172,6 +172,7 @@ Every timer is a `job` row with a `dedupe_key`. Handlers re-check state and are 
 **Deadline clamps:**
 - `request.response_due_at = min(sent_at + 24 h, event start instant − 1 h)`.
 - `payment_due_at = min(approved_at + 24 h, event start instant)`.
+- ‹Удължи срока› (K3): `payment_due_at = min(payment_due_at + 24 h, event start instant)` (D97).
 - The event start instant is `sofiaInstant(event_date, start_time ?? 00:00)`.
 - A request cannot be sent with fewer than the partner's lead-time days left (§12.6), so these clamps only bite on same-day partners.
 
@@ -414,7 +415,7 @@ A booking is created when a request is approved. It carries the money. Number = 
 |---|---|---|---|---|---|
 | K1 | ∅ → awaiting_payment | R3 / R6 | partner | — | `approved_at`; `payment_due_at` (§3 clamp); date hold (§12.6); payment plan computed (§7.2) as `due_now_cents` and `balance_cents`; snapshots: `cancellation_policy`, `deposit_percent` (the commission is snapshotted at payment, §6); jobs T5–T8 |
 | K2 | awaiting_payment → awaiting_payment | ‹Напомни на клиента› | partner | — | `client-payment-reminder`; toast ‹Напомнянето е изпратено› |
-| K3 | awaiting_payment → awaiting_payment | ‹Удължи срока› / ‹Удължи срока с 24 часа› | team | §1.2 | `payment_due_at += 24 h`; `payment_extension` row; T5–T8 rescheduled; `client-payment-extended`, `vendor-payment-deadline-extended`; toast ‹Срокът е удължен с 24 часа› (list) / ‹Срокът за плащане е удължен с 24 часа› (case page) |
+| K3 | awaiting_payment → awaiting_payment | ‹Удължи срока› / ‹Удължи срока с 24 часа› | team | §1.2; the deadline is before the event start (D97) | `payment_due_at = min(payment_due_at + 24 h, event start)` (§3 clamp, D97); `payment_extension` row with the hours added; T5–T8 rescheduled; `client-payment-extended`, `vendor-payment-deadline-extended`; toast ‹Срокът е удължен с 24 часа› (list) / ‹Срокът за плащане е удължен с 24 часа› (case page) |
 | K4 | awaiting_payment → approval_withdrawn | ‹Отмени одобрението› | partner | no charge `succeeded` or `pending` | Hold released; jobs cancelled; `client-approval-withdrawn`; date watches → `client-date-freed` |
 | K5 | awaiting_payment → confirmed | the first charge `succeeded` (card, or bank transfer received) | provider | — | `paid_at`; commission rate snapshot (§6); hold → booked; contact phone revealed to the partner (§10); invoice issued (§9); ledger posting L1; T5–T8 cancelled; T9 (deposit mode), T11, T12, T13, T14 scheduled; R9 auto-declines; O5 offers lapse; `client-booking-confirmed`, `client-invoice`, `vendor-booking-confirmed` |
 | K6 | awaiting_payment → payment_expired | T8 | system | no `succeeded` charge; an `awaiting_transfer` charge does not stop it (D6) | Hold released; open charge → `expired`; `client-payment-expired`, `vendor-hold-expired`; date watches → `client-date-freed` |
@@ -427,7 +428,7 @@ A booking is created when a request is approved. It carries the money. Number = 
 | K13 | confirmed → completed | T13 | system | — | Ledger L3 release, unless an open dispute with `holds_payout` (then the release waits for the decision); payout item (§4.10); T14 |
 | K14 | confirmed/completed → (dispute) | a dispute is opened (§4.11) | client / partner / team | — | `payout_hold` while the dispute holds the payout |
 | K15 | awaiting_payment / confirmed → cancelled | dispute decision `cancel_*` (§4.11) | team | — | As K11, refund per the decision |
-| K16 | awaiting_payment → awaiting_payment | dispute decision `restore_price` / `accept_new_price` | team | — | `amount_cents` changed; `restore_price` resets `payment_due_at = decided_at + 24 h` |
+| K16 | awaiting_payment → awaiting_payment | dispute decision `restore_price` / `accept_new_price` | team | — | `amount_cents` changed; `restore_price` resets `payment_due_at = min(decided_at + 24 h, event start)` (§3 clamp) and arms T5–T8 again for the new deadline (reminders that already ran for the old one run again) |
 
 A booking cannot be moved to another date in v1. The partner's `reschedule_policy` is shown but no reschedule flow exists in the prototype (D35).
 
@@ -1313,3 +1314,4 @@ Each entry has a fixed shape:
 | D94 | ‹Към таблото› on the pending page leads into a panel that cannot work before approval. | The button renders only once the partner is `approved`; while `submitted` the page shows the timeline only. **[Nikola]** |
 | D95 | The partner request page shows a client rating (‹4,9 Оценка›), but no flow lets anyone rate clients. | Dropped. The client card shows bookings count and ‹Клиент от {година}› only. **[Nikola]** |
 | D96 | The admin client-list badge mixes type and status (‹Бизнес› vs ‹Отворен спор›). | Type is shown in the sub-line. The badge is a computed status: ‹Блокиран› > ‹Отворен спор› > ‹Активен› (the ‹Блокиран› label is new copy). |
+| D97 | K3 ‹Удължи срока› adds 24 h literally, so a booking for an event within a day or two could be given a payment deadline after the event start, which is meaningless (K1 and K16 already stop at the event start, §3). | K3 is clamped like K1: `payment_due_at = min(payment_due_at + 24 h, event start)`. The emails `client-payment-extended` / `vendor-payment-deadline-extended`, the toasts, the timeline and the case-page button ‹Удължи срока с N часа› state the hours actually added (rounded like the payment window, at least 1; ‹1 час›). When the deadline already is the event start there is nothing to extend: the action is refused (‹Действието вече не е възможно›), the buttons are hidden, the case-page warning keeps only its first sentence, and `team-payment-deadline` (T7) leaves out ‹Удължете срока с …› and leads with ‹Отвори кейса›. |

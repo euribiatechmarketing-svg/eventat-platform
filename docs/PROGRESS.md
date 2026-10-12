@@ -61,8 +61,13 @@ State at end of 9 Oct: main `6a8bd34` — 586 unit tests, 13/13 e2e suites (9 ar
 - Accounts only a person can create: Neon (via Vercel Storage), Stripe, Postmark, Cloudflare R2.
 
 ## Open items from the domain reviews
-- Seed: dispute 2025-0509-СВ sits on a cancelled booking (SPEC X1 vs DATA-MODEL S9); seeded partners with < 3 paid bookings get the 5% intro rate when demo bookings are paid; no consent rows seeded.
-- Lifecycle: K3 extension not clamped to the event start; client `withdrawn` status unused; `client-request-declined` always says the date is taken.
-- Aftercare: K10 decline after the event leaves the booking `confirmed` (T13 already ran) — needs T13 re-arm; reminders not re-armed after `restore_price`; read-only finance functions rely on the page for permission checks.
-- Catalogue: D55 email change has no attempt limit and no approved code email; `client-signout-all` falls back to „София“.
-- Email copy needing approval: partial-refund / team-cancellation wording, deposit-mode emails (D5), offer screens (D60).
+- Seed: seeded partners with < 3 paid bookings get the 5% intro rate when demo bookings are paid; no consent rows seeded.
+- Lifecycle: client `withdrawn` status unused.
+- Aftercare: K10 decline after the event leaves the booking `confirmed` (T13 already ran) — needs T13 re-arm.
+- Catalogue: D55 email change has no attempt limit and no approved code email.
+- Email copy needing approval: partial-refund / team-cancellation wording, deposit-mode emails (D5), offer screens (D60);
+  `client-request-declined` for ‹Друга причина› (the approved text minus the date-taken claims, as the client request page words it).
+- Closed on `feat/leftovers` (12 Oct): K16 `restore_price` re-arms T5–T8; K3 clamped to the event start (D97); read-only finance
+  functions check the actor themselves (the bookings register's month turnover and the booking page's ‹В платформата› totals
+  too: `view_finance` only); `client-signout-all` leaves an unknown city out; the decline email for ‹Друга причина›;
+  2025-0509-СВ noted in scripts/seed/README.md as a historical record (all three case pages verified).

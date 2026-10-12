@@ -514,7 +514,7 @@ export async function cancelPageData(actor: AnyActor, number: string, q: Queryab
   const [b] = await q.select().from(booking).where(eq(booking.number, number)).limit(1);
   if (!b || b.clientId !== actor.userId) throw new LifecycleError('not_found', `No booking ${number}`);
   const at = await now();
-  const quote = await quoteBooking(b.id, { at, initiatedBy: 'client' }, q);
+  const quote = await quoteBooking(actor, b.id, { at, initiatedBy: 'client' }, q);
   const eligibility = await clientCancelEligibility(b.id, q);
   const policies = await policiesFor(b, q);
   const card = await partnerCard(q, b.partnerId);

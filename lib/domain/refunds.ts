@@ -17,7 +17,7 @@ import {
 } from '@/db/schema';
 import { now } from '@/lib/clock';
 import { date as fmtDate, money, sofiaDate } from '@/lib/format';
-import { assertCan, isSystem, SYSTEM, type Actor, type AnyActor } from './actor';
+import { assertCan, assertFinance, isSystem, SYSTEM, type Actor, type AnyActor } from './actor';
 import { audit } from './audit';
 import { accountBalance, postTransaction } from './ledger';
 import { clawBackReleased, resyncPreparedBatch } from './payouts';
@@ -305,8 +305,9 @@ export async function issueCreditNote(tx: Tx, r: RefundRow, b: BookingRow): Prom
 
 // ── The team's tools for failed refunds ───────────────────────────────────
 
-/** Failed refunds not yet covered by a later refund of the same charge, reason, cancellation and decision (admin attention list, D67). */
-export async function failedRefunds(q: Queryable = db) {
+/** Failed refunds not yet covered by a later refund of the same charge, reason, cancellation and decision (admin attention list, D67). view_finance. */
+export async function failedRefunds(actor: AnyActor, q: Queryable = db) {
+  assertFinance(actor);
   return q.select({ refund, number: booking.number }).from(refund).innerJoin(booking, eq(booking.id, refund.bookingId))
     .where(uncoveredFailedSql)
     .orderBy(desc(refund.createdAt));

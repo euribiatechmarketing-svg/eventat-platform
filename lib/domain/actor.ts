@@ -70,6 +70,16 @@ export function assertCan(actor: AnyActor | null | undefined, permission: Permis
   if (!can(actor, permission, ctx)) throw new ForbiddenError(permission);
 }
 
+/**
+ * Read-only finance (payout figures, batch reports, the ledger CSV, failed refunds, chargebacks):
+ * a team member with `view_finance`, or the system (jobs, scripts). Checked inside each read
+ * function as well as on its page (defence in depth, SPEC §1.2).
+ */
+export function assertFinance(actor: AnyActor | null | undefined): void {
+  if (actor && isSystem(actor)) return;
+  assertCan(actor, 'view_finance');
+}
+
 /** Team roles holding a permission — e.g. the recipients of team emails (SPEC §11.5). */
 export function teamRolesWith(permission: TeamPermission): TeamRole[] {
   return (Object.keys(ROLE_PERMISSIONS) as TeamRole[]).filter(r => ROLE_PERMISSIONS[r].includes(permission));

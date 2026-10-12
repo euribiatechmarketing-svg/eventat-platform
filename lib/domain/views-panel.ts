@@ -56,7 +56,7 @@ export async function adminBell(actor: Actor): Promise<BellItem[]> {
     items.push({ id: 'disputes', title: `${plural(open.n, 'отворен спор', 'отворени спора')}`, body: `${moneyShort(Number(open.held ?? 0))} задържани`, href: '/admin/sporove', unread: true });
   // The batch ‹Следваща партида› on /admin/plashtaniya offers (SPEC §8.1), not the oldest row left unreleased.
   if (can(actor, 'view_finance')) {
-    const nb = await nextBatchPreview();
+    const nb = await nextBatchPreview(actor);
     items.push({ id: 'batch', title: `Партида ${date(nb.batchDate)}`, body: `${plural(nb.partners, 'изпълнител', 'изпълнители')} · ${moneyShort(nb.netCents)}`, href: '/admin/plashtaniya', unread: false });
   }
   return items;
