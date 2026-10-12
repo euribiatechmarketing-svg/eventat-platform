@@ -21,8 +21,20 @@ const causeOf = (e: Err): string | null => {
   if (!c) return null;
   return typeof c === 'object' && 'message' in c ? String((c as { message: unknown }).message) : String(c);
 };
-/** A failed query's message ends with its bound values (names, emails…): kept out of what leaves the server. */
-export const withoutParams = (s: string) => s.replace(/\nparams: [\s\S]*?(?=\n\s+at |$)/, '\nparams: [removed]');
+/**
+ * A failed query's message ends with its bound values (names, emails, message text…): kept out of what
+ * leaves the server. Everything from "params:" on goes, since a value may itself hold line breaks.
+ */
+export const withoutParams = (s: string) => {
+  const at = s.indexOf('\nparams: ');
+  return at < 0 ? s : `${s.slice(0, at)}\nparams: [removed]`;
+};
+/** The stack without its head, which repeats the message (bound values included); unknown head: no frames. */
+const stackBelowMessage = (e: Err): string | undefined => {
+  if (!e.stack) return undefined;
+  const at = e.message ? e.stack.indexOf(e.message) : -1;
+  return at < 0 ? withoutParams(e.stack) : e.stack.slice(at + e.message!.length);
+};
 
 /**
  * The log line. `route` is the route pattern (/akaunt/rezervacii/[nomer]), never the requested
@@ -92,7 +104,7 @@ export function sentryEnvelope(error: unknown, request: RequestInfo, context: Re
     // Sentry lists the values oldest first: the cause, then the error that wrapped it.
     exception: { values: [
       ...(cause ? [{ type: 'Cause', value: withoutParams(cause) }] : []),
-      { type: e.name ?? 'Error', value: withoutParams(e.message ?? ''), stacktrace: { frames: stackFrames(e.stack ? withoutParams(e.stack) : undefined) } },
+      { type: e.name ?? 'Error', value: withoutParams(e.message ?? ''), stacktrace: { frames: stackFrames(stackBelowMessage(e)) } },
     ] },
   };
   return [

@@ -56,12 +56,25 @@ describe('Sentry', () => {
   it('keeps a failed query\'s bound values out of Sentry', () => {
     expect(withoutParams('Failed query: insert into "user" values ($1, $2)\nparams: maria@example.com,+359888123456'))
       .toBe('Failed query: insert into "user" values ($1, $2)\nparams: [removed]');
-    expect(withoutParams('DrizzleQueryError: Failed query: x\nparams: a@b.c\n    at q (/app/x.js:1:2)')).toBe('DrizzleQueryError: Failed query: x\nparams: [removed]\n    at q (/app/x.js:1:2)');
+    expect(withoutParams('Failed query: x\nparams: a@b.c,\n\nat home')).toBe('Failed query: x\nparams: [removed]');
     expect(withoutParams('no params here')).toBe('no params here');
     const e = Object.assign(new Error('Failed query: select $1\nparams: maria@example.com'), { cause: new Error('boom') });
     const env = sentryEnvelope(e, req, ctx, parseDsn('https://k@sentry.io/1')!, {}, new Date(), 'f'.repeat(32));
     expect(env).not.toContain('maria@example.com');
     expect(JSON.parse(env.split('\n')[2]).exception.values.map((v: { type: string }) => v.type)).toEqual(['Cause', 'Error']);
+  });
+
+  it('keeps every bound value out, also a message text with blank lines or a line like a stack frame', () => {
+    // A bound value is user text (a chat message, a note): its own line breaks must not end the removal.
+    const e = new Error('Failed query: insert into "message" ("body") values ($1)\nparams: Здравейте,\n\nat 18:00 call 0888123456\n at venue:12:30');
+    const env = sentryEnvelope(e, req, ctx, parseDsn('https://k@sentry.io/1')!, {}, new Date(), 'f'.repeat(32));
+    expect(env).not.toContain('0888123456');
+    expect(env).not.toContain('venue');
+    const ev = JSON.parse(env.split('\n')[2]);
+    expect(ev.exception.values[0].value).toBe('Failed query: insert into "message" ("body") values ($1)\nparams: [removed]');
+    // The real frames are still there.
+    expect(ev.exception.values[0].stacktrace.frames.length).toBeGreaterThan(0);
+    expect(ev.exception.values[0].stacktrace.frames.at(-1).filename).toContain('observability.test.ts');
   });
 
   it('builds a three-line envelope', () => {

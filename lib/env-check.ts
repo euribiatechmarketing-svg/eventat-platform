@@ -5,7 +5,7 @@
 // *.vercel.app address) only logs the same findings, so the demo keeps running.
 // Pure: reads only the env object it is given, never imports server code (also used by tests).
 
-/** The placeholder in .env.example (tests/security/env-check.test.ts keeps the two in step). */
+/** The placeholder in .env.example (tests/ops/env-check.test.ts keeps the two in step). */
 export const EXAMPLE_AUTH_SECRET = 'change-me-32-bytes-minimum-random-string';
 export const EXAMPLE_CRON_SECRET = 'change-me';
 /** Better Auth's own minimum for a production secret. */
