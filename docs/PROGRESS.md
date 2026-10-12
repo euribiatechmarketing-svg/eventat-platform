@@ -54,16 +54,23 @@ Living log of the platform build. Newest state at the top of each section.
     and seeds an empty staging database once (`STAGING_SEED=true`).
   - After the merge: 674 unit tests (+50 Stripe tests with stripe-mock), 13/13 e2e suites with zero CSP violations.
 
+- **Staging online** (12 Oct): https://eventat-platform.vercel.app — Vercel team Euribiatech (owner
+  sales@euribiatech.com, **Hobby plan**), framework Next.js, functions in fra1, Vercel Authentication on every URL
+  (team members only). Neon Postgres (Frankfurt, free) `neon-indigo-drawer`; Blob stores `eventat-staging-public`
+  and `eventat-staging-private` (fra1). Demo data loaded by the build (STAGING_SEED); timers via TICK_ON_REQUEST
+  (verified: the dispute-deadline timer fired and emailed the team). Uploads verified in both stores.
+  Deploys: from this Mac with `npx vercel --global-config ~/.vercel-euribia --scope euribiatech deploy --prod`
+  (Git auto-deploy not connected: the Vercel login's GitHub identity is mariorgeorgiev, the repo is under
+  euribiatechmarketing-svg). Test bypass secret: `~/.vercel-euribia/staging-bypass` (tools/shoot.py --bypass).
+
 ## In progress
-- Waiting for the staging project in Vercel (the Vercel connection here can view the Euribiatech team but not create
-  projects — 403). Env values to paste: `~/Desktop/eventat-staging.env` (not in git).
+- Nothing running.
 
 ## Next
 State at end of 9 Oct: main `6a8bd34` — 586 unit tests, 13/13 e2e suites (9 areas + 4 journeys) pass on the production build.
-1. **Staging online** (a person, ~5 min): Vercel → Euribiatech → Add New → Project → import
-   `euribiatechmarketing-svg/eventat-platform`, paste `~/Desktop/eventat-staging.env` into Environment Variables, Deploy;
-   Storage → Neon (Frankfurt) → connect; Storage → Blob `eventat-staging-public` (public) and `eventat-staging-private`
-   (private, prefix `BLOB_PRIVATE`) → connect; Redeploy. The build migrates and seeds by itself. Then: check it end to end.
+1. **Git auto-deploy** for staging: either connect the Vercel login to GitHub as euribiatechmarketing-svg, or move the
+   repo into a GitHub organisation the Vercel login can see. Until then, deploy from this Mac (see Done).
+   The repo was made public on 12 Oct while trying the import — switch it back to private.
 2. **Apply Nikola's answers** to `docs/review-list.md` (158 items), then rerun `tools/e2e-all.sh`.
 3. Before launch: error monitoring (Sentry; also to catch the rare hydration warning #418), real Stripe test-mode run
    with test keys, Postmark sending domain (SPF/DKIM/DMARC), private R2 bucket, Stripe Connect webhook.
